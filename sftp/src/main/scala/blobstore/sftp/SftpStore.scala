@@ -31,7 +31,7 @@ import fs2.concurrent.Queue
 
 final class SftpStore[F[_]](
   absRoot: String,
-  session: Session,
+  private[sftp] val session: Session,
   blocker: Blocker,
   mVar: MVar[F, ChannelSftp],
   semaphore: Option[Semaphore[F]],
@@ -70,30 +70,30 @@ final class SftpStore[F[_]](
     */
   override def list(path: Path): fs2.Stream[F, Path] = {
 
-    def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = new ChannelSftp.LsEntrySelector{
+    def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = new ChannelSftp.LsEntrySelector {
       def select(entry: ChannelSftp#LsEntry): Int = {
         cb(entry)
         ChannelSftp.LsEntrySelector.CONTINUE
       }
     }
 
-  for{
-    q <- fs2.Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
-    channel <- fs2.Stream.resource(channelResource)
-    entry <- q.dequeue.unNoneTerminate.filter(e => e.getFilename != "." && e.getFilename != "..").concurrently(
-      fs2.Stream.eval(
-        blocker.blockOn(F.flatMap(F.attempt(F.delay(channel.ls(path, entrySelector(e => F.runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())))))(_ => q.enqueue1(None)))
+    for {
+      q <- fs2.Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
+      channel <- fs2.Stream.resource(channelResource)
+      entry <- q.dequeue.unNoneTerminate.filter(e => e.getFilename != "." && e.getFilename != "..").concurrently(
+        fs2.Stream.eval(
+          blocker.blockOn(F.flatMap(F.attempt(F.delay(channel.ls(path, entrySelector(e => F.runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())))))(_ => q.enqueue1(None)))
+        )
       )
-    )
-  } yield {
-    val newPath = if (path.filename == entry.getFilename) path else path / entry.getFilename
-    newPath.copy(
-      size = Option(entry.getAttrs.getSize),
-      isDir = entry.getAttrs.isDir,
-      lastModified = Option(entry.getAttrs.getMTime).map(i => new Date(i.toLong * 1000))
-    )
+    } yield {
+      val newPath = if (path.filename == entry.getFilename) path else path / entry.getFilename
+      newPath.copy(
+        size = Option(entry.getAttrs.getSize),
+        isDir = entry.getAttrs.isDir,
+        lastModified = Option(entry.getAttrs.getMTime).map(i => new Date(i.toLong * 1000))
+      )
+    }
   }
-}
 
   override def get(path: Path, chunkSize: Int): fs2.Stream[F, Byte] =
     fs2.Stream.resource(channelResource).flatMap{channel =>
@@ -142,13 +142,14 @@ final class SftpStore[F[_]](
     }
   }
 
-  implicit def _pathToString(path: Path): String = s"$absRoot$SEP${path.root}$SEP${path.key}"
+  implicit def _pathToString(path: Path): String =
+    List(absRoot, path.root, path.key).filter(_.nonEmpty).mkString("/")
 
   private def mkdirs(path: Path, channel: ChannelSftp): F[Unit] =
     blocker.delay {
-      _pathToString(path).split(SEP.toChar).drop(1).foldLeft("") { case (acc, s) =>
+      _pathToString(path).split(SEP.toChar).foldLeft("") { case (acc, s) =>
         Try(channel.mkdir(acc))
-        s"$acc$SEP$s"
+        List(acc, s).filter(_.nonEmpty).mkString("/")
       }
       ()
     }
@@ -158,6 +159,7 @@ final class SftpStore[F[_]](
 object SftpStore {
   /**
     * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
+    *
     * @param fa F[ChannelSftp] how to connect to SFTP server
     * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.
     */
