@@ -21,7 +21,7 @@ import java.util.Properties
 
 import cats.effect.IO
 import cats.effect.concurrent.MVar
-import com.jcraft.jsch.{ChannelSftp, JSch}
+import com.jcraft.jsch.{ChannelSftp, JSch, SftpException}
 
 class SftpStoreTest extends AbstractStoreTest {
 
@@ -84,5 +84,32 @@ class SftpStoreTest extends AbstractStoreTest {
     io.unsafeRunSync()
 
     store.listAll(dir).unsafeRunSync().isEmpty must be(true)
+  }
+
+  it should "be able to remove a directory" in {
+    val dir = dirPath("some-dir")
+    val filename = "some-filename"
+
+    val result = for {
+      file <- IO(writeFile(store, dir)(filename))
+      _ <- store.remove(file)
+      _ <- store.remove(dir)
+      files <- store.list(dir).compile.toList
+    } yield files
+
+    result.unsafeRunSync() must be(List.empty)
+  }
+
+  it should "not be able to remove a directory if it is not empty" in {
+    val dir = dirPath("some-dir")
+    val filename = "some-filename"
+
+    val failedRemove = for {
+      _ <- IO(writeFile(store, dir)(filename))
+      _ <- store.remove(dir)
+      files <- store.list(dir).compile.toList
+    } yield files
+
+    assertThrows[SftpException](failedRemove.unsafeRunSync())
   }
 }
