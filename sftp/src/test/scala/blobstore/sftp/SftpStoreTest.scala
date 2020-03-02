@@ -86,7 +86,7 @@ class SftpStoreTest extends AbstractStoreTest {
     store.listAll(dir).unsafeRunSync().isEmpty must be(true)
   }
 
-  it should "be able to remove a directory" in {
+  it should "be able to remove a directory if it is empty" in {
     val dir = dirPath("some-dir")
     val filename = "some-filename"
 
