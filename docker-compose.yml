@@ -10,6 +10,15 @@ services:
 
     command: "blob:password:::sftp_tests"
 
+  sftp-no-chroot:
+    image: atmoz/sftp
+
+    volumes:
+      - ./tmp/sftp-store-root:/home/blob
+      - ./sshd_config:/etc/ssh/sshd_config
+
+    command: "blob:password:::sftp_tests"
+
   minio:
     image: minio/minio
 
@@ -36,4 +45,5 @@ services:
 
     links:
       - sftp:sftp-container
+      - sftp-no-chroot:sftp-no-chroot
       - minio:minio-container

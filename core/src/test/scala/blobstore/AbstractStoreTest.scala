@@ -124,7 +124,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
     val pathsListed = store.listAll(rootDir).unsafeRunSync().map(_.key).toSet.toString()
-    exp.foreach(pathsListed.contains(_) must be(true))
+    exp.foreach(s => pathsListed must include(s))
 
     val io: IO[List[Unit]] = paths.map(store.remove).sequence
     io.unsafeRunSync()

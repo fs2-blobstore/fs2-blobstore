@@ -17,38 +17,18 @@ package blobstore
 package sftp
 
 import java.nio.file.Paths
-import java.util.Properties
 
 import cats.effect.IO
 import cats.effect.concurrent.MVar
-import com.jcraft.jsch.{ChannelSftp, JSch, SftpException}
+import com.jcraft.jsch.{ChannelSftp, Session, SftpException}
 
-class SftpStoreTest extends AbstractStoreTest {
+abstract class AbstractSftpStoreTest extends AbstractStoreTest {
 
-  val session = try {
-    val jsch = new JSch()
-
-    val session = jsch.getSession("blob", "sftp-container", 22)
-    session.setTimeout(10000)
-    session.setPassword("password")
-
-    val config = new Properties
-    config.put("StrictHostKeyChecking", "no")
-    session.setConfig(config)
-
-    session.connect()
-
-    session
-  } catch {
-    // this is UGLY!!! but just want to ignore errors if you don't have sftp container running
-    case e: Throwable =>
-      e.printStackTrace()
-      null
-  }
+  def session: IO[Session]
 
   private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
   val mVar = MVar.empty[IO, ChannelSftp].unsafeRunSync()
-  override val store: Store[IO] = new SftpStore[IO]("/", session, blocker, mVar, None, 10000)
+  override lazy val store: SftpStore[IO] = new SftpStore[IO]("", session.unsafeRunSync(), blocker, mVar, None, 10000)
   override val root: String = "sftp_tests"
 
   // remove dirs created by AbstractStoreTest
@@ -56,7 +36,7 @@ class SftpStoreTest extends AbstractStoreTest {
     super.afterAll()
 
     try {
-      session.disconnect()
+      store.session.disconnect()
     } catch {
       case _: Throwable =>
     }
@@ -65,9 +45,23 @@ class SftpStoreTest extends AbstractStoreTest {
 
   }
 
+  behavior of "Sftp store"
+
+  it should "list files in current directory" in {
+    val s = session.unsafeRunSync()
+
+    val store: Store[IO] = new SftpStore[IO]("", s, blocker, mVar, None, 10000)
+    val path = Path(".")
+
+    val p = store.list(path).compile.toList
+
+    val result = p.unsafeRunSync()
+    result.map(_.key) must contain theSameElementsInOrderAs List("sftp_tests")
+  }
+
   it should "list more than 64 (default queue/buffer size) keys" in {
-    import cats.implicits._
     import blobstore.implicits._
+    import cats.implicits._
 
     val dir: Path = dirPath("list-more-than-64")
 
