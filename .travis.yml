@@ -18,7 +18,7 @@ stages:
   if: "(branch = master AND type = push) OR (tag IS present)"
 
 script:
-  - docker-compose run --rm sbt ++$TRAVIS_SCALA_VERSION clean coverage "testOnly * -- -l blobstore.IntegrationTest" coverageReport
+  - docker-compose run --rm sbt -Dsbt.ci=true ++$TRAVIS_SCALA_VERSION clean coverage "testOnly * -- -l blobstore.IntegrationTest" coverageReport
   - bash <(curl -s https://codecov.io/bash) -F "scala_${TRAVIS_SCALA_VERSION//[.-]/_}"
 
 jobs:
