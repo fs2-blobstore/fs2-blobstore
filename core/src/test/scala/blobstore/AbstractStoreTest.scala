@@ -116,7 +116,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     val rootDir = Path(root)
     val paths = (1 to 2)
       .toList
-      .map(i => s"filename-$i.txt")
+      .map(i => s"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
     val exp = paths.map(p => s"${p.key}").toSet
