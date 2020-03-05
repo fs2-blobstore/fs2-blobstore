@@ -30,3 +30,16 @@ lazy val sftp = project.dependsOn(core % "compile->compile;test->test")
 lazy val box = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val gcs = project.dependsOn(core % "compile->compile;test->test")
+
+lazy val docs = (project in file("project-docs"))
+  .settings(
+    mdocVariables := Map(
+      "VERSION" -> version.value
+    ),
+    mdocOut := (baseDirectory in ThisBuild).value,
+    skip in publish := true,
+    Compile / scalacOptions -= "-Ywarn-dead-code",
+    mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94
+  )
+  .dependsOn(gcs, box, sftp, s3, core % "compile->test")
+  .enablePlugins(MdocPlugin)
