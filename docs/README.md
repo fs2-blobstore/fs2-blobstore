@@ -36,10 +36,10 @@ fs2-blobstore is deployed to maven central, add to build.sbt:
 
 ```sbtshell
 libraryDependencies ++= Seq(
-  "com.github.fs2-blobstore" %% "core" % "0.6.x",
-  "com.github.fs2-blobstore" %% "sftp" % "0.6.x",
-  "com.github.fs2-blobstore" %% "s3"   % "0.6.x",
-  "com.github.fs2-blobstore" %% "gcs"  % "0.6.x",
+  "com.github.fs2-blobstore" %% "core" % "@VERSION@",
+  "com.github.fs2-blobstore" %% "sftp" % "@VERSION@",
+  "com.github.fs2-blobstore" %% "s3"   % "@VERSION@",
+  "com.github.fs2-blobstore" %% "gcs"  % "@VERSION@",
 )
 ```
 
@@ -166,7 +166,7 @@ FileSystem. FileStore is provided as part of core module because it doesn't
 include any additional dependencies and it is used as the default source store
 in TransferOps tests. It only requires root path in the local file system:
 
-```scala
+```scala mdoc
 import blobstore.{Path, Store}
 import blobstore.fs.FileStore
 import java.nio.file.Paths
@@ -188,7 +188,7 @@ object FileStoreExample extends IOApp {
 It requires a computation resulting in a `TransferManager`. The resulting stream shuts down the allocated
 `TransferManager` on stream completion:
    
-```scala
+```scala mdoc
 import blobstore.s3.S3Store
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 
@@ -207,7 +207,7 @@ object S3Example extends IOApp {
 [GcsStore](gcs/src/main/scala/blobstore/gcs/GcsStore.scala) backed by 
 [Google Cloud Storage](https://github.com/googleapis/java-storage). It requires a configured `Storage`:
 
-```scala
+```scala mdoc
 import blobstore.gcs.GcsStore
 import com.google.cloud.storage.{Storage, StorageOptions}
 
@@ -225,7 +225,7 @@ object GcsExample extends IOApp {
 [SftpStore](sftp/src/main/scala/blobstore/sftp/SftpStore.scala) backed by 
 SFTP server with [Jsch client](http://www.jcraft.com/jsch/). It requires a computation resulting in a `Session`:
 
-```scala
+```scala mdoc
 import blobstore.sftp.SftpStore
 import com.jcraft.jsch.{JSch, Session}
 
@@ -253,7 +253,7 @@ a [BoxAPIConnection](https://github.com/box/box-java-sdk/blob/master/src/main/ja
 which has multiple options for authentication. This requires that you have a Box app set up already. 
 See [Box SDK documentation](https://github.com/box/box-java-sdk) for more details:
 
-```scala
+```scala mdoc
 import blobstore.box.BoxStore
 import com.box.sdk.BoxAPIConnection
 

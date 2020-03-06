@@ -118,13 +118,13 @@ object S3Store {
   /**
     * Safely initialize S3Store and shutdown Amazon S3 client upon finish.
     *
-    * @param functor  F[TransferManager] how to connect AWS S3 client
+    * @param transferManager  F[TransferManager] how to connect AWS S3 client
     * @param encrypt Boolean true to force all writes to use SSE algorithm ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_] : ContextShift](functor: F[TransferManager], encrypt: Boolean, blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] = {
+  def apply[F[_] : ContextShift](transferManager: F[TransferManager], encrypt: Boolean, blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] = {
     val opt = if (encrypt) Option(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION) else None
-    apply(functor, None, opt, blocker)
+    apply(transferManager, None, opt, blocker)
   }
 
   /**
@@ -172,21 +172,21 @@ object S3Store {
   /**
     * Safely initialize S3Store and shutdown Amazon S3 client upon finish.
     *
-    * @param functor F[TransferManager] how to connect AWS S3 client
+    * @param transferManager F[TransferManager] how to connect AWS S3 client
     * @param sseAlgorithm Option[String] Server Side Encryption algorithm
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_]](functor: F[TransferManager], sseAlgorithm: Option[String], blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
-    fs2.Stream.bracket(functor)(tm => F.delay(tm.shutdownNow())).map(tm => new S3Store[F](tm, None, sseAlgorithm, blocker))
+  def apply[F[_]](transferManager: F[TransferManager], sseAlgorithm: Option[String], blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
+    fs2.Stream.bracket(transferManager)(tm => F.delay(tm.shutdownNow())).map(tm => new S3Store[F](tm, None, sseAlgorithm, blocker))
 
   /**
     * Safely initialize S3Store and shutdown Amazon S3 client upon finish.
-    * @param functor F[TransferManager] how to connect AWS S3 client
+    * @param transferManager F[TransferManager] how to connect AWS S3 client
     * @param objectAcl Option[CannedAccessControlList] ACL that all uploaded objects should have
     * @param sseAlgorithm Option[String] Server Side Encryption algorithm
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_]](functor: F[TransferManager], objectAcl: Option[CannedAccessControlList], sseAlgorithm: Option[String], blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
-    fs2.Stream.bracket(functor)(tm => F.delay(tm.shutdownNow())).map(tm => new S3Store[F](tm, objectAcl, sseAlgorithm, blocker))
+  def apply[F[_]](transferManager: F[TransferManager], objectAcl: Option[CannedAccessControlList], sseAlgorithm: Option[String], blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
+    fs2.Stream.bracket(transferManager)(tm => F.delay(tm.shutdownNow())).map(tm => new S3Store[F](tm, objectAcl, sseAlgorithm, blocker))
 
 }
