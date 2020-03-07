@@ -16,6 +16,8 @@ stages:
 - name: test
 - name: release
   if: "(branch = master AND type = push) OR (tag IS present)"
+- name: update-doc
+  if: "branch = master AND type = push AND tag IS present"
 
 script:
   - docker-compose run --rm sbt -Dsbt.ci=true ++$TRAVIS_SCALA_VERSION clean coverage "docs/mdoc; testOnly * -- -l blobstore.IntegrationTest" coverageReport
@@ -24,7 +26,15 @@ script:
 jobs:
   include:
   - stage: release
-    script: sbt ci-release
+    script:
+      - sbt ci-release
+  - stage: update-doc
+    script:
+      - sbt docs/mdoc
+      - git config --global user.email "travis@travis-ci.org"
+      - git config --global user.name "Travis CI"
+      - git add README.md
+      - git commit -m "[skip ci] Update readme after release of $(git describe --abbrev=0)"
 
 before_script:
 - if [ $TRAVIS_PULL_REQUEST = 'false' ]; then git checkout -qf $TRAVIS_BRANCH; fi
