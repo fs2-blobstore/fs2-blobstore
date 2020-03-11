@@ -16,9 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package sftp
 
-import java.nio.charset.StandardCharsets
 
-import fs2.Stream
 import java.nio.file.Paths
 
 import cats.effect.IO
@@ -109,38 +107,5 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
     assertThrows[SftpException](failedRemove.unsafeRunSync())
   }
 
-  it should "honor absRoot on put" in {
-    val s = session.unsafeRunSync()
-
-    val store: Store[IO] =
-      new SftpStore[IO](s"/home/blob/", s, blocker, mVar, None, 10000)
-
-    val filePath = dirPath("baz/bam") / "tmp"
-
-    val save = Stream
-      .emits("foo".getBytes(StandardCharsets.UTF_8))
-      .covary[IO]
-      .through(store.put(filePath))
-      .compile
-      .toList
-
-    val storeRead = store.get(filePath, 1024).through(fs2.text.utf8Decode).compile.toList
-    val is = IO {
-      val ch = s.openChannel("sftp").asInstanceOf[ChannelSftp]
-      ch.connect()
-      ch.get(s"/home/blob/$filePath")
-    }
-    val directRead = fs2.io.readInputStream(is, 1024, blocker).through(fs2.text.utf8Decode).compile.toList
-
-    val program = for {
-      _ <- save
-      contentsFromStore <- storeRead
-      contentsDirect <- directRead
-    } yield contentsDirect.mkString("\n") -> contentsFromStore.mkString("\n")
-
-    val (fromStore, fromDirect) = program.unsafeRunSync()
-    fromStore mustBe "foo"
-    fromDirect mustBe "foo"
-  }
 
 }
