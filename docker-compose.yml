@@ -15,7 +15,7 @@ services:
 
     volumes:
       - ./tmp/sftp-store-root:/home/blob
-      - ./sshd_config:/etc/ssh/sshd_config
+      - ./sftp/src/test/resources/sshd_config:/etc/ssh/sshd_config
 
     command: "blob:password:::sftp_tests"
 
