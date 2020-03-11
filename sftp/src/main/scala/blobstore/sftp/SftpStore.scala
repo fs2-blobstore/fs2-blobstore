@@ -19,13 +19,13 @@ package sftp
 import java.util.Date
 
 import com.jcraft.jsch._
+import cats.syntax.all._
 import cats.instances.option._
 
 import scala.util.Try
 import java.io.OutputStream
 
-import cats.Traverse
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, IO, Resource}
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
 import fs2.concurrent.Queue
 
@@ -48,20 +48,18 @@ final class SftpStore[F[_]](
       ch
     }
     semaphore.fold(openF){s =>
-      F.ifM(s.tryAcquire)(openF, getChannel)
+      s.tryAcquire.ifM(openF, getChannel)
     }
   }
 
-  private val getChannel = F.flatMap(mVar.tryTake) {
-    case Some(channel) => F.pure(channel)
+  private val getChannel = mVar.tryTake.flatMap {
+    case Some(channel) => channel.pure[F]
     case None => openChannel
   }
 
-  private def channelResource: Resource[F, ChannelSftp] = Resource.make{
-    getChannel
-  }{
-    case ch if ch.isClosed => F.unit
-    case ch => F.ifM(mVar.tryPut(ch))(F.unit, SftpStore.closeChannel(semaphore, blocker)(ch))
+  private def channelResource: Resource[F, ChannelSftp] = Resource.make(getChannel) {
+    case ch if ch.isClosed => ().pure[F]
+    case ch                => mVar.tryPut(ch).ifM(().pure[F], SftpStore.closeChannel(semaphore, blocker)(ch))
   }
 
   /**
@@ -79,9 +77,10 @@ final class SftpStore[F[_]](
       q <- fs2.Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
       channel <- fs2.Stream.resource(channelResource)
       entry <- q.dequeue.unNoneTerminate.filter(e => e.getFilename != "." && e.getFilename != "..").concurrently(
-        fs2.Stream.eval(
-          blocker.blockOn(F.flatMap(F.attempt(F.delay(channel.ls(path, entrySelector(e => F.runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())))))(_ => q.enqueue1(None)))
-        )
+        fs2.Stream.eval {
+          val es = entrySelector(e => Effect[F].runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())
+          blocker.delay(channel.ls(path, es)).attempt.flatMap(_ => q.enqueue1(None))
+        }
       )
     } yield {
       val newPath = if (path.filename == entry.getFilename) path else path / entry.getFilename
@@ -99,11 +98,13 @@ final class SftpStore[F[_]](
     }
 
   override def put(path: Path): fs2.Pipe[F, Byte, Unit] = { in =>
-    def put(channel: ChannelSftp) = F.flatMap(mkdirs(path, channel))(_ => blocker.delay {
-      // scalastyle:off
-      channel.put(/* dst */ path, /* monitor */ null, /* mode */ ChannelSftp.OVERWRITE, /* offset */ 0)
-      // scalastyle:on
-    })
+    def put(channel: ChannelSftp): F[OutputStream] = mkdirs(path, channel).flatMap { _ =>
+      blocker.delay {
+        // format:off
+        channel.put(/* dst */ path, /* monitor */ null, /* mode */ ChannelSftp.OVERWRITE, /* offset */ 0)
+        // format:on
+      }
+    }
     
     def close(os: OutputStream): F[Unit] = blocker.delay(os.close())
 
@@ -115,13 +116,13 @@ final class SftpStore[F[_]](
 
   override def move(src: Path, dst: Path): F[Unit] =
     channelResource.use{channel =>
-      F.flatMap(mkdirs(dst, channel))(_ => blocker.delay(channel.rename(src, dst)))
+      mkdirs(dst, channel).flatMap(_ => blocker.delay(channel.rename(src, dst)))
     }
 
   override def copy(src: Path, dst: Path): F[Unit] = {
     val s = for {
       channel <- fs2.Stream.resource(channelResource)
-      _ <- fs2.Stream.eval(F.delay(mkdirs(dst, channel)))
+      _ <- fs2.Stream.eval(mkdirs(dst, channel))
       _ <- get(src).through(this.bufferedPut(dst, blocker))
     } yield ()
 
@@ -169,20 +170,22 @@ object SftpStore {
     * @param fa F[ChannelSftp] how to connect to SFTP server
     * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.
     */
-  def apply[F[_]](
+  def apply[F[_]: ConcurrentEffect](
     absRoot: String,
     fa: F[Session],
     blocker: Blocker,
     maxChannels: Option[Long] = None,
     connectTimeout: Int = 10000
-  )(implicit F: ConcurrentEffect[F], CS: ContextShift[F]): fs2.Stream[F, SftpStore[F]] =
+  )(implicit CS: ContextShift[F]): fs2.Stream[F, SftpStore[F]] =
     if (maxChannels.exists(_ < 1)) {
       fs2.Stream.raiseError[F](new IllegalArgumentException(s"maxChannels must be >= 1"))
     } else {
       for {
-        session <- fs2.Stream.bracket(fa)(session => F.delay(session.disconnect()))
-        semaphore <- fs2.Stream.eval(Traverse[Option].sequence(maxChannels.map(Semaphore.apply[F])))
-        mVar <- fs2.Stream.bracket(MVar.empty[F, ChannelSftp])(mVar => F.flatMap(mVar.tryTake)(_.fold(F.unit)(closeChannel[F](semaphore, blocker))))
+        session <- fs2.Stream.bracket(fa)(session => blocker.delay(session.disconnect()))
+        semaphore <- fs2.Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
+        mVar <- fs2.Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
+          mVar.tryTake.flatMap(_.fold(().pure[F])(closeChannel[F](semaphore, blocker)))
+        )
       } yield new SftpStore[F](absRoot, session, blocker, mVar, semaphore, connectTimeout)
     }
 
