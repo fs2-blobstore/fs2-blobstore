@@ -52,9 +52,9 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
     val directRead = fs2.io.readInputStream(is, 1024, blocker).through(fs2.text.utf8Decode).compile.toList
 
     val program = for {
-      _ <- save
+      _                 <- save
       contentsFromStore <- storeRead
-      contentsDirect <- directRead
+      contentsDirect    <- directRead
     } yield contentsDirect.mkString("\n") -> contentsFromStore.mkString("\n")
 
     val (fromStore, fromDirect) = program.unsafeRunSync()

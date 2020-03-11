@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 
 import java.nio.charset.Charset
@@ -24,6 +24,7 @@ import cats.implicits._
 trait StoreOps {
 
   implicit class PutOps[F[_]](store: Store[F]) {
+
     /**
       * Write contents String into path.
       * @param contents String
@@ -33,7 +34,7 @@ trait StoreOps {
     def put(contents: String, path: Path)(implicit F: Sync[F]): F[Unit] =
       for {
         buf <- F.delay(contents.getBytes(Charset.forName("utf-8")))
-        _ <- Stream.emits(buf).covary[F].through(store.put(path.copy(size = Option(buf.size.toLong)))).compile.drain
+        _   <- Stream.emits(buf).covary[F].through(store.put(path.copy(size = Option(buf.size.toLong)))).compile.drain
       } yield ()
 
     /**
@@ -46,8 +47,8 @@ trait StoreOps {
       fs2.io.file
         .readAll(src, blocker, 4096)
         .through(store.put(dst.copy(size = Option(src.toFile.length))))
-        .compile.drain
-
+        .compile
+        .drain
 
     /**
       * Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
@@ -56,13 +57,15 @@ trait StoreOps {
       * @param path Path to write to
       * @return Sink[F, Byte] buffered sink
       */
-    def bufferedPut(path: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): Pipe[F, Byte, Unit] = in =>
-      in.through(bufferToDisk(4096, blocker)).flatMap { case (n, s) =>
-        s.through(store.put(path.copy(size = Some(n))))
+    def bufferedPut(path: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): Pipe[F, Byte, Unit] =
+      _.through(bufferToDisk(4096, blocker)).flatMap {
+        case (n, s) =>
+          s.through(store.put(path.copy(size = Some(n))))
       }
   }
 
   implicit class GetOps[F[_]](store: Store[F]) {
+
     /**
       * get with default buffer size of 4kb
       * @param path Path to get
@@ -109,7 +112,7 @@ trait StoreOps {
       * @return F\[List\[Path\]\] with all items in the result
       */
     def listAll(path: Path)(implicit F: Sync[F]): F[List[Path]] = {
-        store.list(path).compile.toList
+      store.list(path).compile.toList
     }
   }
 
@@ -132,17 +135,23 @@ trait StoreOps {
       */
     def transferTo(dstStore: Store[F], srcPath: Path, dstPath: Path)(implicit F: Sync[F]): F[Int] = {
       import implicits._
-      store.list(srcPath).evalMap(p =>
-        if (p.isDir) {
-          transferTo(dstStore, p, dstPath / p.filename)
-        } else {
-          val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
-          store.get(p, 4096)
-            .through(dstStore.put(dp.copy(size = p.size)))
-            .compile.drain
-            .as(1)
-        }
-      ).compile.fold(0)(_ + _)
+      store
+        .list(srcPath)
+        .evalMap(p =>
+          if (p.isDir) {
+            transferTo(dstStore, p, dstPath / p.filename)
+          } else {
+            val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
+            store
+              .get(p, 4096)
+              .through(dstStore.put(dp.copy(size = p.size)))
+              .compile
+              .drain
+              .as(1)
+          }
+        )
+        .compile
+        .fold(0)(_ + _)
     }
   }
 
@@ -154,14 +163,18 @@ trait StoreOps {
       */
     def removeAll(dstPath: Path)(implicit F: Sync[F]): F[Int] = {
       import implicits._
-      store.list(dstPath).evalMap(p =>
-        if (p.isDir) {
-          removeAll(dstPath / p.filename)
-        } else {
-          val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
-          fs2.Stream.eval(store.remove(dp)).compile.drain.as(1)
-        }
-      ).compile.fold(0)(_ + _)
+      store
+        .list(dstPath)
+        .evalMap(p =>
+          if (p.isDir) {
+            removeAll(dstPath / p.filename)
+          } else {
+            val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
+            fs2.Stream.eval(store.remove(dp)).compile.drain.as(1)
+          }
+        )
+        .compile
+        .fold(0)(_ + _)
     }
   }
 
