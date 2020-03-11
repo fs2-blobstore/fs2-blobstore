@@ -12,9 +12,10 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 package sftp
+
 
 import java.nio.file.Paths
 
@@ -22,7 +23,7 @@ import cats.effect.IO
 import cats.effect.concurrent.MVar
 import com.jcraft.jsch.{ChannelSftp, Session, SftpException}
 
-abstract class AbstractSftpStoreTest extends AbstractStoreTest {
+abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
 
   def session: IO[Session]
 
@@ -65,8 +66,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest {
 
     val dir: Path = dirPath("list-more-than-64")
 
-    val paths = (1 to 256)
-      .toList
+    val paths = (1 to 256).toList
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, dir))
 
@@ -106,4 +106,6 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest {
 
     assertThrows[SftpException](failedRemove.unsafeRunSync())
   }
+
+
 }

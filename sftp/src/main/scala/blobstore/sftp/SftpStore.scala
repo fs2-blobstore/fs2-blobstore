@@ -70,11 +70,9 @@ final class SftpStore[F[_]](
     */
   override def list(path: Path): fs2.Stream[F, Path] = {
 
-    def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = new ChannelSftp.LsEntrySelector {
-      def select(entry: ChannelSftp#LsEntry): Int = {
-        cb(entry)
-        ChannelSftp.LsEntrySelector.CONTINUE
-      }
+    def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
+      cb(entry)
+      ChannelSftp.LsEntrySelector.CONTINUE
     }
 
     for {
@@ -147,9 +145,17 @@ final class SftpStore[F[_]](
 
   private def mkdirs(path: Path, channel: ChannelSftp): F[Unit] =
     blocker.delay {
-      _pathToString(path).split(SEP.toChar).foldLeft("") { case (acc, s) =>
+      val pathString = _pathToString(path)
+      val root = if (pathString.startsWith("/")) "/" else ""
+
+      pathString.split(SEP.toChar).foldLeft(root) { case (acc, s) =>
         Try(channel.mkdir(acc))
-        List(acc, s).filter(_.nonEmpty).mkString("/")
+
+        val candidate = List(acc, s).filter(_.nonEmpty).mkString("/")
+
+        // Don't .replaceAll("//"). Directories containing "//" are valid according to spec
+        if (root == "/" && candidate.startsWith("//")) candidate.replaceFirst("//", "/")
+        else candidate
       }
       ()
     }
