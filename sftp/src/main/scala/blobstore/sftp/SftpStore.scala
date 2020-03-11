@@ -42,6 +42,7 @@ final class SftpStore[F[_]](
 
   import Path.SEP
 
+  @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   private val openChannel: F[ChannelSftp] = {
     val openF = blocker.delay {
       val ch = session.openChannel("sftp").asInstanceOf[ChannelSftp]
@@ -104,11 +105,10 @@ final class SftpStore[F[_]](
     }
 
   override def put(path: Path): fs2.Pipe[F, Byte, Unit] = { in =>
+    @SuppressWarnings(Array("scalafix:DisableSyntax.null")) // Underlying Java API requires null
     def put(channel: ChannelSftp): F[OutputStream] = mkdirs(path, channel).flatMap { _ =>
       blocker.delay {
-        // format:off
         channel.put( /* dst */ path, /* monitor */ null, /* mode */ ChannelSftp.OVERWRITE, /* offset */ 0)
-        // format:on
       }
     }
 

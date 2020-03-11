@@ -25,6 +25,10 @@ import fs2.{Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
+// Address this as tech debt, there's lots of type casts and checks with the underlying Java API, https://github.com/fs2-blobstore/fs2-blobstore/issues/16
+@SuppressWarnings(
+  Array("scalafix:DisableSyntax.asInstanceOf", "scalafix:DisableSyntax.isInstanceOf", "scalafix:DisableSyntax.throw")
+)
 final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker: Blocker)(
   implicit F: Concurrent[F],
   CS: ContextShift[F]
@@ -79,12 +83,12 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
       listFiles = Stream
         .eval(F.delay(item.asInstanceOf[BoxFolder]))
         .flatMap(folder => Stream.fromIterator(folder.getChildren.iterator.asScala))
-        .map(itemInfo => {
+        .map { itemInfo =>
           val isDir    = itemInfo.isInstanceOf[BoxFolder#Info]
           val pathKey  = if (path.key.takeRight(1).equals("/")) path.key.dropRight(1) else path.key
           val childKey = s"$pathKey/${itemInfo.getName}"
           Path(path.root, childKey, Some(itemInfo.getSize), isDir, Some(itemInfo.getModifiedAt))
-        })
+        }
 
       listOneFile = Stream.eval(
         F.delay(
