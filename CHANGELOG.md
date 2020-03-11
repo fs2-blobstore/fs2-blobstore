@@ -1,3 +1,5 @@
+Starting v0.6.1 changesets are part of release notes on Github. See https://github.com/fs2-blobstore/fs2-blobstore/releases
+
 v0.6.0
 ======
 * Make path scheme agnostic [#47](https://github.com/lendup/fs2-blobstore/pull/47)
