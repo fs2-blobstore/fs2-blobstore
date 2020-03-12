@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 package box
 
@@ -25,7 +25,14 @@ import fs2.{Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
-final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]) extends Store[F] {
+// Address this as tech debt, there's lots of type casts and checks with the underlying Java API, https://github.com/fs2-blobstore/fs2-blobstore/issues/16
+@SuppressWarnings(
+  Array("scalafix:DisableSyntax.asInstanceOf", "scalafix:DisableSyntax.isInstanceOf", "scalafix:DisableSyntax.throw")
+)
+final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker: Blocker)(
+  implicit F: Concurrent[F],
+  CS: ContextShift[F]
+) extends Store[F] {
 
   val rootFolder = new BoxFolder(api, rootFolderId)
 
@@ -36,11 +43,13 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
   def boxItemAtPath(parentFolder: BoxFolder, pathParts: List[String]): Option[BoxItem] = {
     pathParts match {
       case Nil => None
-      case head::Nil =>
-        parentFolder.getChildren.asScala.find(info => info.getName.equalsIgnoreCase(head))
+      case head :: Nil =>
+        parentFolder.getChildren.asScala
+          .find(info => info.getName.equalsIgnoreCase(head))
           .map(_.getResource.asInstanceOf[BoxItem])
-      case head::tail =>
-        parentFolder.getChildren.asScala.find(info => info.getName.equalsIgnoreCase(head))
+      case head :: tail =>
+        parentFolder.getChildren.asScala
+          .find(info => info.getName.equalsIgnoreCase(head))
           .flatMap(info => boxItemAtPath(new BoxFolder(api, info.getID), tail))
     }
   }
@@ -48,14 +57,14 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
   def boxFileAtPath(path: Path): Option[BoxFile] = {
     boxItemAtPath(path).flatMap {
       case file: BoxFile => Some(file)
-      case _ => None
+      case _             => None
     }
   }
 
   def boxFolderAtPath(path: Path): Option[BoxFolder] = {
     boxItemAtPath(path).flatMap {
       case folder: BoxFolder => Some(folder)
-      case _ => None
+      case _                 => None
     }
   }
 
@@ -69,20 +78,23 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
   override def list(path: Path): fs2.Stream[F, Path] = {
     for {
       itemOpt <- Stream.eval(F.delay(boxItemAtPath(path)))
-      item <- itemOpt.foldMap[Stream[F, BoxItem]](Stream.emit)
+      item    <- itemOpt.foldMap[Stream[F, BoxItem]](Stream.emit)
 
-      listFiles = Stream.eval(F.delay(item.asInstanceOf[BoxFolder]))
-          .flatMap(folder => Stream.fromIterator(folder.getChildren.iterator.asScala))
-          .map(itemInfo => {
-            val isDir = itemInfo.isInstanceOf[BoxFolder#Info]
-            val pathKey = if (path.key.takeRight(1).equals("/")) path.key.dropRight(1) else path.key
-            val childKey = s"$pathKey/${itemInfo.getName}"
-            Path(path.root, childKey, Some(itemInfo.getSize), isDir, Some(itemInfo.getModifiedAt))
-          })
+      listFiles = Stream
+        .eval(F.delay(item.asInstanceOf[BoxFolder]))
+        .flatMap(folder => Stream.fromIterator(folder.getChildren.iterator.asScala))
+        .map { itemInfo =>
+          val isDir    = itemInfo.isInstanceOf[BoxFolder#Info]
+          val pathKey  = if (path.key.takeRight(1).equals("/")) path.key.dropRight(1) else path.key
+          val childKey = s"$pathKey/${itemInfo.getName}"
+          Path(path.root, childKey, Some(itemInfo.getSize), isDir, Some(itemInfo.getModifiedAt))
+        }
 
-      listOneFile = Stream.eval(F.delay(
-        Path(path.root, path.key, Some(item.getInfo.getSize), isDir = false, Some(item.getInfo.getModifiedAt))
-      ))
+      listOneFile = Stream.eval(
+        F.delay(
+          Path(path.root, path.key, Some(item.getInfo.getSize), isDir = false, Some(item.getInfo.getModifiedAt))
+        )
+      )
 
       s <- if (item.isInstanceOf[BoxFolder]) listFiles else listOneFile
     } yield s
@@ -102,23 +114,29 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
       (os, is)
     }
 
-    val consume: ((OutputStream, InputStream)) => Stream[F, Byte] = bothStreams => for {
+    val consume: ((OutputStream, InputStream)) => Stream[F, Byte] = bothStreams =>
+      for {
         opt <- Stream.eval(F.delay(boxFileAtPath(path)))
 
-        dl = opt.map(file => Stream.eval(F.delay({
-          file.download(bothStreams._1)
-          bothStreams._1.close()
-        }))).getOrElse(Stream.fromIterator(Iterator.empty))
+        dl = opt
+          .map { file =>
+            Stream.eval(F.delay {
+              file.download(bothStreams._1)
+              bothStreams._1.close()
+            })
+          }
+          .getOrElse(Stream.fromIterator(Iterator.empty))
 
         readInput = fs2.io.readInputStream(F.delay(bothStreams._2), chunkSize, closeAfterUse = true, blocker = blocker)
 
         s <- readInput concurrently dl
-    } yield s
+      } yield s
 
-    val release: ((OutputStream, InputStream)) => F[Unit] = ios => F.delay {
-      ios._1.close()
-      ios._2.close()
-    }
+    val release: ((OutputStream, InputStream)) => F[Unit] = ios =>
+      F.delay {
+        ios._1.close()
+        ios._2.close()
+      }
 
     Stream.bracket(init)(release).flatMap(consume)
   }
@@ -154,7 +172,7 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     * @return
     */
   def splitPath(path: Path): (List[String], String) = {
-    val fullPath = path.root :: path.key.split("/").toList
+    val fullPath                  = path.root :: path.key.split("/").toList
     val (pathToParentFolder, key) = fullPath.splitAt(fullPath.size - 1)
     (pathToParentFolder, key.head)
   }
@@ -173,21 +191,22 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
 
     val init: F[(OutputStream, InputStream, BoxFolder)] = F.delay {
       val parentFolder = putFolderAtPath(rootFolder, pathSplit._1)
-      val os = new PipedOutputStream()
-      val is = new PipedInputStream(os)
+      val os           = new PipedOutputStream()
+      val is           = new PipedInputStream(os)
       (os, is, parentFolder)
     }
 
     val consume: ((OutputStream, InputStream, BoxFolder)) => Stream[F, Unit] = ios => {
-      val putToBox = Stream.eval(F.delay(ios._3.uploadFile(ios._2, pathSplit._2)).void)
+      val putToBox   = Stream.eval(F.delay(ios._3.uploadFile(ios._2, pathSplit._2)).void)
       val writeBytes = _writeAllToOutputStream1(in, ios._1, blocker).stream ++ Stream.eval(F.delay(ios._1.close()))
       putToBox concurrently writeBytes
     }
 
-    val release: ((OutputStream, InputStream, BoxFolder)) => F[Unit] = ios => F.delay {
-      ios._2.close()
-      ios._1.close()
-    }
+    val release: ((OutputStream, InputStream, BoxFolder)) => F[Unit] = ios =>
+      F.delay {
+        ios._2.close()
+        ios._1.close()
+      }
 
     Stream.bracket(init)(release).flatMap(consume)
   }
@@ -203,7 +222,7 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     boxFileAtPath(src)
       .foreach(file => {
         val dstPath = splitPath(dst)
-        val folder = putFolderAtPath(rootFolder, dstPath._1)
+        val folder  = putFolderAtPath(rootFolder, dstPath._1)
         file.move(folder, dstPath._2)
       })
   }
@@ -219,7 +238,7 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     boxFileAtPath(src)
       .foreach(file => {
         val dstPath = splitPath(dst)
-        val folder = putFolderAtPath(rootFolder, dstPath._1)
+        val folder  = putFolderAtPath(rootFolder, dstPath._1)
         file.copy(folder, dstPath._2)
       })
   }
@@ -235,7 +254,7 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
   }
 }
 
-object BoxStore{
+object BoxStore {
   def apply[F[_]](
     api: BoxAPIConnection,
     rootFolderId: String,

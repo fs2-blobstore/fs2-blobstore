@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 package s3
 
@@ -28,17 +28,24 @@ import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model._
 import com.amazonaws.services.s3.transfer.{TransferManager, TransferManagerBuilder}
 
-final class S3Store[F[_]](transferManager: TransferManager, objectAcl: Option[CannedAccessControlList] = None, sseAlgorithm: Option[String] = None, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]) extends Store[F] {
+final class S3Store[F[_]](
+  transferManager: TransferManager,
+  objectAcl: Option[CannedAccessControlList] = None,
+  sseAlgorithm: Option[String] = None,
+  blocker: Blocker
+)(implicit F: Concurrent[F], CS: ContextShift[F])
+  extends Store[F] {
 
   val s3: AmazonS3 = transferManager.getAmazonS3Client
 
   private def _chunk(ol: ObjectListing): Chunk[Path] = {
-    val dirs: Chunk[Path] = Chunk.seq(ol.getCommonPrefixes.asScala.map(s =>
-      Path(ol.getBucketName, s.dropRight(1), None, isDir = true, None)
-    ))
-    val files: Chunk[Path] = Chunk.seq(ol.getObjectSummaries.asScala.map(o =>
-      Path(o.getBucketName, o.getKey, Option(o.getSize), isDir = false, Option(o.getLastModified))
-    ))
+    val dirs: Chunk[Path] =
+      Chunk.seq(ol.getCommonPrefixes.asScala.map(s => Path(ol.getBucketName, s.dropRight(1), None, isDir = true, None)))
+    val files: Chunk[Path] = Chunk.seq(
+      ol.getObjectSummaries.asScala.map(o =>
+        Path(o.getBucketName, o.getKey, Option(o.getSize), isDir = false, Option(o.getLastModified))
+      )
+    )
 
     Chunk.concat(Seq(dirs, files))
   }
@@ -48,18 +55,19 @@ final class S3Store[F[_]](transferManager: TransferManager, objectAcl: Option[Ca
       // State type is a function that can provide next ObjectListing
       // initially we get it from listObjects, subsequent iterations get it from listNextBatchOfObjects
       () => Option(s3.listObjects(new ListObjectsRequest(path.root, path.key, "", Path.SEP.toString, 1000)))
-    }{
+    } {
       // to unfold the stream we need to emit a Chunk for the current ObjectListing received from state function
       // if returned ObjectListing is not truncated we emit the last Chunk and set up state function to return None
       // and stop unfolding in the next iteration
-      getObjectListing => blocker.delay{
-        getObjectListing().map { ol =>
-          if (ol.isTruncated)
-            (_chunk(ol), () => Option(s3.listNextBatchOfObjects(ol)))
-          else
-            (_chunk(ol), () => None)
+      getObjectListing =>
+        blocker.delay {
+          getObjectListing().map { ol =>
+            if (ol.isTruncated)
+              (_chunk(ol), () => Option(s3.listNextBatchOfObjects(ol)))
+            else
+              (_chunk(ol), () => None)
+          }
         }
-      }
     }
   }
 
@@ -76,7 +84,7 @@ final class S3Store[F[_]](transferManager: TransferManager, objectAcl: Option[Ca
     }
 
     val consume: ((PipedOutputStream, PipedInputStream)) => Stream[F, Unit] = ios => {
-      val putToS3 = Stream.eval(blocker.delay{
+      val putToS3 = Stream.eval(blocker.delay {
         val meta = new ObjectMetadata()
         path.size.foreach(meta.setContentLength)
         sseAlgorithm.foreach(meta.setSSEAlgorithm)
@@ -91,18 +99,20 @@ final class S3Store[F[_]](transferManager: TransferManager, objectAcl: Option[Ca
       putToS3 concurrently writeBytes
     }
 
-    val release: ((PipedOutputStream, PipedInputStream)) => F[Unit] = ios => F.delay {
-      ios._2.close()
-      ios._1.close()
-    }
+    val release: ((PipedOutputStream, PipedInputStream)) => F[Unit] = ios =>
+      F.delay {
+        ios._2.close()
+        ios._1.close()
+      }
 
     Stream.bracket(init)(release).flatMap(consume)
   }
 
-  override def move(src: Path, dst: Path): F[Unit] = for {
-    _ <- copy(src, dst)
-    _ <- remove(src)
-  } yield ()
+  override def move(src: Path, dst: Path): F[Unit] =
+    for {
+      _ <- copy(src, dst)
+      _ <- remove(src)
+    } yield ()
 
   override def copy(src: Path, dst: Path): F[Unit] = blocker.delay {
     val meta = new ObjectMetadata()
@@ -115,6 +125,7 @@ final class S3Store[F[_]](transferManager: TransferManager, objectAcl: Option[Ca
 }
 
 object S3Store {
+
   /**
     * Safely initialize S3Store and shutdown Amazon S3 client upon finish.
     *
@@ -122,7 +133,9 @@ object S3Store {
     * @param encrypt Boolean true to force all writes to use SSE algorithm ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_] : ContextShift](transferManager: F[TransferManager], encrypt: Boolean, blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] = {
+  def apply[F[_]: ContextShift](transferManager: F[TransferManager], encrypt: Boolean, blocker: Blocker)(
+    implicit F: Concurrent[F]
+  ): Stream[F, S3Store[F]] = {
     val opt = if (encrypt) Option(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION) else None
     apply(transferManager, None, opt, blocker)
   }
@@ -136,8 +149,9 @@ object S3Store {
     * @param encrypt Boolean true to force all writes to use SSE algorithm ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-
-  def apply[F[_] : ContextShift](encrypt: Boolean, blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] = {
+  def apply[F[_]: ContextShift](encrypt: Boolean, blocker: Blocker)(
+    implicit F: Concurrent[F]
+  ): Stream[F, S3Store[F]] = {
     val opt = if (encrypt) Option(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION) else None
     apply(F.delay(TransferManagerBuilder.standard().build()), None, opt, blocker)
   }
@@ -151,10 +165,10 @@ object S3Store {
     * @param sseAlgorithm SSE algorithm, ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION is recommended.
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_] : ContextShift](sseAlgorithm: String, blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] =
+  def apply[F[_]: ContextShift](sseAlgorithm: String, blocker: Blocker)(
+    implicit F: Concurrent[F]
+  ): Stream[F, S3Store[F]] =
     apply(F.delay(TransferManagerBuilder.standard().build()), None, Option(sseAlgorithm), blocker)
-
-
 
   /**
     * Safely initialize S3Store using TransferManagerBuilder.standard() and shutdown client upon finish.
@@ -164,10 +178,8 @@ object S3Store {
     *
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_] : ContextShift](blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] =
+  def apply[F[_]: ContextShift](blocker: Blocker)(implicit F: Concurrent[F]): Stream[F, S3Store[F]] =
     apply(F.delay(TransferManagerBuilder.standard().build()), None, None, blocker)
-
-
 
   /**
     * Safely initialize S3Store and shutdown Amazon S3 client upon finish.
@@ -176,8 +188,13 @@ object S3Store {
     * @param sseAlgorithm Option[String] Server Side Encryption algorithm
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_]](transferManager: F[TransferManager], sseAlgorithm: Option[String], blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
-    fs2.Stream.bracket(transferManager)(tm => F.delay(tm.shutdownNow())).map(tm => new S3Store[F](tm, None, sseAlgorithm, blocker))
+  def apply[F[_]](transferManager: F[TransferManager], sseAlgorithm: Option[String], blocker: Blocker)(
+    implicit F: Concurrent[F],
+    CS: ContextShift[F]
+  ): Stream[F, S3Store[F]] =
+    fs2.Stream
+      .bracket(transferManager)(tm => F.delay(tm.shutdownNow()))
+      .map(tm => new S3Store[F](tm, None, sseAlgorithm, blocker))
 
   /**
     * Safely initialize S3Store and shutdown Amazon S3 client upon finish.
@@ -186,7 +203,14 @@ object S3Store {
     * @param sseAlgorithm Option[String] Server Side Encryption algorithm
     * @return Stream[ F, S3Store[F] ] stream with one S3Store, AmazonS3 client will disconnect once stream is done.
     */
-  def apply[F[_]](transferManager: F[TransferManager], objectAcl: Option[CannedAccessControlList], sseAlgorithm: Option[String], blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
-    fs2.Stream.bracket(transferManager)(tm => F.delay(tm.shutdownNow())).map(tm => new S3Store[F](tm, objectAcl, sseAlgorithm, blocker))
+  def apply[F[_]](
+    transferManager: F[TransferManager],
+    objectAcl: Option[CannedAccessControlList],
+    sseAlgorithm: Option[String],
+    blocker: Blocker
+  )(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
+    fs2.Stream
+      .bracket(transferManager)(tm => F.delay(tm.shutdownNow()))
+      .map(tm => new S3Store[F](tm, objectAcl, sseAlgorithm, blocker))
 
 }

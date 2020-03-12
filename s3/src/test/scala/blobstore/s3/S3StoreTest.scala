@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 package s3
 
@@ -26,24 +26,27 @@ import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 
 class S3StoreTest extends AbstractStoreTest {
 
-  val credentials = new BasicAWSCredentials("my_access_key", "my_secret_key")
+  val credentials         = new BasicAWSCredentials("my_access_key", "my_secret_key")
   val clientConfiguration = new ClientConfiguration()
   clientConfiguration.setSignerOverride("AWSS3V4SignerType")
   val minioHost: String = Option(System.getenv("BLOBSTORE_MINIO_HOST")).getOrElse("minio-container")
   val minioPort: String = Option(System.getenv("BLOBSTORE_MINIO_PORT")).getOrElse("9000")
-  private val client: AmazonS3 = AmazonS3ClientBuilder.standard()
-    .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(
-      s"http://$minioHost:$minioPort", Regions.US_EAST_1.name()))
+  private val client: AmazonS3 = AmazonS3ClientBuilder
+    .standard()
+    .withEndpointConfiguration(
+      new AwsClientBuilder.EndpointConfiguration(s"http://$minioHost:$minioPort", Regions.US_EAST_1.name())
+    )
     .withPathStyleAccessEnabled(true)
     .withClientConfiguration(clientConfiguration)
     .withCredentials(new AWSStaticCredentialsProvider(credentials))
     .build()
-  private val transferManager: TransferManager = TransferManagerBuilder.standard()
+  private val transferManager: TransferManager = TransferManagerBuilder
+    .standard()
     .withS3Client(client)
     .build()
 
   override val store: Store[IO] = new S3Store[IO](transferManager, blocker = blocker)
-  override val root: String = "blobstore-test-bucket"
+  override val root: String     = "blobstore-test-bucket"
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -51,11 +54,10 @@ class S3StoreTest extends AbstractStoreTest {
       client.createBucket(root)
     } catch {
       case e: com.amazonaws.services.s3.model.AmazonS3Exception if e.getMessage.contains("BucketAlreadyOwnedByYou") =>
-        // noop
+      // noop
     }
     ()
   }
-
 
   override def afterAll(): Unit = {
     super.afterAll()

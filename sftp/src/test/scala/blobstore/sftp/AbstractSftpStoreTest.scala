@@ -16,7 +16,6 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package sftp
 
-
 import java.nio.file.Paths
 
 import cats.effect.IO
@@ -27,10 +26,10 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
 
   def session: IO[Session]
 
-  private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
-  val mVar = MVar.empty[IO, ChannelSftp].unsafeRunSync()
+  private val rootDir                    = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
+  val mVar                               = MVar.empty[IO, ChannelSftp].unsafeRunSync()
   override lazy val store: SftpStore[IO] = new SftpStore[IO]("", session.unsafeRunSync(), blocker, mVar, None, 10000)
-  override val root: String = "sftp_tests"
+  override val root: String              = "sftp_tests"
 
   // remove dirs created by AbstractStoreTest
   override def afterAll(): Unit = {
@@ -52,7 +51,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
     val s = session.unsafeRunSync()
 
     val store: Store[IO] = new SftpStore[IO]("", s, blocker, mVar, None, 10000)
-    val path = Path(".")
+    val path             = Path(".")
 
     val p = store.list(path).compile.toList
 
@@ -81,13 +80,13 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
   }
 
   it should "be able to remove a directory if it is empty" in {
-    val dir = dirPath("some-dir")
+    val dir      = dirPath("some-dir")
     val filename = "some-filename"
 
     val result = for {
-      file <- IO(writeFile(store, dir)(filename))
-      _ <- store.remove(file)
-      _ <- store.remove(dir)
+      file  <- IO(writeFile(store, dir)(filename))
+      _     <- store.remove(file)
+      _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
     } yield files
 
@@ -95,17 +94,16 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
   }
 
   it should "not be able to remove a directory if it is not empty" in {
-    val dir = dirPath("some-dir")
+    val dir      = dirPath("some-dir")
     val filename = "some-filename"
 
     val failedRemove = for {
-      _ <- IO(writeFile(store, dir)(filename))
-      _ <- store.remove(dir)
+      _     <- IO(writeFile(store, dir)(filename))
+      _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
     } yield files
 
     assertThrows[SftpException](failedRemove.unsafeRunSync())
   }
-
 
 }

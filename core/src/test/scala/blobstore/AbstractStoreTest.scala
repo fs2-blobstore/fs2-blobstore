@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 
 import java.util.UUID
@@ -33,10 +33,10 @@ import scala.concurrent.ExecutionContext
 trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-  val blocker = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  val blocker                       = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
   val transferStoreRootDir: NioPath = Paths.get("tmp/transfer-store-root/")
-  val transferStore: Store[IO] = new FileStore[IO](transferStoreRootDir, blocker)
+  val transferStore: Store[IO]      = new FileStore[IO](transferStoreRootDir, blocker)
 
   val store: Store[IO]
   val root: String
@@ -49,7 +49,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
     // put a random file
     val filename = s"test-${System.currentTimeMillis}.txt"
-    val path = writeFile(store, dir)(filename)
+    val path     = writeFile(store, dir)(filename)
 
     // list to make sure file is present
     val found = store.listAll(path).unsafeRunSync()
@@ -67,8 +67,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
   it should "move keys" in {
     val dir: Path = dirPath("move-keys")
-    val src = writeFile(store, dir)(s"src/${System.currentTimeMillis}.txt")
-    val dst = dir / s"dst/${System.currentTimeMillis}.txt"
+    val src       = writeFile(store, dir)(s"src/${System.currentTimeMillis}.txt")
+    val dst       = dir / s"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
       l1 <- store.listAll(src)
@@ -93,8 +93,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
     val dir: Path = dirPath("list-many")
 
-    val paths = (1 to 10)
-      .toList
+    val paths = (1 to 10).toList
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, dir))
 
@@ -114,8 +113,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   it should "listAll lists files in a root level directory" in {
     import cats.implicits._
     val rootDir = Path(root)
-    val paths = (1 to 2)
-      .toList
+    val paths = (1 to 2).toList
       .map(i => s"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
@@ -134,8 +132,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     import cats.implicits._
 
     val dir: Path = dirPath("list-dirs")
-    val paths = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
-    val exp = paths.map(_.key.replaceFirst("/file-1.txt", "")).toSet
+    val paths     = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
+    val exp       = paths.map(_.key.replaceFirst("/file-1.txt", "")).toSet
 
     val ls = store.listAll(dir).unsafeRunSync()
     ls.map(_.key).toSet must be(exp)
@@ -148,15 +146,17 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   it should "transfer individual file to a directory from one store to another" in {
     val srcPath = writeFile(transferStore, dirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
 
-    val dstDir = dirPath("transfer-single-file-to-dir-dst")
+    val dstDir  = dirPath("transfer-single-file-to-dir-dst")
     val dstPath = dstDir / srcPath.filename
 
     val test = for {
       i <- transferStore.transferTo(store, srcPath, dstDir)
-      c1 <- transferStore.getContents(srcPath).handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
+      c1 <- transferStore
+        .getContents(srcPath)
+        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
       c2 <- store.getContents(dstPath).handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-      _ <- transferStore.remove(srcPath).handleError(_ => ())
-      _ <- store.remove(dstPath).handleError(_ => ())
+      _  <- transferStore.remove(srcPath).handleError(_ => ())
+      _  <- store.remove(dstPath).handleError(_ => ())
     } yield {
       i must be(1)
       c1 must be(c2)
@@ -172,9 +172,11 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
     val test = for {
       i <- transferStore.transferTo(store, srcPath, dstPath)
-      c1 <- transferStore.getContents(srcPath)
+      c1 <- transferStore
+        .getContents(srcPath)
         .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
-      c2 <- store.getContents(dstPath)
+      c2 <- store
+        .getContents(dstPath)
         .handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
       _ <- transferStore.remove(srcPath).handleError(_ => ())
       _ <- store.remove(dstPath).handleError(_ => ())
@@ -190,17 +192,22 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     val srcDir = dirPath("transfer-dir-to-dir-src")
     val dstDir = dirPath("transfer-dir-to-dir-dst")
 
-    val paths = (1 to 10)
-      .toList
+    val paths = (1 to 10).toList
       .map(i => s"filename-$i.txt")
       .map(writeFile(transferStore, srcDir))
 
     val test = for {
       i <- transferStore.transferTo(store, srcDir, dstDir)
-      c1 <- paths.map(p => transferStore.getContents(p)
-        .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")).sequence
-      c2 <- paths.map(p => store.getContents(dstDir / p.filename)
-        .handleError(e => s"FAILED store.getContents ${dstDir / p.filename}: ${e.getMessage}")).sequence
+      c1 <- paths.map { p =>
+        transferStore
+          .getContents(p)
+          .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
+      }.sequence
+      c2 <- paths.map { p =>
+        store
+          .getContents(dstDir / p.filename)
+          .handleError(e => s"FAILED store.getContents ${dstDir / p.filename}: ${e.getMessage}")
+      }.sequence
       _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
       _ <- paths.map(p => store.remove(dstDir / p.filename).handleError(_ => ())).sequence
     } yield {
@@ -215,13 +222,11 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     val srcDir = dirPath("transfer-dir-rec-src")
     val dstDir = dirPath("transfer-dir-rec-dst")
 
-    val paths1 = (1 to 5)
-      .toList
+    val paths1 = (1 to 5).toList
       .map(i => s"filename-$i.txt")
       .map(writeFile(transferStore, srcDir))
 
-    val paths2 = (6 to 10)
-      .toList
+    val paths2 = (6 to 10).toList
       .map(i => s"subdir/filename-$i.txt")
       .map(writeFile(transferStore, srcDir))
 
@@ -229,20 +234,21 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
     val test = for {
       i <- transferStore.transferTo(store, srcDir, dstDir)
-      c1 <-
-        paths.map(
-          p => transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
-        ).sequence
-      c2 <- (
-        paths1.map(
-          p => store.getContents(dstDir / p.filename)
+      c1 <- paths.map { p =>
+        transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
+      }.sequence
+      c2 <- {
+        paths1.map { p =>
+          store
+            .getContents(dstDir / p.filename)
             .handleError(e => s"FAILED store.getContents ${dstDir / p.filename}: ${e.getMessage}")
-        ) ++
-          paths2.map(
-            p => store.getContents(dstDir / "subdir" / p.filename)
+        } ++
+          paths2.map { p =>
+            store
+              .getContents(dstDir / "subdir" / p.filename)
               .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.filename}: ${e.getMessage}")
-          )
-        ).sequence
+          }
+      }.sequence
       _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
       _ <- paths1.map(p => store.remove(dstDir / p.filename).handleError(_ => ())).sequence
       _ <- paths2.map(p => store.remove(dstDir / "subdir" / p.filename).handleError(_ => ())).sequence
@@ -262,9 +268,11 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
     val test = for {
       _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
-      c1 <- store.getContents(srcDir / "filename.txt")
+      c1 <- store
+        .getContents(srcDir / "filename.txt")
         .handleError(e => s"FAILED getContents: ${e.getMessage}")
-      c2 <- store.getContents(dstDir / "filename.txt")
+      c2 <- store
+        .getContents(dstDir / "filename.txt")
         .handleError(e => s"FAILED getContents: ${e.getMessage}")
       _ <- store.remove(dstDir / "filename.txt")
       _ <- store.remove(srcDir / "filename.txt")
@@ -279,35 +287,35 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   it should "remove all should remove all files in a directory" in {
     val srcDir = dirPath("rm-dir-to-dir-src")
 
-    (1 to 10)
-      .toList
+    (1 to 10).toList
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, srcDir))
 
     store.removeAll(srcDir).unsafeRunSync()
 
-    store.list(srcDir)
-      .compile.drain.unsafeRunSync().isEmpty must be(true)
+    store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
   }
 
   it should "succeed on remove when path does not exist" in {
-    val dir = dirPath("remove-nonexistent-path")
+    val dir  = dirPath("remove-nonexistent-path")
     val path = dir / "no-file.txt"
     store.remove(path).unsafeRunSync()
   }
 
   it should "support putting content with no size" in {
     val dir: Path = dirPath("put-no-size")
-    val path = dir / "no-size.txt"
-    val exp = contents("put without size")
+    val path      = dir / "no-size.txt"
+    val exp       = contents("put without size")
     val test = for {
-      _ <- fs2.Stream(exp)
+      _ <- fs2
+        .Stream(exp)
         .covary[IO]
         .through(fs2.text.utf8Encode)
         .through(store.put(path))
-        .compile.drain
+        .compile
+        .drain
       res <- store.getContents(path)
-      _ <- store.remove(path)
+      _   <- store.remove(path)
     } yield res must be(exp)
 
     test.unsafeRunSync()
@@ -352,7 +360,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       }
     }
 
-    try { Files.walkFileTree(root, fv) ; () } catch { case _: Throwable => }
+    try { Files.walkFileTree(root, fv); () }
+    catch { case _: Throwable => }
   }
 
 }

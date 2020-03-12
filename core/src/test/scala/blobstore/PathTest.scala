@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 
 import org.scalatest.matchers.must.Matchers
@@ -22,7 +22,7 @@ import blobstore.PathOps._
 class PathTest extends AnyFlatSpec with Matchers {
   behavior of "Path"
   it should "parse string path to file correctly" in {
-    val s3Path = Path("s3://some-bucket/path/to/file")
+    val s3Path  = Path("s3://some-bucket/path/to/file")
     val gcsPath = Path("gcs://some-bucket/path/to/file")
     s3Path must be(Path("some-bucket", "path/to/file", None, false, None))
     gcsPath must be(Path("some-bucket", "path/to/file", None, false, None))

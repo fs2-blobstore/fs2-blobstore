@@ -12,7 +12,7 @@ Copyright 2018 LendUp Global, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/
+ */
 package blobstore
 package fs
 
@@ -24,22 +24,26 @@ import cats.implicits._
 import cats.effect.{Blocker, ContextShift, Sync}
 import fs2.{Pipe, Stream}
 
-final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]) extends Store[F] {
+final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F])
+  extends Store[F] {
   val absRoot: String = fsroot.toAbsolutePath.normalize.toString
 
   override def list(path: Path): fs2.Stream[F, Path] = {
-    val isDir = Stream.eval(F.delay(Files.isDirectory(path)))
+    val isDir  = Stream.eval(F.delay(Files.isDirectory(path)))
     val isFile = Stream.eval(F.delay(Files.exists(path)))
 
-    val files = Stream.eval(F.delay(Files.list(path)))
+    val files = Stream
+      .eval(F.delay(Files.list(path)))
       .flatMap(x => Stream.fromIterator(x.iterator.asScala))
-      .evalMap(x => F.delay(
-        Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "")).copy(
-          size = Option(Files.size(x)),
-          isDir = Files.isDirectory(x),
-          lastModified = Option(new Date(Files.getLastModifiedTime(path).toMillis))
+      .evalMap(x =>
+        F.delay(
+          Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "")).copy(
+            size = Option(Files.size(x)),
+            isDir = Files.isDirectory(x),
+            lastModified = Option(new Date(Files.getLastModifiedTime(path).toMillis))
+          )
         )
-      ))
+      )
 
     val file = fs2.Stream.eval {
       F.delay {
@@ -63,10 +67,11 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
     )
   }
 
-  override def move(src: Path, dst: Path): F[Unit] = F.delay {
-    Files.createDirectories(_toNioPath(dst).getParent)
-    Files.move(src, dst)
-  }.void
+  override def move(src: Path, dst: Path): F[Unit] =
+    F.delay {
+      Files.createDirectories(_toNioPath(dst).getParent)
+      Files.move(src, dst)
+    }.void
 
   override def copy(src: Path, dst: Path): F[Unit] = {
     F.delay {
@@ -75,16 +80,17 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
     }.void
   }
 
-  override def remove(path: Path): F[Unit] = F.delay({
+  override def remove(path: Path): F[Unit] = F.delay {
     Files.deleteIfExists(path)
     ()
-  })
+  }
 
   implicit private def _toNioPath(path: Path): NioPath =
     Paths.get(absRoot, path.root, path.key)
 
 }
 
-object FileStore{
-  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): FileStore[F] = new FileStore(fsroot, blocker)
+object FileStore {
+  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): FileStore[F] =
+    new FileStore(fsroot, blocker)
 }
