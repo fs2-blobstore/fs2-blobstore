@@ -36,10 +36,10 @@ fs2-blobstore is deployed to maven central, add to build.sbt:
 
 ```sbtshell
 libraryDependencies ++= Seq(
-  "com.github.fs2-blobstore" %% "core" % "0.6.1",
-  "com.github.fs2-blobstore" %% "sftp" % "0.6.1",
-  "com.github.fs2-blobstore" %% "s3"   % "0.6.1",
-  "com.github.fs2-blobstore" %% "gcs"  % "0.6.1",
+  "com.github.fs2-blobstore" %% "core" % "0.6.2",
+  "com.github.fs2-blobstore" %% "sftp" % "0.6.2",
+  "com.github.fs2-blobstore" %% "s3"   % "0.6.2",
+  "com.github.fs2-blobstore" %% "gcs"  % "0.6.2",
 )
 ```
 
