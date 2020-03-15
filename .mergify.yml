@@ -1,0 +1,20 @@
+pull_request_rules:
+  - name: Automatic merge on approval and label
+    conditions:
+      - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
+      - "label=mergify:merge"
+    actions:
+      merge:
+        method: merge
+        strict: true
+
+  - name: Automatic merge for scala steward
+    conditions:
+      - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
+      - "author=scala-steward"
+    actions:
+      merge:
+        method: merge
+        strict: true
