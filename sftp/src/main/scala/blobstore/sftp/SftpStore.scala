@@ -27,6 +27,7 @@ import java.io.OutputStream
 
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
+import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
 
 final class SftpStore[F[_]](
@@ -66,7 +67,7 @@ final class SftpStore[F[_]](
     * @param path path to list
     * @return Stream[F, Path]
     */
-  override def list(path: Path): fs2.Stream[F, Path] = {
+  override def list(path: Path): Stream[F, Path] = {
 
     def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
       cb(entry)
@@ -74,12 +75,12 @@ final class SftpStore[F[_]](
     }
 
     for {
-      q       <- fs2.Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
-      channel <- fs2.Stream.resource(channelResource)
+      q       <- Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
+      channel <- Stream.resource(channelResource)
       entry <- q.dequeue.unNoneTerminate
         .filter(e => e.getFilename != "." && e.getFilename != "..")
         .concurrently(
-          fs2.Stream.eval {
+          Stream.eval {
             val es = entrySelector(e => Effect[F].runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())
             blocker.delay(channel.ls(path, es)).attempt.flatMap(_ => q.enqueue1(None))
           }
@@ -94,8 +95,8 @@ final class SftpStore[F[_]](
     }
   }
 
-  override def get(path: Path, chunkSize: Int): fs2.Stream[F, Byte] =
-    fs2.Stream.resource(channelResource).flatMap { channel =>
+  override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
+    Stream.resource(channelResource).flatMap { channel =>
       fs2.io.readInputStream(
         blocker.delay(channel.get(path)),
         chunkSize = chunkSize,
@@ -105,21 +106,12 @@ final class SftpStore[F[_]](
     }
 
   override def put(path: Path): fs2.Pipe[F, Byte, Unit] = { in =>
-    @SuppressWarnings(Array("scalafix:DisableSyntax.null")) // Underlying Java API requires null
-    def put(channel: ChannelSftp): F[OutputStream] = mkdirs(path, channel).flatMap { _ =>
-      blocker.delay {
-        channel.put( /* dst */ path, /* monitor */ null, /* mode */ ChannelSftp.OVERWRITE, /* offset */ 0)
-      }
-    }
-
-    def close(os: OutputStream): F[Unit] = blocker.delay(os.close())
-
-    def pull(channel: ChannelSftp): fs2.Stream[F, Unit] =
-      fs2.Stream
-        .bracket(put(channel))(close)
+    def pull(channel: ChannelSftp): Stream[F, Unit] =
+      Stream
+        .resource(outputStreamResource(channel, path))
         .flatMap(os => _writeAllToOutputStream1(in, os, blocker).stream)
 
-    fs2.Stream.resource(channelResource).flatMap(channel => pull(channel))
+    Stream.resource(channelResource).flatMap(channel => pull(channel))
   }
 
   override def move(src: Path, dst: Path): F[Unit] =
@@ -127,8 +119,8 @@ final class SftpStore[F[_]](
 
   override def copy(src: Path, dst: Path): F[Unit] = {
     val s = for {
-      channel <- fs2.Stream.resource(channelResource)
-      _       <- fs2.Stream.eval(mkdirs(dst, channel))
+      channel <- Stream.resource(channelResource)
+      _       <- Stream.eval(mkdirs(dst, channel))
       _       <- get(src).through(this.bufferedPut(dst, blocker))
     } yield ()
 
@@ -147,8 +139,30 @@ final class SftpStore[F[_]](
     }
   }
 
-  implicit def _pathToString(path: Path): String =
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile: Resource[F, OutputStream] =
+      for {
+        p       <- Resource.liftF(computePath)
+        channel <- channelResource
+        os      <- outputStreamResource(channel, p)
+      } yield os
+
+    putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes)))
+  }
+
+  implicit private def _pathToString(path: Path): String =
     List(absRoot, path.root, path.key).filter(_.nonEmpty).mkString("/")
+
+  private def outputStreamResource(channel: ChannelSftp, path: Path): Resource[F, OutputStream] = {
+    @SuppressWarnings(Array("scalafix:DisableSyntax.null")) // Underlying Java API requires null
+    def put(channel: ChannelSftp): F[OutputStream] = mkdirs(path, channel).flatMap { _ =>
+      blocker.delay(channel.put( /* dst */ path, /* monitor */ null, /* mode */ ChannelSftp.OVERWRITE, /* offset */ 0))
+    }
+
+    def close(os: OutputStream): F[Unit] = blocker.delay(os.close())
+
+    Resource.make(put(channel))(close)
+  }
 
   private def mkdirs(path: Path, channel: ChannelSftp): F[Unit] =
     blocker.delay {
@@ -184,14 +198,14 @@ object SftpStore {
     blocker: Blocker,
     maxChannels: Option[Long] = None,
     connectTimeout: Int = 10000
-  )(implicit CS: ContextShift[F]): fs2.Stream[F, SftpStore[F]] =
+  )(implicit CS: ContextShift[F]): Stream[F, SftpStore[F]] =
     if (maxChannels.exists(_ < 1)) {
-      fs2.Stream.raiseError[F](new IllegalArgumentException(s"maxChannels must be >= 1"))
+      Stream.raiseError[F](new IllegalArgumentException(s"maxChannels must be >= 1"))
     } else
       for {
-        session   <- fs2.Stream.bracket(fa)(session => blocker.delay(session.disconnect()))
-        semaphore <- fs2.Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
-        mVar <- fs2.Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
+        session   <- Stream.bracket(fa)(session => blocker.delay(session.disconnect()))
+        semaphore <- Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
+        mVar <- Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
           mVar.tryTake.flatMap(_.fold(().pure[F])(closeChannel[F](semaphore, blocker)))
         )
       } yield new SftpStore[F](absRoot, session, blocker, mVar, semaphore, connectTimeout)
