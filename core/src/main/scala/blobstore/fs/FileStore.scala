@@ -16,19 +16,20 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import java.nio.file.{Files, Paths, Path => NioPath}
+import java.nio.file.{Files, Paths, StandardOpenOption, Path => NioPath}
 import java.util.Date
 
 import scala.jdk.CollectionConverters._
 import cats.implicits._
-import cats.effect.{Blocker, ContextShift, Sync}
-import fs2.{Pipe, Stream}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
+import fs2.io.file.{createDirectories, FileHandle, WriteCursor}
+import fs2.{Chunk, Hotswap, Pipe, Stream}
 
-final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F])
+final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
   extends Store[F] {
   val absRoot: String = fsroot.toAbsolutePath.normalize.toString
 
-  override def list(path: Path): fs2.Stream[F, Path] = {
+  override def list(path: Path): Stream[F, Path] = {
     val isDir  = Stream.eval(F.delay(Files.isDirectory(path)))
     val isFile = Stream.eval(F.delay(Files.exists(path)))
 
@@ -45,7 +46,7 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
         )
       )
 
-    val file = fs2.Stream.eval {
+    val file = Stream.eval {
       F.delay {
         path.copy(
           size = Option(Files.size(path)),
@@ -57,10 +58,10 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
     isDir.ifM(files, isFile.ifM(file, Stream.empty.covaryAll[F, Path]))
   }
 
-  override def get(path: Path, chunkSize: Int): fs2.Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
+  override def get(path: Path, chunkSize: Int): Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
 
   override def put(path: Path): Pipe[F, Byte, Unit] = { in =>
-    val mkdir = Stream.eval(F.delay(Files.createDirectories(_toNioPath(path).getParent)).as(true))
+    val mkdir = Stream.eval(createDirectories(blocker, _toNioPath(path).getParent).as(true))
     mkdir.ifM(
       fs2.io.file.writeAll(path, blocker).apply(in),
       Stream.raiseError[F](new Exception(s"failed to create dir: $path"))
@@ -85,12 +86,38 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
     ()
   }
 
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile: Resource[F, FileHandle[F]] =
+      Resource
+        .liftF(computePath.map(_toNioPath))
+        .flatMap { p =>
+          Resource.liftF(createDirectories(blocker, p.getParent)) *>
+            FileHandle.fromPath(p, blocker, StandardOpenOption.CREATE :: StandardOpenOption.WRITE :: Nil)
+        }
+
+    def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
+      WriteCursor.fromFileHandle[F](file, append = false)
+
+    in =>
+      Stream
+        .resource(Hotswap(openNewFile))
+        .flatMap {
+          case (hotswap, fileHandle) =>
+            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+              goRotate(limit, 0L, in, cursor, hotswap, openNewFile)(
+                c => arr => c.writePull(Chunk.bytes(arr)),
+                fh => Stream.eval(newCursor(fh))
+              ).stream
+            }
+        }
+  }
+
   implicit private def _toNioPath(path: Path): NioPath =
     Paths.get(absRoot, path.root, path.key)
 
 }
 
 object FileStore {
-  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): FileStore[F] =
+  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): FileStore[F] =
     new FileStore(fsroot, blocker)
 }

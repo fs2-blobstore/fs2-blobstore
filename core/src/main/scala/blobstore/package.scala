@@ -17,12 +17,12 @@ Copyright 2018 LendUp Global, Inc.
 import java.io.OutputStream
 import java.nio.file.Files
 
-import cats.effect.{Blocker, ContextShift, Sync}
-import fs2.{Pipe, Pull, Stream}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
+import fs2.{Hotswap, Pipe, Pull, RaiseThrowable, Stream}
 import cats.implicits._
 
 package object blobstore {
-  protected[blobstore] def _writeAllToOutputStream1[F[_]](in: Stream[F, Byte], out: OutputStream, blocker: Blocker)(
+  private[blobstore] def _writeAllToOutputStream1[F[_]](in: Stream[F, Byte], out: OutputStream, blocker: Blocker)(
     implicit F: Sync[F],
     CS: ContextShift[F]
   ): Pull[F, Nothing, Unit] = {
@@ -33,7 +33,7 @@ package object blobstore {
     }
   }
 
-  protected[blobstore] def bufferToDisk[F[_]](
+  private[blobstore] def bufferToDisk[F[_]](
     chunkSize: Int,
     blocker: Blocker
   )(implicit F: Sync[F], CS: ContextShift[F]): Pipe[F, Byte, (Long, Stream[F, Byte])] = { in =>
@@ -44,4 +44,47 @@ package object blobstore {
     }
   }
 
+  private[blobstore] def putRotateBase[F[_]: Concurrent, T](
+    limit: Long,
+    openNewFile: Resource[F, T]
+  )(consume: T => Array[Byte] => F[Unit]): Pipe[F, Byte, Unit] = { in =>
+    Stream
+      .resource(Hotswap(openNewFile))
+      .flatMap {
+        case (hotswap, newFile) =>
+          goRotate(limit, 0L, in, newFile, hotswap, openNewFile)(
+            consume = consumer => bytes => Pull.eval(consume(consumer)(bytes)).as(consumer),
+            extract = Stream.emit
+          ).stream
+      }
+  }
+
+  private[blobstore] def goRotate[F[_]: RaiseThrowable, A, B](
+    limit: Long,
+    acc: Long,
+    s: Stream[F, Byte],
+    consumer: B,
+    hotswap: Hotswap[F, A],
+    resource: Resource[F, A]
+  )(
+    consume: B => Array[Byte] => Pull[F, Unit, B],
+    extract: A => Stream[F, B]
+  ): Pull[F, Unit, Unit] = {
+    val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
+    s.pull.unconsLimit(toWrite).flatMap {
+      case Some((hd, tl)) =>
+        val newAcc = acc + hd.size
+        consume(consumer)(hd.toArray).flatMap { consumer =>
+          if (newAcc >= limit) {
+            Pull
+              .eval(hotswap.swap(resource))
+              .flatMap(a => extract(a).pull.headOrError)
+              .flatMap(nc => goRotate(limit, 0L, tl, nc, hotswap, resource)(consume, extract))
+          } else {
+            goRotate(limit, newAcc, tl, consumer, hotswap, resource)(consume, extract)
+          }
+        }
+      case None => Pull.done
+    }
+  }
 }

@@ -170,7 +170,7 @@ trait StoreOps {
             removeAll(dstPath / p.filename)
           } else {
             val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
-            fs2.Stream.eval(store.remove(dp)).compile.drain.as(1)
+            Stream.eval(store.remove(dp)).compile.drain.as(1)
           }
         )
         .compile

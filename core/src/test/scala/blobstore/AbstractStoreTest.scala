@@ -20,6 +20,7 @@ import java.nio.file.{Paths, Path => NioPath}
 import java.util.concurrent.Executors
 
 import blobstore.fs.FileStore
+import cats.effect.concurrent.Ref
 import org.scalatest.BeforeAndAfterAll
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.effect.laws.util.TestInstances
@@ -326,6 +327,42 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       res <- store.get(dirPath("foo") / "doesnt-exists.txt").attempt.compile.lastOrError
     } yield res mustBe a[Left[_, _]]
 
+    test.unsafeRunSync()
+  }
+
+  it should "put data while rotating files" in {
+    val dir: Path = dirPath("put-rotating")
+    val data      = fs2.Stream.fromIterator[IO](Iterator.from(0)).takeWhile(_ <= Byte.MaxValue).map(_.toByte)
+    val test = for {
+      counter      <- Ref.of[IO, Int](0)
+      _            <- data.through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), 20)).compile.drain
+      files        <- store.listAll(dir)
+      fileContents <- files.traverse(p => store.get(p, 20).compile.to(Array).map(p.key -> _))
+    } yield {
+      files.map(_.key) must contain allElementsOf List(
+        dir / "0",
+        dir / "1",
+        dir / "2",
+        dir / "3",
+        dir / "4",
+        dir / "5",
+        dir / "6"
+      ).map(_.key)
+      files.foreach { p =>
+        p.isDir mustBe false
+        p.size.getOrElse(0L) must be <= 20L
+      }
+      val contentByIndex = fileContents.flatMap {
+        case (k, v) => scala.util.Try(k.takeRight(1).toLong).toOption.map(_ -> v)
+      }.toMap
+      contentByIndex must have size 7
+
+      contentByIndex.foreach {
+        case (i, data) =>
+          data mustBe (i * 20 until ((i + 1) * 20)).filter(_ <= Byte.MaxValue).map(_.toByte).toArray
+      }
+
+    }
     test.unsafeRunSync()
   }
 

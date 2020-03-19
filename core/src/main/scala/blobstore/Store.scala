@@ -71,4 +71,11 @@ trait Store[F[_]] {
     */
   def remove(path: Path): F[Unit]
 
+  /**
+    *
+    * @param computePath operation to compute the path of the first file and all subsequent files.
+    * @param limit maximum size in bytes for each file.
+    * @return sink of bytes
+    */
+  def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit]
 }

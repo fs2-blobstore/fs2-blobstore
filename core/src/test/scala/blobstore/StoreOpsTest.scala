@@ -64,9 +64,10 @@ final case class DummyStore(check: Path => Assertion) extends Store[IO] {
       fs2.Stream.emit(())
     }
   }
-  override def list(path: Path): fs2.Stream[IO, Path]                = ???
-  override def get(path: Path, chunkSize: Int): fs2.Stream[IO, Byte] = ???
-  override def move(src: Path, dst: Path): IO[Unit]                  = ???
-  override def copy(src: Path, dst: Path): IO[Unit]                  = ???
-  override def remove(path: Path): IO[Unit]                          = ???
+  override def list(path: Path): fs2.Stream[IO, Path]                              = ???
+  override def get(path: Path, chunkSize: Int): fs2.Stream[IO, Byte]               = ???
+  override def move(src: Path, dst: Path): IO[Unit]                                = ???
+  override def copy(src: Path, dst: Path): IO[Unit]                                = ???
+  override def remove(path: Path): IO[Unit]                                        = ???
+  override def putRotate(computePath: IO[Path], limit: Long): Pipe[IO, Byte, Unit] = ???
 }
