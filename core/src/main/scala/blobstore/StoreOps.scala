@@ -34,7 +34,12 @@ trait StoreOps {
     def put(contents: String, path: Path)(implicit F: Sync[F]): F[Unit] =
       for {
         buf <- F.delay(contents.getBytes(Charset.forName("utf-8")))
-        _   <- Stream.emits(buf).covary[F].through(store.put(path.copy(size = Option(buf.size.toLong)))).compile.drain
+        _ <- Stream
+          .emits(buf)
+          .covary[F]
+          .through(store.put(path.withSize(Option(buf.size.toLong), reset = false)))
+          .compile
+          .drain
       } yield ()
 
     /**
@@ -46,7 +51,7 @@ trait StoreOps {
     def put(src: java.nio.file.Path, dst: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): F[Unit] =
       fs2.io.file
         .readAll(src, blocker, 4096)
-        .through(store.put(dst.copy(size = Option(src.toFile.length))))
+        .through(store.put(dst.withSize(Option(src.toFile.length), reset = false)))
         .compile
         .drain
 
@@ -60,7 +65,7 @@ trait StoreOps {
     def bufferedPut(path: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): Pipe[F, Byte, Unit] =
       _.through(bufferToDisk(4096, blocker)).flatMap {
         case (n, s) =>
-          s.through(store.put(path.copy(size = Some(n))))
+          s.through(store.put(path.withSize(Some(n), reset = false)))
       }
   }
 
@@ -138,13 +143,15 @@ trait StoreOps {
       store
         .list(srcPath)
         .evalMap(p =>
-          if (p.isDir) {
-            transferTo(dstStore, p, dstPath / p.filename)
+          if (p.isDir.getOrElse(false)) {
+            transferTo(dstStore, p, (dstPath / p.lastSegment).withIsDir(Some(true), reset = false))
           } else {
-            val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
+            val dp =
+              if (dstPath.isDir.getOrElse(false)) (dstPath / p.lastSegment).withIsDir(Some(false), reset = false)
+              else dstPath
             store
               .get(p, 4096)
-              .through(dstStore.put(dp.copy(size = p.size)))
+              .through(dstStore.put(dp.withSize(p.size, reset = false)))
               .compile
               .drain
               .as(1)
@@ -166,11 +173,11 @@ trait StoreOps {
       store
         .list(dstPath)
         .evalMap(p =>
-          if (p.isDir) {
-            removeAll(dstPath / p.filename)
+          if (p.isDir.getOrElse(false)) {
+            removeAll(dstPath / p.lastSegment)
           } else {
-            val dp = if (dstPath.isDir) dstPath / p.filename else dstPath
-            fs2.Stream.eval(store.remove(dp)).compile.drain.as(1)
+            val dp = if (dstPath.isDir.getOrElse(false)) dstPath / p.lastSegment else dstPath
+            Stream.eval(store.remove(dp)).compile.drain.as(1)
           }
         )
         .compile

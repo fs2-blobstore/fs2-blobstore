@@ -15,67 +15,224 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-import java.util.Date
+import java.time.Instant
 
-final case class Path(root: String, key: String, size: Option[Long], isDir: Boolean, lastModified: Option[Date]) {
-  override def toString: String = s"$root/$key"
+import cats.data.Chain
+import cats.syntax.foldable._
+import cats.instances.string._
+
+/**
+  * Open trait for path abstraction.
+  */
+trait Path {
+
+  /**
+    * Returns optional root of this path.
+    * It might be bucket name or specific directory to which it is necessary to restrict access to.
+    *
+    * @example Given path pointing inside S3 bucket 'bucket':
+    *          val p: Path = ???
+    *          p.root == Some("bucket")
+    *
+    */
+  def root: Option[String]
+
+  /**
+    * Returns names of directories along the path to the item, starting at the root.
+    *
+    * @example Given path pointing to a local file in /root/dir1/dir2/file with root == "root":
+    *          val p: Path = ???
+    *          p.pathFromRoot == List("dir1", "dir2")
+    *
+    * @example Given path pointing to a local directory in /root/dir1/dir2/dir/ with root == "root":
+    *          val p: Path = ???
+    *          p.pathFromRoot == List("dir1", "dir2", "dir")
+    */
+  def pathFromRoot: Chain[String]
+
+  /**
+    * Returns name of the file pointed by this path.
+    *
+    * @example Given path pointing to a local file in /root/dir1/dir2/file with root == "root":
+    *          val p: Path = ???
+    *          p.fileName == Some("file")
+    *
+    * @note Some blob stores (s3, gcs) having flat namespaces allow trailing slashes in file names.
+    *       @example File 'gs://bucket/this/is/flat/name/' in underlying storage has flat name "this/is/flat/name/".
+    *                This would be represented as Path:
+    *                val p: Path = ???
+    *                p.pathFromRoot == List("this", "is", "flat", "name")
+    *                p.fileName == None
+    *                p.isDir == Some(true)
+    *       @see [[isDir]]
+    */
+  def fileName: Option[String]
+
+  /**
+    * Returns size in bytes of the file pointed by this path if known. For directories always return None.
+    *
+    * @example Given path pointing to a local 20 byte file:
+    *          val p: Path = ???
+    *          p.size = Some(20)
+    *
+    */
+  def size: Option[Long]
+
+  /**
+    * If known returns true if path points to a directory, otherwise – false.
+    * It's not always possible to know from string representation whether path points to directory or file ending with trailing slash.
+    * Paths returned by [[blobstore.Store.list]] must have this field defined.
+    *
+    * @example Given path pointing to a local file in /root/dir1/dir2/file with root == "root":
+    *          val p: Path = ???
+    *          p.isDir == Some(false)
+    * @example Given path pointing to a local directory in /root/dir1/dir2/dir/ with root == "root":
+    *          val p: Path = ???
+    *          p.isDir == Some(true)
+    * @example Given path pointing to object in S3 bucket 's3://bucket/this/is/flat/name/':
+    *          val p: Path = ???
+    *          p.isDire = Some(false)
+    * @example Given path created from String:
+    *          val p: Path = ???
+    *          p.isDir == None
+    */
+  def isDir: Option[Boolean]
+
+  /**
+    * Returns most recent time when file pointed by this path has been modified if known.
+    */
+  def lastModified: Option[Instant]
+
+  /**
+    * Returns path with [[root]] field set to provided value.
+    * @param newRoot - value to be set as [[root]].
+    * @param reset - when true fields [[isDir]], [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
+    * @return new Path with [[root]] field set to provided param.
+    */
+  def withRoot(newRoot: Option[String], reset: Boolean = true): Path =
+    if (root == newRoot) this
+    else
+      BasePath(
+        newRoot,
+        pathFromRoot,
+        fileName,
+        if (reset) None else size,
+        if (reset) None else isDir,
+        if (reset) None else lastModified
+      )
+
+  /**
+    * Returns path with [[pathFromRoot]] field set to provided value.
+    * @param newPathFromRoot - value to be set as [[pathFromRoot]].
+    * @param reset - when true fields [[isDir]], [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
+    * @return new Path with [[pathFromRoot]] field set to provided param.
+    */
+  def withPathFromRoot(newPathFromRoot: Chain[String], reset: Boolean = true): Path =
+    if (newPathFromRoot == pathFromRoot) this
+    else
+      BasePath(
+        root,
+        newPathFromRoot,
+        fileName,
+        if (reset) None else size,
+        if (reset) None else isDir,
+        if (reset) None else lastModified
+      )
+
+  /**
+    * Returns path with [[fileName]] field set to provided value.
+    * @param newFileName - value to be set as [[fileName]].
+    * @param reset - when true fields [[isDir]], [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
+    * @return new Path with [[fileName]] field set to provided param.
+    */
+  def withFileName(newFileName: Option[String], reset: Boolean = true): Path =
+    if (newFileName == fileName) this
+    else
+      BasePath(
+        root,
+        pathFromRoot,
+        newFileName,
+        if (reset) None else size,
+        if (reset) None else isDir,
+        if (reset) None else lastModified
+      )
+
+  /**
+    * Returns path with [[size]] field set to provided value.
+    * @param newSize - value to be set as [[size]].
+    * @param reset - when true fields [[isDir]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
+    * @return new Path with [[size]] field set to provided param.
+    */
+  def withSize(newSize: Option[Long], reset: Boolean = true): Path =
+    if (newSize == size) this
+    else BasePath(root, pathFromRoot, fileName, newSize, if (reset) None else isDir, if (reset) None else lastModified)
+
+  /**
+    * Returns path with [[isDir]] field set to provided value.
+    * @param newIsDir - value to be set as [[isDir]].
+    * @param reset - when true fields [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
+    * @return new Path with [[isDir]] field set to provided param.
+    */
+  def withIsDir(newIsDir: Option[Boolean], reset: Boolean = true): Path =
+    if (newIsDir == isDir) this
+    else BasePath(root, pathFromRoot, fileName, if (reset) None else size, newIsDir, if (reset) None else lastModified)
+
+  /**
+    * Returns path with [[lastModified]] field set to provided value.
+    * @param newLastModified - value to be set as [[lastModified]].
+    * @param reset - when true fields [[size]] and [[isDir]] in returned object would be set to None, otherwise kept the same.
+    * @return new Path with [[lastModified]] field set to provided param.
+    */
+  def withLastModified(newLastModified: Option[Instant], reset: Boolean = true): Path =
+    if (newLastModified == lastModified) this
+    else BasePath(root, pathFromRoot, fileName, if (reset) None else size, if (reset) None else isDir, newLastModified)
+
+  @SuppressWarnings(Array("scalafix:Disable.Any"))
+  override def equals(obj: Any): Boolean = obj match {
+    case p: Path =>
+      root == p.root &&
+        pathFromRoot == p.pathFromRoot &&
+        fileName == p.fileName &&
+        size == p.size &&
+        isDir == p.isDir &&
+        lastModified == p.lastModified
+    case _ => false
+  }
+
+  override def toString: String =
+    root.fold(pathFromRoot)(pathFromRoot.prepend).mkString_("", "/", fileName.fold("/")("/" + _))
 }
 
 object Path {
+  def apply(
+    r: Option[String],
+    pfr: Chain[String],
+    fn: Option[String],
+    s: Option[Long],
+    id: Option[Boolean],
+    lm: Option[Instant]
+  ): Path =
+    BasePath(r, pfr, fn, s, id, lm)
 
-  val SEP = '/'
+  @SuppressWarnings(Array("scalafix:DisableSyntax.throw"))
+  def apply(s: String): Path =
+    fromString(s).getOrElse(throw new IllegalArgumentException(s"Unable to extract path from '$s'"))
 
-  def apply(path: String): Path = {
-    // The regex identifies a scheme as described in https://www.ietf.org/rfc/rfc2396.txt chapter 3.1 "Scheme Component"
-    val x = path.replaceFirst("^([a-zA-Z][-.+a-zA-Z0-9]+:/)?/", "").split("/", 2)
-    val r = x(0)
-    val k = if (x.length <= 1) "" else x(1)
-    Path(r, k, None, path.lastOption.contains(SEP), None)
-  }
+  def fromString(s: String): Option[Path] = fromString(s, forceRoot = true)
+
+  def fromString(s: String, forceRoot: Boolean): Option[Path] = BasePath.fromString(s, forceRoot)
+
+  def unapply(
+    p: Path
+  ): Option[(Option[String], Chain[String], Option[String], Option[Long], Option[Boolean], Option[Instant])] =
+    Some(
+      (
+        p.root,
+        p.pathFromRoot,
+        p.fileName,
+        p.size,
+        p.isDir,
+        p.lastModified
+      )
+    )
 }
-
-trait PathOps {
-  import Path.SEP
-
-  implicit class AppendOps(path: Path) {
-
-    /**
-      * Concatenate string to end of path separated by Path.SEP
-      * @param str String to append
-      * @return concatenated Path
-      */
-    def /(str: String): Path = {
-      val separator = if (path.key.lastOption.contains(SEP) || str.headOption.contains(SEP)) "" else SEP
-      val k = path.key.trim match {
-        case "" => str
-        case _  => s"${path.key}$separator$str"
-      }
-      Path(path.root, k, None, k.lastOption.contains(SEP), None)
-    }
-
-    /**
-      * Concatenate other Path to end of this path separated by Path.SEP,
-      * this method ignores the other path root in favor of this path root.
-      * @param other Path to append
-      * @return concatenated Path
-      */
-    def /(other: Path): Path = /(other.key)
-
-    /**
-      * Split path.key by Path.SEP, if path.key.isEmpty, try
-      * splitting path.root, if it is empty too, return empty string
-      * @return String file name
-      */
-    def filename: String = {
-      path.key
-        .split(SEP)
-        .lastOption
-        .filterNot(_.isEmpty)
-        .map(s => if (path.isDir) s + SEP else s)
-        .getOrElse(path.root.split(SEP).lastOption.getOrElse("") + SEP)
-    }
-  }
-
-}
-
-object PathOps extends PathOps
