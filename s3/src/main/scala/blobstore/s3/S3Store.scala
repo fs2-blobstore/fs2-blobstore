@@ -18,7 +18,7 @@ package s3
 
 import java.io.{InputStream, PipedInputStream, PipedOutputStream}
 
-import cats.effect.{Blocker, Concurrent, ContextShift}
+import cats.effect.{Blocker, Concurrent, ContextShift, ExitCase, Resource}
 import cats.syntax.functor._
 import cats.syntax.flatMap._
 import fs2.{Chunk, Pipe, Stream}
@@ -26,7 +26,7 @@ import fs2.{Chunk, Pipe, Stream}
 import scala.jdk.CollectionConverters._
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model._
-import com.amazonaws.services.s3.transfer.{TransferManager, TransferManagerBuilder}
+import com.amazonaws.services.s3.transfer.{TransferManager, TransferManagerBuilder, Upload}
 
 final class S3Store[F[_]](
   transferManager: TransferManager,
@@ -38,19 +38,20 @@ final class S3Store[F[_]](
 
   val s3: AmazonS3 = transferManager.getAmazonS3Client
 
-  private def _chunk(ol: ObjectListing): Chunk[Path] = {
-    val dirs: Chunk[Path] =
-      Chunk.seq(ol.getCommonPrefixes.asScala.map(s => Path(ol.getBucketName, s.dropRight(1), None, isDir = true, None)))
-    val files: Chunk[Path] = Chunk.seq(
-      ol.getObjectSummaries.asScala.map(o =>
-        Path(o.getBucketName, o.getKey, Option(o.getSize), isDir = false, Option(o.getLastModified))
-      )
-    )
-
-    Chunk.concat(Seq(dirs, files))
-  }
-
   override def list(path: Path): Stream[F, Path] = {
+    def _chunk(ol: ObjectListing): Chunk[Path] = {
+      val dirs: Chunk[Path] =
+        Chunk.seq(
+          ol.getCommonPrefixes.asScala.map(s => Path(ol.getBucketName, s.dropRight(1), None, isDir = true, None))
+        )
+      val files: Chunk[Path] = Chunk.seq(
+        ol.getObjectSummaries.asScala.map(o =>
+          Path(o.getBucketName, o.getKey, Option(o.getSize), isDir = false, Option(o.getLastModified))
+        )
+      )
+
+      Chunk.concat(Seq(dirs, files))
+    }
     Stream.unfoldChunkEval[F, () => Option[ObjectListing], Path] {
       // State type is a function that can provide next ObjectListing
       // initially we get it from listObjects, subsequent iterations get it from listNextBatchOfObjects
@@ -122,6 +123,43 @@ final class S3Store[F[_]](
   }
 
   override def remove(path: Path): F[Unit] = blocker.delay(s3.deleteObject(path.root, path.key))
+
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile: Resource[F, (PipedOutputStream, Upload)] = for {
+      p <- Resource.liftF(computePath)
+      ss <- Resource.make(F.delay {
+        val os = new PipedOutputStream()
+        val is = new PipedInputStream(os)
+        (os, is)
+      }) {
+        case (os, is) =>
+          F.delay {
+            is.close()
+            os.close()
+          }
+      }
+      upload <- Resource.makeCase(blocker.delay {
+        val meta = new ObjectMetadata()
+        p.size.foreach(meta.setContentLength)
+        sseAlgorithm.foreach(meta.setSSEAlgorithm)
+        transferManager.upload(p.root, p.key, ss._2, meta)
+      }) {
+        case (upload, ExitCase.Completed) =>
+          blocker.delay {
+            ss._1.close()
+            upload.waitForCompletion()
+            objectAcl.foreach(acl => s3.setObjectAcl(p.root, p.key, acl))
+          }
+        case (upload, _) =>
+          blocker.delay {
+            ss._1.close()
+            upload.abort()
+          }
+      }
+    } yield (ss._1, upload)
+
+    putRotateBase(limit, openNewFile)(osAndUpload => bytes => blocker.delay(osAndUpload._1.write(bytes)))
+  }
 }
 
 object S3Store {
@@ -192,7 +230,7 @@ object S3Store {
     implicit F: Concurrent[F],
     CS: ContextShift[F]
   ): Stream[F, S3Store[F]] =
-    fs2.Stream
+    Stream
       .bracket(transferManager)(tm => F.delay(tm.shutdownNow()))
       .map(tm => new S3Store[F](tm, None, sseAlgorithm, blocker))
 
@@ -209,7 +247,7 @@ object S3Store {
     sseAlgorithm: Option[String],
     blocker: Blocker
   )(implicit F: Concurrent[F], CS: ContextShift[F]): Stream[F, S3Store[F]] =
-    fs2.Stream
+    Stream
       .bracket(transferManager)(tm => F.delay(tm.shutdownNow()))
       .map(tm => new S3Store[F](tm, objectAcl, sseAlgorithm, blocker))
 
