@@ -19,8 +19,8 @@ package box
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 
 import cats.implicits._
-import cats.effect.{Blocker, Concurrent, ContextShift}
-import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
+import com.box.sdk.{BoxAPIConnection, BoxAPIException, BoxFile, BoxFolder, BoxItem}
 import fs2.{Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
@@ -75,7 +75,7 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     * @return stream of Paths. Implementing stores must guarantee that returned Paths
     *         have correct values for size, isDir and lastModified.
     */
-  override def list(path: Path): fs2.Stream[F, Path] = {
+  override def list(path: Path): Stream[F, Path] = {
     for {
       itemOpt <- Stream.eval(F.delay(boxItemAtPath(path)))
       item    <- itemOpt.foldMap[Stream[F, BoxItem]](Stream.emit)
@@ -107,7 +107,7 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  override def get(path: Path, chunkSize: Int): fs2.Stream[F, Byte] = {
+  override def get(path: Path, chunkSize: Int): Stream[F, Byte] = {
     val init: F[(OutputStream, InputStream)] = F.delay {
       val is = new PipedInputStream()
       val os = new PipedOutputStream(is)
@@ -117,15 +117,14 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     val consume: ((OutputStream, InputStream)) => Stream[F, Byte] = bothStreams =>
       for {
         opt <- Stream.eval(F.delay(boxFileAtPath(path)))
-
-        dl = opt
-          .map { file =>
+        dl = opt match {
+          case Some(file) =>
             Stream.eval(F.delay {
               file.download(bothStreams._1)
               bothStreams._1.close()
             })
-          }
-          .getOrElse(Stream.fromIterator(Iterator.empty))
+          case None => Stream.raiseError[F](new BoxAPIException(s"Object not found, $path"))
+        }
 
         readInput = fs2.io.readInputStream(F.delay(bothStreams._2), chunkSize, closeAfterUse = true, blocker = blocker)
 
@@ -251,6 +250,34 @@ final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker:
     */
   override def remove(path: Path): F[Unit] = F.delay {
     boxFileAtPath(path).foreach(_.delete())
+  }
+
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile: Resource[F, OutputStream] = for {
+      p <- Resource.liftF(computePath)
+      (parent, name) = splitPath(p)
+      ss <- Resource.make(F.delay {
+        val os = new PipedOutputStream()
+        val is = new PipedInputStream(os)
+        (os, is)
+      }) {
+        case (os, is) =>
+          F.delay {
+            is.close()
+            os.close()
+          }
+      }
+      folder <- Resource.liftF(blocker.delay(putFolderAtPath(rootFolder, parent)))
+      _ <- Resource.make(F.unit)(_ =>
+        blocker.delay {
+          ss._1.close()
+          folder.uploadFile(ss._2, name)
+          ()
+        }
+      )
+    } yield ss._1
+
+    putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes)))
   }
 }
 
