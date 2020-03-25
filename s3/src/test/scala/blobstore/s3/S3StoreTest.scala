@@ -16,42 +16,45 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package s3
 
-//import java.time.{LocalDate, ZoneOffset}
-//import java.util.Date
+import java.net.URI
 
 import cats.effect.IO
-import com.amazonaws.ClientConfiguration
-import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
-import com.amazonaws.client.builder.AwsClientBuilder
-import com.amazonaws.regions.Regions
-import com.amazonaws.services.s3.model.ObjectMetadata
-import fs2.Stream
-import com.amazonaws.services.s3.transfer.{TransferManager, TransferManagerBuilder}
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import org.scalatest.{Assertion, Inside}
+import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.signer.AwsS3V4Signer
+import software.amazon.awssdk.core.client.config.{ClientOverrideConfiguration, SdkAdvancedClientOption}
+import software.amazon.awssdk.services.s3.model.{BucketAlreadyOwnedByYouException, CreateBucketRequest, StorageClass}
+import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Configuration}
+import fs2.{Chunk, Stream}
+import software.amazon.awssdk.regions.Region
+import implicits._
+
+import scala.concurrent.ExecutionException
 
 class S3StoreTest extends AbstractStoreTest with Inside {
-
-  val credentials         = new BasicAWSCredentials("my_access_key", "my_secret_key")
-  val clientConfiguration = new ClientConfiguration()
-  clientConfiguration.setSignerOverride("AWSS3V4SignerType")
+  val credentials       = AwsBasicCredentials.create("my_access_key", "my_secret_key")
   val minioHost: String = Option(System.getenv("BLOBSTORE_MINIO_HOST")).getOrElse("minio-container")
   val minioPort: String = Option(System.getenv("BLOBSTORE_MINIO_PORT")).getOrElse("9000")
-  private val client: AmazonS3 = AmazonS3ClientBuilder
-    .standard()
-    .withEndpointConfiguration(
-      new AwsClientBuilder.EndpointConfiguration(s"http://$minioHost:$minioPort", Regions.US_EAST_1.name())
+  private val client = S3AsyncClient
+    .builder()
+    .region(Region.US_EAST_1)
+    .endpointOverride(URI.create(s"http://$minioHost:$minioPort"))
+    .credentialsProvider(StaticCredentialsProvider.create(credentials))
+    .serviceConfiguration(
+      S3Configuration
+        .builder()
+        .pathStyleAccessEnabled(true)
+        .build()
     )
-    .withPathStyleAccessEnabled(true)
-    .withClientConfiguration(clientConfiguration)
-    .withCredentials(new AWSStaticCredentialsProvider(credentials))
-    .build()
-  private val transferManager: TransferManager = TransferManagerBuilder
-    .standard()
-    .withS3Client(client)
+    .overrideConfiguration(
+      ClientOverrideConfiguration
+        .builder()
+        .putAdvancedOption(SdkAdvancedClientOption.SIGNER, AwsS3V4Signer.create())
+        .build()
+    )
     .build()
 
-  override val store: Store[IO] = new S3Store[IO](transferManager, blocker = blocker, defaultFullMetadata = true)
+  override val store: Store[IO] = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
   override val root: String     = "blobstore-test-bucket"
 
   behavior of "S3Store"
@@ -63,47 +66,90 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     val entities = store.list(path).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
-      inside(s3Path.s3Entity) {
-        case Right(file) =>
+      inside(s3Path.meta) {
+        case Some(metaInfo) =>
           // Note: defaultFullMetadata = true in S3Store constructor.
-          file.metadata mustBe defined
-
-          Option(file.summary.getETag) mustBe defined
-
-          // Note: S3 doesn't set StorageClass for S3 Standard storage class objects, but Minio does.
-          Option(file.summary.getStorageClass) mustBe defined
+          metaInfo.contentType mustBe defined
+          metaInfo.eTag mustBe defined
       }
     }
   }
 
   it should "set underlying metadata on write" in {
     val ct = "text/plain"
-    val sc = "REDUCED_REDUNDANCY"
-    val s3Metadata = {
-      val meta = new ObjectMetadata
-      meta.setContentType(ct)
-      meta.addUserMetadata("key", "value")
-      meta
-    }
+    val sc = StorageClass.REDUCED_REDUNDANCY
+    val s3Meta =
+      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
 
-    val s3Summary = S3Path.S3File.summaryFromMetadata(root, s"test-$testRun/set-underlying/file", s3Metadata)
-    s3Summary.setStorageClass(sc)
-
-    val filePath = S3Path(Right(S3Path.S3File(s3Summary, Some(s3Metadata))))
+    val filePath = S3Path(root, s"test-$testRun/set-underlying/file1", Some(s3Meta))
     Stream("data".getBytes.toIndexedSeq: _*).through(store.put(filePath)).compile.drain.unsafeRunSync()
     val entities = store.list(filePath).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
-      inside(s3Path.s3Entity) {
-        case Right(file) =>
-          file.summary.getStorageClass mustBe sc
-          inside(file.metadata) {
-            case Some(metadata) =>
-              metadata.getContentType mustBe ct
-              metadata.getUserMetaDataOf("key") mustBe "value"
-          }
+      inside(s3Path.meta) {
+        case Some(meta) =>
+          meta.storageClass must contain(sc)
+          meta.contentType must contain(ct)
+          meta.metadata mustBe Map("Key" -> "Value")
       }
     }
+  }
+
+  it should "set underlying metadata on multipart-upload" in {
+    val ct = "text/plain"
+    val sc = StorageClass.REDUCED_REDUNDANCY
+    val s3Meta =
+      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
+    val filePath = S3Path(root, s"test-$testRun/set-underlying/file2", Some(s3Meta))
+    Stream
+      .random[IO]
+      .flatMap(n => Stream.chunk(Chunk.bytes(n.toString.getBytes())))
+      .take(6 * 1024 * 1024)
+      .through(store.put(filePath))
+      .compile
+      .drain
+      .unsafeRunSync()
+
+    val entities = store.list(filePath).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
+
+    entities.foreach { s3Path =>
+      inside(s3Path.meta) {
+        case Some(meta) =>
+          meta.storageClass must contain(sc)
+          meta.contentType must contain(ct)
+          meta.metadata mustBe Map("Key" -> "Value")
+      }
+    }
+  }
+
+  def testUploadNoSize(size: Long, name: String) =
+    for {
+      bytes <- Stream
+        .random[IO]
+        .flatMap(n => Stream.chunk(Chunk.bytes(n.toString.getBytes())))
+        .take(size)
+        .compile
+        .to(Array)
+      path = Path(s"$root/test-$testRun/multipart-upload/").withIsDir(Some(true), reset = false) / name
+      _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(path)).compile.drain
+      readBytes <- store.get(path).compile.to(Array)
+      _         <- store.remove(path)
+    } yield readBytes mustBe bytes
+
+  it should "put content with no size when aligned with multi-upload boundaries 5mb" in {
+    testUploadNoSize(5 * 1024 * 1024, "5mb").unsafeRunSync()
+  }
+
+  it should "put content with no size when aligned with multi-upload boundaries 15mb" in {
+    testUploadNoSize(10 * 1024 * 1024, "10mb").unsafeRunSync()
+  }
+
+  it should "put content with no size when not aligned with multi-upload boundaries 7mb" in {
+    testUploadNoSize(7 * 1024 * 1024, "7mb").unsafeRunSync()
+  }
+
+  it should "put content with no size when not aligned with multi-upload boundaries 12mb" in {
+    testUploadNoSize(12 * 1024 * 1024, "12mb").unsafeRunSync()
   }
 
   it should "fail trying to reference path with no root" in {
@@ -140,21 +186,11 @@ class S3StoreTest extends AbstractStoreTest with Inside {
   override def beforeAll(): Unit = {
     super.beforeAll()
     try {
-      client.createBucket(root)
+      client.createBucket(CreateBucketRequest.builder().bucket(root).build()).get()
     } catch {
-      case e: com.amazonaws.services.s3.model.AmazonS3Exception if e.getMessage.contains("BucketAlreadyOwnedByYou") =>
+      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
       // noop
     }
     ()
-  }
-
-  override def afterAll(): Unit = {
-    super.afterAll()
-
-    try {
-      client.shutdown()
-    } catch {
-      case _: Throwable =>
-    }
   }
 }

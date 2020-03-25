@@ -1,5 +1,8 @@
 name := "s3"
 
+val fs2Version = "2.2.2"
+
 libraryDependencies ++= Seq(
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.11.748"
+  "software.amazon.awssdk" % "s3"                    % "2.11.1",
+  "co.fs2"                 %% "fs2-reactive-streams" % fs2Version
 )
