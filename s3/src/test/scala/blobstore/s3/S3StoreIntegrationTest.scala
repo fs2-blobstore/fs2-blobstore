@@ -1,22 +1,27 @@
 package blobstore
 package s3
 
-import java.util.concurrent.Executors
-
-import cats.effect.{Blocker, ContextShift, IO}
+import cats.effect.{ContextShift, IO}
 import cats.effect.laws.util.TestInstances
-import com.amazonaws.ClientConfiguration
-import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
-import com.amazonaws.services.s3.model.DeleteObjectsRequest
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
-import com.amazonaws.services.s3.transfer.{TransferManager, TransferManagerBuilder}
 import org.scalatest.{BeforeAndAfterAll, Inside}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import implicits._
+import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
+import software.amazon.awssdk.auth.signer.AwsS3V4Signer
+import software.amazon.awssdk.core.client.config.{ClientOverrideConfiguration, SdkAdvancedClientOption}
+import software.amazon.awssdk.services.s3.model.{
+  BucketAlreadyOwnedByYouException,
+  CreateBucketRequest,
+  Delete,
+  DeleteObjectsRequest,
+  ListObjectsV2Request,
+  ObjectIdentifier,
+  S3Object
+}
+import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Configuration}
 
-import scala.jdk.CollectionConverters._
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, ExecutionException}
 
 @IntegrationTest
 class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances with Inside {
@@ -35,24 +40,27 @@ class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAft
 
   val testRun = java.util.UUID.randomUUID
 
-  lazy val credentials    = new BasicAWSCredentials(s3AccessKey, s3SecretKey)
-  val clientConfiguration = new ClientConfiguration()
-  clientConfiguration.setSignerOverride("AWSS3V4SignerType")
-  private lazy val client: AmazonS3 = AmazonS3ClientBuilder
-    .standard()
-    .withPathStyleAccessEnabled(true)
-    .withClientConfiguration(clientConfiguration)
-    .withCredentials(new AWSStaticCredentialsProvider(credentials))
-    .build()
-  private lazy val transferManager: TransferManager = TransferManagerBuilder
-    .standard()
-    .withS3Client(client)
+  private lazy val credentials = AwsBasicCredentials.create(s3AccessKey, s3SecretKey)
+  private lazy val client = S3AsyncClient
+    .builder()
+    .credentialsProvider(StaticCredentialsProvider.create(credentials))
+    .serviceConfiguration(
+      S3Configuration
+        .builder()
+        .pathStyleAccessEnabled(true)
+        .build()
+    )
+    .overrideConfiguration(
+      ClientOverrideConfiguration
+        .builder()
+        .putAdvancedOption(SdkAdvancedClientOption.SIGNER, AwsS3V4Signer.create())
+        .build()
+    )
     .build()
 
   private implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-  private val blocker                       = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
-  lazy val store: S3Store[IO] = new S3Store[IO](transferManager, blocker = blocker)
+  lazy val store: S3Store[IO] = new S3Store[IO](client, bufferSize = 5 * 1024 * 1024)
 
   behavior of "S3Store"
 
@@ -84,9 +92,9 @@ class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAft
   override def beforeAll(): Unit = {
     super.beforeAll()
     try {
-      client.createBucket(s3Bucket)
+      client.createBucket(CreateBucketRequest.builder().bucket(s3Bucket).build()).get()
     } catch {
-      case e: com.amazonaws.services.s3.model.AmazonS3Exception if e.getMessage.contains("BucketAlreadyOwnedByYou") =>
+      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
       // noop
     }
     ()
@@ -94,12 +102,20 @@ class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAft
 
   override protected def afterAll(): Unit = {
     try {
-      val req = new DeleteObjectsRequest(s3Bucket)
-        .withKeys(client.listObjects(s3Bucket).getObjectSummaries.asScala.map(_.getKey).toIndexedSeq: _*)
-        .withQuiet(true)
-      client.deleteObjects(req)
-      client.deleteBucket(s3Bucket)
-      client.shutdown()
+      val elements = new java.util.ArrayList[ObjectIdentifier]
+      client
+        .listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(s3Bucket).build())
+        .contents()
+        .subscribe { (t: S3Object) =>
+          elements.add(ObjectIdentifier.builder().key(t.key()).build())
+          ()
+        }
+        .get()
+      client
+        .deleteObjects(
+          DeleteObjectsRequest.builder().bucket(s3Bucket).delete(Delete.builder().objects(elements).build()).build()
+        )
+        .get()
     } catch {
       case _: Throwable =>
     }

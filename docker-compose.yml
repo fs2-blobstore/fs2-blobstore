@@ -29,7 +29,7 @@ services:
     volumes:
       - ./tmp/s3-store-root:/data
 
-    command: "server /data"
+    command: "server --compat /data"
 
   sbt:
     image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
