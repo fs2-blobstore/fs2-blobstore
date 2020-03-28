@@ -18,239 +18,204 @@ package box
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift}
-import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem}
+import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
 import fs2.{Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
-// Address this as tech debt, there's lots of type casts and checks with the underlying Java API, https://github.com/fs2-blobstore/fs2-blobstore/issues/16
-@SuppressWarnings(
-  Array("scalafix:DisableSyntax.asInstanceOf", "scalafix:DisableSyntax.isInstanceOf", "scalafix:DisableSyntax.throw")
-)
-final class BoxStore[F[_]](api: BoxAPIConnection, rootFolderId: String, blocker: Blocker)(
+final class BoxStore[F[_]](
+  api: BoxAPIConnection,
+  rootFolderId: String,
+  blocker: Blocker,
+  largeFileThreshold: Long = 50 * 1024 * 1024
+)(
   implicit F: Concurrent[F],
   CS: ContextShift[F]
 ) extends Store[F] {
+  private val rootFolder = new BoxFolder(api, rootFolderId)
 
-  val rootFolder = new BoxFolder(api, rootFolderId)
+  override def list(path: Path): Stream[F, Path] = listUnderlying(path, Array.empty)
 
-  def boxItemAtPath(path: Path): Option[BoxItem] = {
-    boxItemAtPath(rootFolder, (path.root :: path.key.split("/").toList).filter(_.nonEmpty))
-  }
-
-  def boxItemAtPath(parentFolder: BoxFolder, pathParts: List[String]): Option[BoxItem] = {
-    pathParts match {
-      case Nil => None
-      case head :: Nil =>
-        parentFolder.getChildren.asScala
-          .find(info => info.getName.equalsIgnoreCase(head))
-          .map(_.getResource.asInstanceOf[BoxItem])
-      case head :: tail =>
-        parentFolder.getChildren.asScala
-          .find(info => info.getName.equalsIgnoreCase(head))
-          .flatMap(info => boxItemAtPath(new BoxFolder(api, info.getID), tail))
-    }
-  }
-
-  def boxFileAtPath(path: Path): Option[BoxFile] = {
-    boxItemAtPath(path).flatMap {
-      case file: BoxFile => Some(file)
-      case _             => None
-    }
-  }
-
-  def boxFolderAtPath(path: Path): Option[BoxFolder] = {
-    boxItemAtPath(path).flatMap {
-      case folder: BoxFolder => Some(folder)
-      case _                 => None
-    }
-  }
-
-  /**
-    * List paths. See StoreOps.ListOps for convenient listAll method.
-    *
-    * @param path to list
-    * @return stream of Paths. Implementing stores must guarantee that returned Paths
-    *         have correct values for size, isDir and lastModified.
-    */
-  override def list(path: Path): fs2.Stream[F, Path] = {
-    for {
-      itemOpt <- Stream.eval(F.delay(boxItemAtPath(path)))
-      item    <- itemOpt.foldMap[Stream[F, BoxItem]](Stream.emit)
-
-      listFiles = Stream
-        .eval(F.delay(item.asInstanceOf[BoxFolder]))
-        .flatMap(folder => Stream.fromIterator(folder.getChildren.iterator.asScala))
-        .map { itemInfo =>
-          val isDir    = itemInfo.isInstanceOf[BoxFolder#Info]
-          val pathKey  = if (path.key.takeRight(1).equals("/")) path.key.dropRight(1) else path.key
-          val childKey = s"$pathKey/${itemInfo.getName}"
-          Path(path.root, childKey, Some(itemInfo.getSize), isDir, Some(itemInfo.getModifiedAt))
-        }
-
-      listOneFile = Stream.eval(
-        F.delay(
-          Path(path.root, path.key, Some(item.getInfo.getSize), isDir = false, Some(item.getInfo.getModifiedAt))
-        )
-      )
-
-      s <- if (item.isInstanceOf[BoxFolder]) listFiles else listOneFile
-    } yield s
-  }
-
-  /**
-    * Get bytes for the given Path. See StoreOps.GetOps for convenient get and getContents methods.
-    *
-    * @param path      to get
-    * @param chunkSize bytes to read in each chunk.
-    * @return stream of bytes
-    */
-  override def get(path: Path, chunkSize: Int): fs2.Stream[F, Byte] = {
-    val init: F[(OutputStream, InputStream)] = F.delay {
+  override def get(path: Path, chunkSize: Int): Stream[F, Byte] = {
+    val init: F[(OutputStream, InputStream)] = blocker.delay {
       val is = new PipedInputStream()
       val os = new PipedOutputStream(is)
       (os, is)
     }
-
-    val consume: ((OutputStream, InputStream)) => Stream[F, Byte] = bothStreams =>
-      for {
-        opt <- Stream.eval(F.delay(boxFileAtPath(path)))
-
-        dl = opt
-          .map { file =>
-            Stream.eval(F.delay {
-              file.download(bothStreams._1)
-              bothStreams._1.close()
-            })
-          }
-          .getOrElse(Stream.fromIterator(Iterator.empty))
-
-        readInput = fs2.io.readInputStream(F.delay(bothStreams._2), chunkSize, closeAfterUse = true, blocker = blocker)
-
-        s <- readInput concurrently dl
-      } yield s
-
     val release: ((OutputStream, InputStream)) => F[Unit] = ios =>
-      F.delay {
+      blocker.delay {
         ios._1.close()
         ios._2.close()
       }
 
-    Stream.bracket(init)(release).flatMap(consume)
-  }
+    def consume(file: BoxFile)(streams: (OutputStream, InputStream)): Stream[F, Byte] = {
+      val dl = Stream.eval(blocker.delay {
+        file.download(streams._1)
+        streams._1.close()
+      })
+      val readInput = fs2.io.readInputStream(F.delay(streams._2), chunkSize, closeAfterUse = true, blocker = blocker)
+      readInput concurrently dl
+    }
 
-  /**
-    * Creates a BoxFolder at this path and all folders along this path.
-    * If the path already exists, this will simply traverse the path and return the folder at this path.
-    * NOTE: this method makes Box API calls
-    * @param parentFolder
-    * @param pathParts
-    * @return a BoxFolder at this path
-    */
-  def putFolderAtPath(parentFolder: BoxFolder, pathParts: List[String]): BoxFolder = {
-    pathParts match {
-      case Nil => parentFolder
-      case head :: tail =>
-        val matchingItem = parentFolder.getChildren.asScala
-          .find(_.getName.equalsIgnoreCase(head))
-          .getOrElse(parentFolder.createFolder(head))
-
-        if (!matchingItem.getResource.isInstanceOf[BoxFolder]) {
-          throw new Exception(s"Item '${matchingItem.getName}' exists along path but was not folder")
-        }
-        val folder = matchingItem.getResource.asInstanceOf[BoxFolder]
-        putFolderAtPath(folder, tail)
+    Stream.eval(boxFileAtPath(path)).flatMap {
+      case None =>
+        Stream.raiseError(new IllegalArgumentException(s"Item at path '$path' doesn't exist or is not a File"))
+      case Some(file) => Stream.bracket(init)(release).flatMap(consume(file))
     }
   }
 
-  /**
-    * Helper method to split a path into a list representing its folder path,
-    * and a string representing its file name.
-    * @param path
-    * @return
-    */
-  def splitPath(path: Path): (List[String], String) = {
-    val fullPath                  = path.root :: path.key.split("/").toList
-    val (pathToParentFolder, key) = fullPath.splitAt(fullPath.size - 1)
-    (pathToParentFolder, key.head)
-  }
-
-  /**
-    * Provides a Sink that writes bytes into the provided path. See StoreOps.PutOps for convenient put String
-    * and put file methods.
-    *
-    * It is highly recommended to provide Path.size when writing as it allows for optimizations in some store.
-    *
-    * @param path to put
-    * @return sink of bytes. This throws an exception if a file at this path already exists.
-    */
   override def put(path: Path): Pipe[F, Byte, Unit] = { in =>
-    val pathSplit = splitPath(path)
+    path.fileName match {
+      case None =>
+        Stream.raiseError(new IllegalArgumentException(s"Specified path '$path' doesn't point to a file."))
+      case Some(name) =>
+        val init: F[(OutputStream, InputStream, BoxFolder)] =
+          putFolderAtPath(rootFolder, BoxPath.parentPath(path)).map { parentFolder =>
+            val os = new PipedOutputStream()
+            val is = new PipedInputStream(os)
+            (os, is, parentFolder)
+          }
 
-    val init: F[(OutputStream, InputStream, BoxFolder)] = F.delay {
-      val parentFolder = putFolderAtPath(rootFolder, pathSplit._1)
-      val os           = new PipedOutputStream()
-      val is           = new PipedInputStream(os)
-      (os, is, parentFolder)
+        val consume: ((OutputStream, InputStream, BoxFolder)) => Stream[F, Unit] = ios => {
+          val putToBox = Stream.eval(blocker.delay {
+            path.size match {
+              case Some(size) if size > largeFileThreshold => ios._3.uploadLargeFile(ios._2, name, size)
+              case _                                       => ios._3.uploadFile(ios._2, name)
+            }
+          }.void)
+
+          val writeBytes = _writeAllToOutputStream1(in, ios._1, blocker).stream ++ Stream.eval(F.delay(ios._1.close()))
+          putToBox concurrently writeBytes
+        }
+
+        val release: ((OutputStream, InputStream, BoxFolder)) => F[Unit] = ios =>
+          blocker.delay {
+            ios._2.close()
+            ios._1.close()
+          }
+
+        Stream.bracket(init)(release).flatMap(consume)
+    }
+  }
+
+  override def move(src: Path, dst: Path): F[Unit] = boxFileAtPath(src).flatMap {
+    case Some(file) =>
+      putFolderAtPath(rootFolder, BoxPath.parentPath(dst))
+        .flatMap(folder => blocker.delay(file.move(folder, dst.fileName.getOrElse(file.getInfo.getName))).void)
+    case None => ().pure[F]
+  }
+
+  override def copy(src: Path, dst: Path): F[Unit] = boxFileAtPath(src).flatMap {
+    case Some(file) =>
+      putFolderAtPath(rootFolder, BoxPath.parentPath(dst))
+        .flatMap(folder => blocker.delay(file.copy(folder, dst.fileName.getOrElse(file.getInfo.getName))).void)
+    case None => ().pure[F]
+  }
+
+  override def remove(path: Path): F[Unit] =
+    boxFileAtPath(path).flatMap {
+      case Some(bf) => blocker.delay(bf.delete())
+      case None     => ().pure
     }
 
-    val consume: ((OutputStream, InputStream, BoxFolder)) => Stream[F, Unit] = ios => {
-      val putToBox   = Stream.eval(F.delay(ios._3.uploadFile(ios._2, pathSplit._2)).void)
-      val writeBytes = _writeAllToOutputStream1(in, ios._1, blocker).stream ++ Stream.eval(F.delay(ios._1.close()))
-      putToBox concurrently writeBytes
+  @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
+  def listUnderlying(path: Path, fields: Array[String] = Array.empty): Stream[F, BoxPath] = {
+    def getRoot: Stream[F, (Option[String], Option[String])] =
+      BoxPath
+        .narrow(path)
+        .fold {
+          path.root.fold(Stream.emit(none[String] -> none[String]).covary[F]) { r =>
+            boxInfoAtPathStream(rootFolder, r :: Nil, Array.empty).head.flatMap {
+              case info if BoxStore.isFolder(info) =>
+                Stream.emit(r.some -> info.getID.some)
+            }
+          }
+        }(bp => Stream.emit(bp.root -> bp.rootId).covary[F])
+
+    Stream.eval(boxInfoAtPath(path, fields)).flatMap {
+      case Some(info) =>
+        getRoot.flatMap {
+          case (root, rootInfo) =>
+            info match {
+              case _ if BoxStore.isFile(info) =>
+                Stream.emit(new BoxPath(root, rootInfo, info.asInstanceOf[BoxFile#Info].asLeft))
+              case _ if BoxStore.isFolder(info) =>
+                Stream
+                  .fromBlockingIterator(
+                    blocker,
+                    BoxStore.blockingIterator(new BoxFolder(api, info.getID), fields)
+                  )
+                  .map {
+                    case i if BoxStore.isFile(i)   => i.asInstanceOf[BoxFile#Info].asLeft.some
+                    case i if BoxStore.isFolder(i) => i.asInstanceOf[BoxFolder#Info].asRight.some
+                    case _                         => none
+                  }
+                  .unNone
+                  .map(fileOrFolder => new BoxPath(root, rootInfo, fileOrFolder))
+              case _ => Stream.empty
+            }
+        }
+      case None => Stream.empty
+    }
+  }
+
+  private def boxFileAtPath(path: Path): F[Option[BoxFile]] =
+    boxInfoAtPath(path).map(_.flatMap {
+      case info if BoxStore.isFile(info) =>
+        Some(new BoxFile(api, info.getID))
+      case _ => None
+    })
+
+  private def boxInfoAtPath(path: Path, fields: Array[String] = Array.empty): F[Option[BoxItem#Info]] =
+    BoxPath.narrow(path).map(_.fileOrFolder.fold[BoxItem#Info](identity, identity)) match {
+      case None =>
+        boxInfoAtPathStream(rootFolder, BoxPath.rootFilePath(path), fields).compile.last
+      case someInfo =>
+        someInfo.pure
     }
 
-    val release: ((OutputStream, InputStream, BoxFolder)) => F[Unit] = ios =>
-      F.delay {
-        ios._2.close()
-        ios._1.close()
-      }
+  private def boxInfoAtPathStream(
+    parentFolder: BoxFolder,
+    pathParts: List[String],
+    fields: Array[String]
+  ): Stream[F, BoxItem#Info] =
+    pathParts match {
+      case Nil =>
+        Stream.empty
+      case head :: Nil =>
+        Stream
+          .fromBlockingIterator(blocker, BoxStore.blockingIterator(parentFolder, fields))
+          .find(_.getName.equalsIgnoreCase(head))
+      case head :: tail =>
+        Stream
+          .fromBlockingIterator(blocker, BoxStore.blockingIterator(parentFolder, Array.empty))
+          .find(info => BoxStore.isFolder(info) && info.getName.equalsIgnoreCase(head))
+          .flatMap(info => boxInfoAtPathStream(new BoxFolder(api, info.getID), tail, fields))
+    }
 
-    Stream.bracket(init)(release).flatMap(consume)
-  }
-
-  /**
-    * Moves file from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
-    *
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
-    */
-  override def move(src: Path, dst: Path): F[Unit] = F.delay {
-    boxFileAtPath(src)
-      .foreach(file => {
-        val dstPath = splitPath(dst)
-        val folder  = putFolderAtPath(rootFolder, dstPath._1)
-        file.move(folder, dstPath._2)
-      })
-  }
-
-  /**
-    * Copies file from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
-    *
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
-    */
-  override def copy(src: Path, dst: Path): F[Unit] = F.delay {
-    boxFileAtPath(src)
-      .foreach(file => {
-        val dstPath = splitPath(dst)
-        val folder  = putFolderAtPath(rootFolder, dstPath._1)
-        file.copy(folder, dstPath._2)
-      })
-  }
-
-  /**
-    * Remove file for given path.
-    *
-    * @param path to remove
-    * @return F[Unit]
-    */
-  override def remove(path: Path): F[Unit] = F.delay {
-    boxFileAtPath(path).foreach(_.delete())
+  private def putFolderAtPath(parentFolder: BoxFolder, parts: List[String]): F[BoxFolder] = parts match {
+    case Nil => parentFolder.pure[F]
+    case head :: tail =>
+      Stream
+        .fromBlockingIterator(blocker, BoxStore.blockingIterator(parentFolder, Array.empty))
+        .find(_.getName.equalsIgnoreCase(head))
+        .compile
+        .last
+        .flatMap[BoxFolder] {
+          case Some(info) if BoxStore.isFolder(info) =>
+            new BoxFolder(api, info.getID).pure[F]
+          case Some(_) =>
+            F.raiseError(
+              new IllegalArgumentException(
+                s"Can't create Folder '$head' along path - File with this name already exists"
+              )
+            )
+          case None =>
+            blocker.delay(parentFolder.createFolder(head).getResource)
+        }
+        .flatMap(putFolderAtPath(_, tail))
   }
 }
 
@@ -260,4 +225,24 @@ object BoxStore {
     rootFolderId: String,
     blocker: Blocker
   )(implicit F: Concurrent[F], CS: ContextShift[F]): BoxStore[F] = new BoxStore(api, rootFolderId, blocker)
+
+  private val fileResourceType: String   = BoxResource.getResourceType(classOf[BoxFile])
+  private val folderResourceType: String = BoxResource.getResourceType(classOf[BoxFolder])
+
+  private val requiredFields = Array(
+    "type",
+    "id",
+    "name",
+    "size",
+    "modified_at",
+    "path_collection"
+  )
+
+  private def blockingIterator(folder: BoxFolder, fields: Array[String]): Iterator[BoxItem#Info] =
+    folder.getChildren((fields ++ requiredFields).distinct: _*).iterator().asScala
+
+  private def isFile(info: BoxItem#Info): Boolean = info.getType == BoxStore.fileResourceType
+
+  private def isFolder(info: BoxItem#Info): Boolean = info.getType == BoxStore.folderResourceType
+
 }

@@ -17,7 +17,6 @@ package blobstore
 package fs
 
 import java.nio.file.{Files, Paths, Path => NioPath}
-import java.util.Date
 
 import scala.jdk.CollectionConverters._
 import cats.implicits._
@@ -28,7 +27,7 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
   extends Store[F] {
   val absRoot: String = fsroot.toAbsolutePath.normalize.toString
 
-  override def list(path: Path): fs2.Stream[F, Path] = {
+  override def list(path: Path): Stream[F, Path] = {
     val isDir  = Stream.eval(F.delay(Files.isDirectory(path)))
     val isFile = Stream.eval(F.delay(Files.exists(path)))
 
@@ -36,28 +35,27 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
       .eval(F.delay(Files.list(path)))
       .flatMap(x => Stream.fromIterator(x.iterator.asScala))
       .evalMap(x =>
-        F.delay(
-          Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "")).copy(
-            size = Option(Files.size(x)),
-            isDir = Files.isDirectory(x),
-            lastModified = Option(new Date(Files.getLastModifiedTime(path).toMillis))
-          )
-        )
+        F.delay {
+          val dir = Files.isDirectory(x)
+          Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "") ++ (if (dir) "/" else ""))
+            .withSize(Option(Files.size(x)), reset = false)
+            .withLastModified(Option(Files.getLastModifiedTime(path).toInstant), reset = false)
+            .withIsDir(Option(dir), reset = false)
+        }
       )
 
-    val file = fs2.Stream.eval {
+    val file = Stream.eval {
       F.delay {
-        path.copy(
-          size = Option(Files.size(path)),
-          lastModified = Option(new Date(Files.getLastModifiedTime(path).toMillis))
-        )
+        path
+          .withSize(Option(Files.size(path)), reset = false)
+          .withLastModified(Option(Files.getLastModifiedTime(path).toInstant), reset = false)
       }
     }
 
     isDir.ifM(files, isFile.ifM(file, Stream.empty.covaryAll[F, Path]))
   }
 
-  override def get(path: Path, chunkSize: Int): fs2.Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
+  override def get(path: Path, chunkSize: Int): Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
 
   override def put(path: Path): Pipe[F, Byte, Unit] = { in =>
     val mkdir = Stream.eval(F.delay(Files.createDirectories(_toNioPath(path).getParent)).as(true))
@@ -85,8 +83,11 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
     ()
   }
 
-  implicit private def _toNioPath(path: Path): NioPath =
-    Paths.get(absRoot, path.root, path.key)
+  implicit private def _toNioPath(path: Path): NioPath = {
+    val withRoot = path.root.fold(path.pathFromRoot)(path.pathFromRoot.prepend)
+    val withName = path.fileName.fold(withRoot)(withRoot.append)
+    Paths.get(absRoot, withName.toList: _*)
+  }
 
 }
 

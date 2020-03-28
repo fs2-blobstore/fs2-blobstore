@@ -6,13 +6,13 @@ import java.util.Properties
 import blobstore.Store
 import cats.effect.IO
 import fs2.Stream
-import com.jcraft.jsch.{ChannelSftp, JSch}
+import com.jcraft.jsch.{ChannelSftp, JSch, Session}
 
 /**
   * sftp-no-chroot-container doesn't map user's home directory to "/". User's instead land in "/home/<username>/"
   */
 class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
-  override val session = IO {
+  override val session: IO[Session] = IO {
     val jsch = new JSch()
 
     val session = jsch.getSession("blob", "sftp-no-chroot", 22)
@@ -45,6 +45,7 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
 
     val storeRead = store.get(filePath, 1024).through(fs2.text.utf8Decode).compile.toList
     val is = IO {
+      @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
       val ch = s.openChannel("sftp").asInstanceOf[ChannelSftp]
       ch.connect()
       ch.get(s"/home/blob/$filePath")
