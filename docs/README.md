@@ -184,20 +184,19 @@ object FileStoreExample extends IOApp {
 ### S3Store
 
 [S3Store](s3/src/main/scala/blobstore/s3/S3Store.scala) backed by 
-[AWS S3](https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/examples-s3.html). 
-It requires a computation resulting in a `TransferManager`. The resulting stream shuts down the allocated
-`TransferManager` on stream completion:
+[AWS SDK V2](https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/welcome.html). It requires a configured instance of `S3AsyncClient`:
    
 ```scala mdoc
+import software.amazon.awssdk.services.s3.S3AsyncClient
 import blobstore.s3.S3Store
-import com.amazonaws.services.s3.transfer.TransferManagerBuilder
 
 object S3Example extends IOApp {
-  override def run(args: List[String]): IO[ExitCode] = Blocker[IO].use { blocker =>
-    val tm = IO(TransferManagerBuilder.standard().build())
-    val store: fs2.Stream[IO, S3Store[IO]] = S3Store(transferManager = tm, encrypt = false, blocker = blocker)
-    
-    store.flatMap(_.list(Path("s3://foo/bar/"))).compile.toList.as(ExitCode.Success)
+  override def run(args: List[String]): IO[ExitCode] = {
+    val s3 = S3AsyncClient.builder().build()
+    S3Store[IO](s3).flatMap{store =>
+        store.list(Path("s3://foo/bar/")).compile.toList
+        // ...
+    }.attempt.map(_.fold(_ => ExitCode.Error, _ => ExitCode.Success))
   }
 }
 ```
