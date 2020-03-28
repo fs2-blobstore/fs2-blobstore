@@ -23,7 +23,7 @@ class BoxPath private[box] (
   }
   val fileName: Option[String]      = fileOrFolder.fold(file => Some(file.getName), _ => None)
   val size: Option[Long]            = fileOrFolder.fold(file => Option(file.getSize), _ => None)
-  val isDir: Option[Boolean]        = Some(fileOrFolder.fold(_ => false, _ => true))
+  val isDir: Option[Boolean]        = Some(fileOrFolder.isRight)
   val lastModified: Option[Instant] = Option(fileOrFolder.fold(_.getModifiedAt, _.getModifiedAt)).map(_.toInstant)
 }
 

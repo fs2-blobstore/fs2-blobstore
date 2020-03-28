@@ -58,13 +58,13 @@ trait Path {
     *          p.fileName == Some("file")
     *
     * @note Some blob stores (s3, gcs) having flat namespaces allow trailing slashes in file names.
-    *       @example File 'gs://bucket/this/is/flat/name/' in underlying storage has flat name "this/is/flat/name/".
-    *                This would be represented as Path:
-    *                val p: Path = ???
-    *                p.pathFromRoot == List("this", "is", "flat", "name")
-    *                p.fileName == None
-    *                p.isDir == Some(true)
-    *       @see [[isDir]]
+    * @example File 'gs://bucket/this/is/flat/name/' in underlying storage has flat name "this/is/flat/name/".
+    *          This would be represented as Path:
+    *          val p: Path = ???
+    *          p.pathFromRoot == List("this", "is", "flat", "name")
+    *          p.fileName == None
+    *          p.isDir == Some(true)
+    * @see [[isDir]]
     */
   def fileName: Option[String]
 

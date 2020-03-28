@@ -129,7 +129,7 @@ trait StoreOps {
       * This is especially useful when transferring content into S3Store that requires to know content
       * size before starting content upload.
       *
-      * This method will list items from srcPath, get the file size, put into dstStore with teh give size. If
+      * This method will list items from srcPath, get the file size and put into dstStore with the given size. If
       * listing contents result in nested directories it will copy files inside dirs recursively.
       *
       * @param dstStore destination store
