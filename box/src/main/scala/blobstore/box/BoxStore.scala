@@ -29,7 +29,7 @@ final class BoxStore[F[_]](
   api: BoxAPIConnection,
   rootFolderId: String,
   blocker: Blocker,
-  largeFileThreshold: Long = 50 * 1024 * 1024
+  largeFileThreshold: Long = 50L * 1024L * 1024L
 )(
   implicit F: Concurrent[F],
   CS: ContextShift[F]
