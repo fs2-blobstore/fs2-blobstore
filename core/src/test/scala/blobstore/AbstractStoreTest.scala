@@ -97,9 +97,9 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, dir))
 
-    val exp = paths.map(_.key).toSet
+    val exp = paths.map(_.filePath).toSet
 
-    store.listAll(dir).unsafeRunSync().map(_.key).toSet must be(exp)
+    store.listAll(dir).unsafeRunSync().map(_.filePath).toSet must be(exp)
 
     val io: IO[List[Unit]] = paths.map(store.remove).sequence
     io.unsafeRunSync()
@@ -117,11 +117,11 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       .map(i => s"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
-    val exp = paths.map(p => s"${p.key}").toSet
+    val exp = paths.map(p => s"${p.filePath}").toSet
 
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
-    val pathsListed = store.listAll(rootDir).unsafeRunSync().map(_.key).toSet.toString()
+    val pathsListed = store.listAll(rootDir).unsafeRunSync().map(_.filePath).toSet.toString()
     exp.foreach(s => pathsListed must include(s))
 
     val io: IO[List[Unit]] = paths.map(store.remove).sequence
@@ -129,15 +129,13 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "list files and directories correctly" in {
-    import cats.implicits._
-
     val dir: Path = dirPath("list-dirs")
     val paths     = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
-    val exp       = paths.map(_.key.replaceFirst("/file-1.txt", "")).toSet
+    val exp       = paths.map(_.filePath.replaceFirst("/file-1.txt", "")).toSet
 
     val ls = store.listAll(dir).unsafeRunSync()
-    ls.map(_.key).toSet must be(exp)
-    ls.find(_.isDir).map(_.filename) must be(Some("subdir/"))
+    ls.map(_.filePath).toSet must be(exp)
+    ls.find(_.isDir.getOrElse(false)).map(_.lastSegment) must be(Some("subdir/"))
 
     val io: IO[List[Unit]] = paths.map(store.remove).sequence
     io.unsafeRunSync()
@@ -147,7 +145,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     val srcPath = writeFile(transferStore, dirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
 
     val dstDir  = dirPath("transfer-single-file-to-dir-dst")
-    val dstPath = dstDir / srcPath.filename
+    val dstPath = dstDir / srcPath.lastSegment
 
     val test = for {
       i <- transferStore.transferTo(store, srcPath, dstDir)
@@ -205,11 +203,11 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       }.sequence
       c2 <- paths.map { p =>
         store
-          .getContents(dstDir / p.filename)
-          .handleError(e => s"FAILED store.getContents ${dstDir / p.filename}: ${e.getMessage}")
+          .getContents(dstDir / p.lastSegment)
+          .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
       }.sequence
       _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
-      _ <- paths.map(p => store.remove(dstDir / p.filename).handleError(_ => ())).sequence
+      _ <- paths.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence
     } yield {
       i must be(10)
       c1 must be(c2)
@@ -240,18 +238,18 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       c2 <- {
         paths1.map { p =>
           store
-            .getContents(dstDir / p.filename)
-            .handleError(e => s"FAILED store.getContents ${dstDir / p.filename}: ${e.getMessage}")
+            .getContents(dstDir / p.lastSegment)
+            .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
         } ++
           paths2.map { p =>
             store
-              .getContents(dstDir / "subdir" / p.filename)
-              .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.filename}: ${e.getMessage}")
+              .getContents(dstDir / "subdir" / p.lastSegment)
+              .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
           }
       }.sequence
       _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
-      _ <- paths1.map(p => store.remove(dstDir / p.filename).handleError(_ => ())).sequence
-      _ <- paths2.map(p => store.remove(dstDir / "subdir" / p.filename).handleError(_ => ())).sequence
+      _ <- paths1.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence
+      _ <- paths2.map(p => store.remove(dstDir / "subdir" / p.lastSegment).handleError(_ => ())).sequence
     } yield {
       i must be(10)
       c1.mkString("\n") must be(c2.mkString("\n"))
@@ -329,12 +327,12 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     test.unsafeRunSync()
   }
 
-  def dirPath(name: String): Path = Path(s"$root/test-$testRun/$name/")
+  def dirPath(name: String): Path = Path(s"$root/test-$testRun/$name/").withIsDir(Some(true), reset = false)
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
   def writeFile(store: Store[IO], tmpDir: Path)(filename: String): Path = {
-    val path = tmpDir / filename
+    val path = (tmpDir / filename).withIsDir(Some(false), reset = false)
     store.put(contents(filename), path).unsafeRunSync()
     path
   }

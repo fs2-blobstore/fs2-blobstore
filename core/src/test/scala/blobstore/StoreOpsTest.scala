@@ -7,7 +7,7 @@ import java.util.concurrent.Executors
 import cats.effect.{Blocker, IO}
 import cats.effect.laws.util.TestInstances
 import cats.implicits._
-import fs2.Pipe
+import fs2.{Pipe, Stream}
 import org.scalatest.Assertion
 import org.scalatest.flatspec.AnyFlatSpec
 import implicits._
@@ -26,7 +26,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
     val bytes: Array[Byte] = "AAAAAAAAAA".getBytes(Charset.forName("utf-8"))
     val store              = DummyStore(_.size must be(Some(bytes.length)))
 
-    fs2.Stream
+    Stream
       .emits(bytes)
       .covary[IO]
       .through(store.bufferedPut(Path("path/to/file.txt"), blocker))
@@ -41,11 +41,11 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
     val bytes = "hello".getBytes(Charset.forName("utf-8"))
     val store = DummyStore(_.size must be(Some(bytes.length)))
 
-    fs2.Stream
+    Stream
       .bracket(IO(Files.createTempFile("test-file", ".bin"))) { p => IO(p.toFile.delete).void }
       .flatMap { p =>
-        fs2.Stream.emits(bytes).covary[IO].through(fs2.io.file.writeAll(p, blocker)).drain ++
-          fs2.Stream.eval(store.put(p, Path("path/to/file.txt"), blocker))
+        Stream.emits(bytes).covary[IO].through(fs2.io.file.writeAll(p, blocker)).drain ++
+          Stream.eval(store.put(p, Path("path/to/file.txt"), blocker))
       }
       .compile
       .drain
@@ -53,6 +53,25 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
     store.buf.toArray must be(bytes)
   }
 
+  it should "download a file to a nio path" in {
+    val bytes = "hello".getBytes(Charset.forName("utf-8"))
+    val store = DummyStore(_ => succeed)
+    val path  = Path("path/to/file.txt")
+    Stream.emits(bytes).through(store.put(path)).compile.drain.unsafeRunSync()
+
+    Stream
+      .bracket(IO(Files.createTempFile("test-file", ".bin")))(p => IO(p.toFile.delete).void)
+      .flatMap { nioPath =>
+        Stream.eval(store.get(path, nioPath, blocker)) *> Stream.eval {
+          IO {
+            Files.readAllBytes(nioPath) mustBe bytes
+          }
+        }
+      }
+      .compile
+      .drain
+      .unsafeRunSync()
+  }
 }
 
 final case class DummyStore(check: Path => Assertion) extends Store[IO] {
@@ -61,12 +80,12 @@ final case class DummyStore(check: Path => Assertion) extends Store[IO] {
     check(path)
     in => {
       buf.appendAll(in.compile.toVector.unsafeRunSync())
-      fs2.Stream.emit(())
+      Stream.emit(())
     }
   }
-  override def list(path: Path): fs2.Stream[IO, Path]                = ???
-  override def get(path: Path, chunkSize: Int): fs2.Stream[IO, Byte] = ???
-  override def move(src: Path, dst: Path): IO[Unit]                  = ???
-  override def copy(src: Path, dst: Path): IO[Unit]                  = ???
-  override def remove(path: Path): IO[Unit]                          = ???
+  override def get(path: Path, chunkSize: Int): Stream[IO, Byte] = Stream.emits(buf)
+  override def list(path: Path): Stream[IO, Path]                = ???
+  override def move(src: Path, dst: Path): IO[Unit]              = ???
+  override def copy(src: Path, dst: Path): IO[Unit]              = ???
+  override def remove(path: Path): IO[Unit]                      = ???
 }
