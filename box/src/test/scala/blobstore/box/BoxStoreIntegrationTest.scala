@@ -2,7 +2,9 @@ package blobstore
 package box
 
 import cats.effect.IO
-import com.box.sdk.BoxAPIConnection
+import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder}
+import blobstore.implicits._
+import cats.implicits._
 
 /**
   * Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
@@ -27,4 +29,32 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
 
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val root: String = "BoxStoreTest"
+
+  behavior of "BoxStore"
+
+  it should "expose underlying metadata" in {
+    val dirP = dirPath("expose-underlying")
+
+    writeFile(store, dirP)("abc.txt")
+    val subFolderFile = writeFile(store, dirP / "subfolder")("cde.txt")
+
+    @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
+    val paths = store
+      .asInstanceOf[BoxStore[IO]]
+      .listUnderlying(dirP, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS)
+      .compile
+      .toList
+      .unsafeRunSync()
+
+    paths.map(_.fileOrFolder).foreach {
+      case Left(file)    => Option(file.getCommentCount) mustBe defined
+      case Right(folder) => Option(folder.getIsWatermarked) mustBe defined
+    }
+    (subFolderFile :: paths).map(store.remove).sequence.unsafeRunSync()
+  }
+
+  override def afterAll(): Unit = {
+    store.removeAll(Path(s"$root/test-$testRun/")).unsafeRunSync()
+    super.afterAll()
+  }
 }

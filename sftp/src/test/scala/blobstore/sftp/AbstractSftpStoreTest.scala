@@ -22,12 +22,15 @@ import cats.effect.IO
 import cats.effect.concurrent.MVar
 import com.jcraft.jsch.{ChannelSftp, Session, SftpException}
 
+import blobstore.implicits._
+import cats.implicits._
+
 abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
 
   def session: IO[Session]
 
   private val rootDir                    = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
-  val mVar                               = MVar.empty[IO, ChannelSftp].unsafeRunSync()
+  protected val mVar                     = MVar.empty[IO, ChannelSftp].unsafeRunSync()
   override lazy val store: SftpStore[IO] = new SftpStore[IO]("", session.unsafeRunSync(), blocker, mVar, None, 10000)
   override val root: String              = "sftp_tests"
 
@@ -56,12 +59,10 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
     val p = store.list(path).compile.toList
 
     val result = p.unsafeRunSync()
-    result.map(_.key) must contain theSameElementsInOrderAs List("sftp_tests")
+    result.map(_.filePath) must contain theSameElementsInOrderAs List("sftp_tests")
   }
 
   it should "list more than 64 (default queue/buffer size) keys" in {
-    import blobstore.implicits._
-    import cats.implicits._
 
     val dir: Path = dirPath("list-more-than-64")
 
@@ -69,9 +70,9 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, dir))
 
-    val exp = paths.map(_.key).toSet
+    val exp = paths.map(_.filePath).toSet
 
-    store.listAll(dir).unsafeRunSync().map(_.key).toSet must be(exp)
+    store.listAll(dir).unsafeRunSync().map(_.filePath).toSet must be(exp)
 
     val io: IO[List[Unit]] = paths.map(store.remove).sequence
     io.unsafeRunSync()

@@ -11,7 +11,8 @@ inThisBuild(
       Developer("jgogstad", "Jostein Gogstad", "", url("https://github.com/jgogstad"))
     ),
     homepage := Some(url("https://github.com/fs2-blobstore/fs2-blobstore")),
-    startYear := Some(2018)
+    startYear := Some(2018),
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
   )
 )
 
