@@ -37,10 +37,10 @@ import scala.jdk.CollectionConverters._
   * @param sseAlgorithm - optional default SSE Algorithm to apply to all [[put]], [[move]] and [[copy]] operations.
   * @param defaultFullMetadata       – return full object metadata on [[list]], requires additional request per object.
   *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
-  *                                  This controls behaviour of [[list]] method from [[Store]] trait.
+  *                                  This controls behaviour of [[list]] method from Store trait.
   *                                  Use [[listUnderlying]] to control on per-invocation basis.
   * @param defaultTrailingSlashFiles - test if folders returned by [[list]] are files with trailing slashes in their names.
-  *                                  This controls behaviour of [[list]] method from [[Store]] trait.
+  *                                  This controls behaviour of [[list]] method from Store trait.
   *                                  Use [[listUnderlying]] to control on per-invocation basis.
   * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
   *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
