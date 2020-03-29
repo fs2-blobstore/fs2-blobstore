@@ -41,7 +41,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   val store: Store[IO]
   val root: String
 
-  val testRun: UUID = java.util.UUID.randomUUID()
+  val testRun: UUID            = java.util.UUID.randomUUID()
+  lazy val rootTestRun: String = s"$root/test-$testRun"
 
   behavior of "all stores"
   it should "put, list, get, remove keys" in {
@@ -327,7 +328,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     test.unsafeRunSync()
   }
 
-  def dirPath(name: String): Path = Path(s"$root/test-$testRun/$name/").withIsDir(Some(true), reset = false)
+  def dirPath(name: String): Path = Path(s"$rootTestRun/$name/").withIsDir(Some(true), reset = false)
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
@@ -338,7 +339,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   // remove dirs created by AbstractStoreTest
-  override def afterAll(): Unit = cleanup(transferStoreRootDir.resolve(s"$root/test-$testRun/"))
+  override def afterAll(): Unit = cleanup(transferStoreRootDir.resolve(rootTestRun))
 
   def cleanup(root: NioPath): Unit = {
 

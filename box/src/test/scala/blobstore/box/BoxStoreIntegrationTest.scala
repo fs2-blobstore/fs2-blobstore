@@ -1,10 +1,17 @@
 package blobstore
 package box
 
-import cats.effect.IO
-import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder}
+import java.io.{File, FileNotFoundException, FileReader}
+import java.time.{Instant, ZoneOffset}
+
 import blobstore.implicits._
+import cats.effect.IO
 import cats.implicits._
+import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnection, BoxFile, BoxFolder}
+import org.slf4j.LoggerFactory
+
+import scala.jdk.CollectionConverters._
+import scala.util.Try
 
 /**
   * Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
@@ -13,19 +20,68 @@ import cats.implicits._
 @IntegrationTest
 class BoxStoreIntegrationTest extends AbstractStoreTest {
 
-  // Your Box dev token. You are free to use a different way of instantiating your BoxAPIConnection,
-  // but be careful not to commit this information.
-  val boxDevToken = System.getenv("BOX_TEST_BOX_DEV_TOKEN")
+  private val log = LoggerFactory.getLogger(getClass)
 
-  // The root folder you want to operate under.
-  // Ideally this should be an isolated test folder that does not contain important files.
-  // You may risk overwriting or deleting files if you are running this on an existing directory.
-  val rootFolderId = System.getenv("BOX_TEST_ROOT_FOLDER_ID")
+  val BoxAppKey   = "BOX_TEST_BOX_APP_KEY"
+  val BoxDevToken = "BOX_TEST_BOX_DEV_TOKEN"
 
-  // This test simply uses a dev token to start a connection, but you can replace this with any BoxAPIConnection.
-  val api = new BoxAPIConnection(boxDevToken)
+  lazy val api: BoxAPIConnection = {
+    val fileCredentialName = sys.env.getOrElse(BoxAppKey, "box_appkey.json")
+    lazy val fileCredentials = Option(getClass.getClassLoader.getResource(fileCredentialName))
+      .toRight(new FileNotFoundException(fileCredentialName))
+      .toTry
+      .map(u => new FileReader(new File(u.toURI)))
+      .map(BoxConfig.readFrom)
+      .map(BoxDeveloperEditionAPIConnection.getAppEnterpriseConnection)
+      .flatTap(_ => Try(log.info(s"Authenticated with credentials file $fileCredentialName")))
 
-  override val store: Store[IO] = new BoxStore[IO](api, rootFolderId, blocker)
+    val devToken = sys.env
+      .get(BoxDevToken)
+      .toRight(new Exception(s"Environment variable not set: $BoxDevToken"))
+      .toTry
+      .map(new BoxAPIConnection(_))
+      .flatTap(_ => Try(log.info("Authenticated with dev token")))
+
+    devToken
+      .orElse(fileCredentials)
+      .adaptError {
+        case _ => new Exception(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey")
+      }
+      .get
+  }
+
+  lazy val rootFolder: BoxFolder#Info = {
+    val rootInfo = BoxFolder.getRootFolder(api).asScala.toList.collectFirst {
+      case f: BoxFolder#Info if f.getName == root => f
+    }
+
+    rootInfo match {
+      case Some(i) => i
+      case None    => fail(new Exception(s"Root folder not found: $root"))
+    }
+  }
+
+  override protected def beforeAll(): Unit = {
+    super.beforeAll()
+    val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
+
+    rootFolder.getResource
+      .getChildren(BoxFolder.ALL_FIELDS: _*)
+      .asScala
+      .toList
+      .filter(_.getCreatedAt.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))
+      .foreach {
+        case i: BoxFolder#Info =>
+          log.info(s"Deleting outdated test folder ${i.getName}")
+          Try(i.getResource.delete(true))
+        case i: BoxFile#Info =>
+          log.info(s"Deleting outdated test file ${i.getName}")
+          Try(i.getResource.delete())
+        case i => log.info(s"Ignoring old item $i")
+      }
+  }
+
+  override lazy val store: Store[IO] = BoxStore[IO](api, blocker)
 
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val root: String = "BoxStoreTest"
@@ -53,8 +109,4 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
     (subFolderFile :: paths).map(store.remove).sequence.unsafeRunSync()
   }
 
-  override def afterAll(): Unit = {
-    store.removeAll(Path(s"$root/test-$testRun/")).unsafeRunSync()
-    super.afterAll()
-  }
 }
