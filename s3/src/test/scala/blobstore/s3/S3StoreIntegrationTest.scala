@@ -23,6 +23,7 @@ import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Configuration}
 
 import scala.concurrent.{ExecutionContext, ExecutionException}
 
+@CiExclude
 @IntegrationTest
 class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances with Inside {
 

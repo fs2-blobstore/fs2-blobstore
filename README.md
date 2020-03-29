@@ -147,7 +147,7 @@ exercise as much of the store code as possible.
 
 Currently, tests for `BoxStore` are annotated with `@IntegrationTest` because we
 have not found a box docker image. To run `BoxStore` integration tests locally
-you need to provide env vars for `BOX_TEST_BOX_DEV_TOKEN` and `BOX_TEST_ROOT_FOLDER_ID`.
+you need to provide `BOX_TEST_BOX_DEV_TOKEN`.
 
 Run box tests with:
 
@@ -261,7 +261,7 @@ object BoxExample extends IOApp {
   
   override def run(args: List[String]): IO[ExitCode] = Blocker[IO].use { blocker =>
     val api = new BoxAPIConnection("myDeveloperToken")
-    val store: Store[IO] = BoxStore[IO](api, "rootFolderId", blocker)
+    val store: Store[IO] = BoxStore[IO](api, blocker)
   
     store.list(Path(".")).compile.toList.as(ExitCode.Success)
   }

@@ -39,7 +39,6 @@ lazy val docs = (project in file("project-docs"))
     mdocVariables := Map(
       "VERSION" -> version.value
     ),
-    mdocOut := (baseDirectory in ThisBuild).value,
     skip in publish := true,
     Compile / scalacOptions -= "-Ywarn-dead-code",
     mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94

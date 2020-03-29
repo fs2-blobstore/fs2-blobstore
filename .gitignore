@@ -4,7 +4,6 @@ tmp
 *.swp
 *.swo
 project.vim
-tags
 .lib
 *~
 *#
@@ -17,3 +16,6 @@ test-output
 .metals
 .bloop
 project/metals.sbt
+
+# Project specific
+box_appkey.json

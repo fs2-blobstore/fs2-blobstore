@@ -18,8 +18,8 @@ package box
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 
-import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift}
+import cats.syntax.all._
 import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
 import fs2.{Pipe, Stream}
 
@@ -27,8 +27,8 @@ import scala.jdk.CollectionConverters._
 
 final class BoxStore[F[_]](
   api: BoxAPIConnection,
-  rootFolderId: String,
   blocker: Blocker,
+  rootFolderId: String,
   largeFileThreshold: Long = 50L * 1024L * 1024L
 )(
   implicit F: Concurrent[F],
@@ -222,9 +222,11 @@ final class BoxStore[F[_]](
 object BoxStore {
   def apply[F[_]](
     api: BoxAPIConnection,
-    rootFolderId: String,
-    blocker: Blocker
-  )(implicit F: Concurrent[F], CS: ContextShift[F]): BoxStore[F] = new BoxStore(api, rootFolderId, blocker)
+    blocker: Blocker,
+    rootFolderId: String = RootFolderId
+  )(implicit F: Concurrent[F], CS: ContextShift[F]): BoxStore[F] = new BoxStore(api, blocker, rootFolderId)
+
+  val RootFolderId = "0"
 
   private val fileResourceType: String   = BoxResource.getResourceType(classOf[BoxFile])
   private val folderResourceType: String = BoxResource.getResourceType(classOf[BoxFolder])
