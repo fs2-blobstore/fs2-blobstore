@@ -1,0 +1,2 @@
+ignore:
+  - "**/S3MetaInfo.scala"
