@@ -45,7 +45,7 @@ libraryDependencies ++= Seq(
 
 `core` module has minimal dependencies and only provides `FileStore` implementation.
 `sftp` module provides `SftpStore` and depends on [Jsch client](http://www.jcraft.com/jsch/). 
-`s3` module provides `S3Store` and depends on [AWS S3 SDK](https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/examples-s3.html)
+`s3` module provides `S3Store` and depends on [AWS S3 SDK V2](https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/)
 `gcs` module provides `GcsStore` and depends on [Google Cloud Storage SDK](https://github.com/googleapis/java-storage)
 
 
@@ -76,13 +76,22 @@ into it to upload data to storage.
 
 ### Path Abstraction
 
-`blobstore.Path` is the representation of `key` in the key/value store. The key 
-representation is based on S3 that has a `root` (or bucket) and a `key` string.
+[Path](core/src/main/scala/blobstore/Path.scala) is an abstraction for referencing files and folders in Stores:
 
-When functions in the `Store` interface that receive a `Path` should assume that only
-root and key values are set, there is no guarantee that the other attributes of `Path`
-would be filled: size, isDir, lastModified. On the other hand, when a `Store` implements
-the list function, it is expected that all 3 fields will be present in the response.
+```scala
+trait Path {
+  def root: Option[String]
+  def pathFromRoot: cats.data.Chain[String]
+  def fileName: Option[String]
+  def size: Option[Long]
+  def isDir: Option[Boolean]
+  def lastModified: Option[java.time.Instant]
+}
+```
+ 
+Usually concrete store would have specific implementation of this trait exposing some store-specific metadata, but all stores should accept any implementation of `Path`. 
+Store might apply some optimizations given its specific `Path`, although it's not a requirement.
+There is a default most generic implementation of `Path` – [BasePath](core/src/main/scala/blobstore/BasePath.scala), it's used for instance when path is constructed from string.    
 
 By importing implicit `PathOps` into the scope you can make use of path composition `/`
 and `filename` function that returns the substring of the path's key after the last path
@@ -96,7 +105,7 @@ separators when referring to filesystem paths.
 `import blobstore.implicits._`
 
 [StoreOps](core/src/main/scala/blobstore/StoreOps.scala) and 
-[PathOps](core/src/main/scala/blobstore/Path.scala) provide functionality on 
+[PathOps](core/src/main/scala/blobstore/PathOps.scala) provide functionality on 
 both `Store` and `Path` for commonly performed tasks (i.e. upload/download a 
 file from/to local filesystem, collect all returned paths when listing, composing 
 paths or extracting filename of the path).
