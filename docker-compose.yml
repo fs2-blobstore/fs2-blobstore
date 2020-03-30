@@ -31,6 +31,14 @@ services:
 
     command: "server --compat /data"
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+
+    volumes:
+      - ./tmp/azure-store-root:/data
+
+    command: "azurite-blob --blobHost 0.0.0.0 --loose"
+
   sbt:
     image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
 
@@ -47,3 +55,4 @@ services:
       - sftp:sftp-container
       - sftp-no-chroot:sftp-no-chroot
       - minio:minio-container
+      - azurite:azurite-container

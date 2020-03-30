@@ -21,6 +21,7 @@
   - [S3Store](#s3store)
   - [GcsStore](#gcsstore)
   - [SftpStore](#sftpstore)
+  - [AzureStore](#azurestore)
   - [BoxStore](#boxstore)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -36,10 +37,11 @@ fs2-blobstore is deployed to maven central, add to build.sbt:
 
 ```sbtshell
 libraryDependencies ++= Seq(
-  "com.github.fs2-blobstore" %% "core" % "@VERSION@",
-  "com.github.fs2-blobstore" %% "sftp" % "@VERSION@",
-  "com.github.fs2-blobstore" %% "s3"   % "@VERSION@",
-  "com.github.fs2-blobstore" %% "gcs"  % "@VERSION@",
+  "com.github.fs2-blobstore" %% "core"  % "@VERSION@",
+  "com.github.fs2-blobstore" %% "sftp"  % "@VERSION@",
+  "com.github.fs2-blobstore" %% "s3"    % "@VERSION@",
+  "com.github.fs2-blobstore" %% "gcs"   % "@VERSION@",
+  "com.github.fs2-blobstore" %% "azure" % "@VERSION@",
 )
 ```
 
@@ -47,7 +49,7 @@ libraryDependencies ++= Seq(
 `sftp` module provides `SftpStore` and depends on [Jsch client](http://www.jcraft.com/jsch/). 
 `s3` module provides `S3Store` and depends on [AWS S3 SDK V2](https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/)
 `gcs` module provides `GcsStore` and depends on [Google Cloud Storage SDK](https://github.com/googleapis/java-storage)
-
+`azure` module provides `AzureStore` and depends on [Azure Storage SDK Client library for Java](https://docs.microsoft.com/en-us/java/api/overview/azure/storage)
 
 ## Internals
 ### Store Abstraction
@@ -71,7 +73,7 @@ def put(path: Path): Pipe[F, Byte, Unit]
 
 Note that `list` and `get` are modeled as streams since they are reading 
 (potentially) very large amounts of data from storage, while `put` is 
-represented as a sink of byte so that any stream of bytes can by piped 
+represented as a sink of byte so that any stream of bytes can be piped 
 into it to upload data to storage.
 
 ### Path Abstraction
@@ -145,13 +147,13 @@ docker-compose run --rm sbt "testOnly * -- -l blobstore.IntegrationTest"
 ```
 
 This will start a [minio](https://www.minio.io/docker.html) (Amazon S3 compatible 
-object storage server) and SFTP containers and run all tests not annotated as 
+object storage server), [Azurite](https://github.com/Azure/Azurite) (A lightweight server clone of Azure Storage) and SFTP containers and run all tests not annotated as 
 `@IntegrationTest`. GCS is tested against the in-memory 
 [`local Storage`](https://github.com/googleapis/google-cloud-java/blob/master/TESTING.md#testing-code-that-uses-storage)
 
-Yes, we understand `SftpStoreTest` and `S3StoreTest` are also _integration tests_ 
+Yes, we understand `SftpStoreTest`, `AzureStoreTest` and `S3StoreTest` are also _integration tests_ 
 because they connect to external services, but we don't mark them as such because 
-we found these containers that allow to run them along unit tests and we want to 
+we found these containers that allow to run them along unit tests, and we want to 
 exercise as much of the store code as possible.  
 
 Currently, tests for `BoxStore` are annotated with `@IntegrationTest` because we
@@ -201,7 +203,12 @@ import blobstore.s3.S3Store
 
 object S3Example extends IOApp {
   override def run(args: List[String]): IO[ExitCode] = {
-    val s3 = S3AsyncClient.builder().build()
+    val s3 = {
+        val builder = S3AsyncClient.builder()
+        // Configure client
+        // ...
+        builder.build()
+    }
     S3Store[IO](s3).flatMap{store =>
         store.list(Path("s3://foo/bar/")).compile.toList
         // ...
@@ -250,6 +257,30 @@ object SftpExample extends IOApp {
     val store: fs2.Stream[IO, SftpStore[IO]] = SftpStore("", session, blocker)
 
     store.flatMap(_.list(Path("."))).compile.toList.as(ExitCode.Success)
+  }
+}
+```
+
+### AzureStore
+
+[AzureStore](azure/src/main/scala/blobstore/azure/AzureStore.scala) backed by [Azure Storage Blob client library for Java](https://github.com/Azure/azure-sdk-for-java/tree/master/sdk/storage/azure-storage-blob). It requires a configured instance of `BlobServiceAsyncClient`:
+
+```scala mdoc
+import com.azure.storage.blob.BlobServiceClientBuilder
+import blobstore.azure.AzureStore
+
+object AzureExample extends IOApp {
+  override def run(args: List[String]): IO[ExitCode] = {
+    val azure = {
+        val builder = new BlobServiceClientBuilder()
+        // Configure client
+        // ...
+        builder.buildAsyncClient()
+    }
+    AzureStore[IO](azure).flatMap{store =>
+        store.list(Path("container://foo/bar/")).compile.toList
+        // ...
+    }.attempt.map(_.fold(_ => ExitCode.Error, _ => ExitCode.Success))
   }
 }
 ```
