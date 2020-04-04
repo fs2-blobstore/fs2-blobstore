@@ -11,8 +11,6 @@ import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCrede
 import software.amazon.awssdk.auth.signer.AwsS3V4Signer
 import software.amazon.awssdk.core.client.config.{ClientOverrideConfiguration, SdkAdvancedClientOption}
 import software.amazon.awssdk.services.s3.model.{
-  BucketAlreadyOwnedByYouException,
-  CreateBucketRequest,
   Delete,
   DeleteObjectsRequest,
   ListObjectsV2Request,
@@ -21,23 +19,20 @@ import software.amazon.awssdk.services.s3.model.{
 }
 import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Configuration}
 
-import scala.concurrent.{ExecutionContext, ExecutionException}
+import scala.concurrent.ExecutionContext
 
-@CiExclude
 @IntegrationTest
 class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances with Inside {
 
   // Your S3 access key. You are free to use a different way of instantiating your AmazonS3,
   // but be careful not to commit this information.
-  val s3AccessKey: String = System.getenv("S3_TEST_ACCESS_KEY")
+  val s3AccessKey: String = sys.env("S3_TEST_ACCESS_KEY")
 
   // Your S3 secret key. You are free to use a different way of instantiating your AmazonS3,
   // but be careful not to commit this information.
-  val s3SecretKey: String = System.getenv("S3_TEST_SECRET_KEY")
+  val s3SecretKey: String = sys.env("S3_TEST_SECRET_KEY")
 
-  // Your S3 bucket name.
-
-  val s3Bucket: String = System.getenv("S3_TEST_BUCKET")
+  val s3Bucket: String = sys.env("S3_TEST_BUCKET")
 
   val testRun = java.util.UUID.randomUUID
 
@@ -88,17 +83,6 @@ class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAft
     store.remove(filePath).unsafeRunSync()
 
     store.list(dir).compile.toList.unsafeRunSync() mustBe empty
-  }
-
-  override def beforeAll(): Unit = {
-    super.beforeAll()
-    try {
-      client.createBucket(CreateBucketRequest.builder().bucket(s3Bucket).build()).get()
-    } catch {
-      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
-      // noop
-    }
-    ()
   }
 
   override protected def afterAll(): Unit = {
