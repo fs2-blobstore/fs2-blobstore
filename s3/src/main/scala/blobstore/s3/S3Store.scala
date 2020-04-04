@@ -17,9 +17,9 @@ package blobstore
 package s3
 
 import java.nio.ByteBuffer
-import java.util.concurrent.{CancellationException, CompletableFuture, CompletionException}
+import java.util.concurrent.CompletableFuture
 
-import cats.effect.{Concurrent, ConcurrentEffect, ExitCase, Resource, Sync}
+import cats.effect.{ConcurrentEffect, ExitCase, Resource, Sync}
 import cats.syntax.all._
 import cats.instances.string._
 import cats.instances.list._
@@ -28,6 +28,8 @@ import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model._
+
+import util.liftJavaFuture
 
 import scala.jdk.CollectionConverters._
 
@@ -80,7 +82,7 @@ final class S3Store[F[_]](
             ()
           }
         }
-      Stream.eval(S3Store.liftJavaFuture(F.delay(s3.getObject[Stream[F, Byte]](request, transformer)))).flatten
+      Stream.eval(liftJavaFuture(F.delay(s3.getObject[Stream[F, Byte]](request, transformer)))).flatten
   }
 
   override def put(path: Path): Pipe[F, Byte, Unit] =
@@ -118,7 +120,7 @@ final class S3Store[F[_]](
             .destinationKey(dstKey)
             .build()
         }
-        S3Store.liftJavaFuture(F.delay(s3.copyObject(request))).void
+        liftJavaFuture(F.delay(s3.copyObject(request))).void
       }
     } yield ()
 
@@ -126,7 +128,7 @@ final class S3Store[F[_]](
     case None => S3Store.missingRootError(s"Unable to remove '$path'").raiseError[F, Unit]
     case Some((bucket, key, _)) =>
       val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
-      S3Store.liftJavaFuture(F.delay(s3.deleteObject(req))).void
+      liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
 
   def listUnderlying(path: Path, fullMetadata: Boolean, expectTrailingSlashFiles: Boolean): Stream[F, Path] =
@@ -142,11 +144,9 @@ final class S3Store[F[_]](
         s3.listObjectsV2Paginator(request).toStream().flatMap { ol =>
           val fDirs = ol.commonPrefixes().asScala.toList.traverse[F, S3Path] { cp =>
             if (expectTrailingSlashFiles) {
-              S3Store
-                .liftJavaFuture(
-                  F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(cp.prefix()).build()))
-                )
-                .map { resp => S3Path(bucket, cp.prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some) }
+              liftJavaFuture(
+                F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(cp.prefix()).build()))
+              ).map { resp => S3Path(bucket, cp.prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some) }
                 .recover {
                   case _: NoSuchKeyException =>
                     S3Path(bucket, cp.prefix(), None)
@@ -158,11 +158,9 @@ final class S3Store[F[_]](
 
           val fFiles = ol.contents().asScala.toList.traverse[F, S3Path] { s3Object =>
             if (fullMetadata) {
-              S3Store
-                .liftJavaFuture(
-                  F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(s3Object.key()).build()))
-                )
-                .map { resp => S3Path(bucket, s3Object.key(), new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some) }
+              liftJavaFuture(
+                F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(s3Object.key()).build()))
+              ).map { resp => S3Path(bucket, s3Object.key(), new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some) }
             } else {
               S3Path(bucket, s3Object.key(), new S3MetaInfo.S3ObjectMetaInfo(s3Object).some).pure[F]
             }
@@ -184,7 +182,7 @@ final class S3Store[F[_]](
 
     val requestBody = AsyncRequestBody.fromPublisher(in.chunks.map(chunk => chunk.toByteBuffer).toUnicastPublisher())
 
-    Stream.eval(S3Store.liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
+    Stream.eval(liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
   }
 
   private def putUnknownSize(
@@ -200,7 +198,7 @@ final class S3Store[F[_]](
         case Some((chunk, _)) if chunk.size < bufferSize =>
           val request     = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, chunk.size.toLong)
           val requestBody = AsyncRequestBody.fromByteBuffer(chunk.toByteBuffer)
-          Pull.eval(S3Store.liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
+          Pull.eval(liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
         case Some((chunk, rest)) =>
           val request: CreateMultipartUploadRequest = {
             val builder = CreateMultipartUploadRequest.builder()
@@ -214,7 +212,7 @@ final class S3Store[F[_]](
           }
 
           val makeRequest: F[CreateMultipartUploadResponse] =
-            S3Store.liftJavaFuture(F.delay(s3.createMultipartUpload(request)))
+            liftJavaFuture(F.delay(s3.createMultipartUpload(request)))
 
           Pull.eval(makeRequest).flatMap { muResp =>
             val abortReq: AbortMultipartUploadRequest =
@@ -242,7 +240,7 @@ final class S3Store[F[_]](
                   val fBody    = F.delay(AsyncRequestBody.fromPublisher(CompletableFuturePublisher.from(cf)))
                   val done = for {
                     body <- fBody
-                    resp <- S3Store.liftJavaFuture(F.delay(s3.uploadPart(req, body)))
+                    resp <- liftJavaFuture(F.delay(s3.uploadPart(req, body)))
                     _    <- F.delay(byteBuffer.clear())
                   } yield CompletedPart.builder().eTag(resp.eTag()).partNumber(part).build()
                   F.delay((cf, done))
@@ -282,12 +280,12 @@ final class S3Store[F[_]](
                         completeReqBuilder
                           .multipartUpload(CompletedMultipartUpload.builder().parts(parts.asJava).build())
                           .build()
-                      Pull.eval(S3Store.liftJavaFuture(F.delay(s3.completeMultipartUpload(request)))).void
+                      Pull.eval(liftJavaFuture(F.delay(s3.completeMultipartUpload(request)))).void
                     }
               }
               .onError {
                 case _ =>
-                  Pull.eval(S3Store.liftJavaFuture(F.delay(s3.abortMultipartUpload(abortReq)))).void
+                  Pull.eval(liftJavaFuture(F.delay(s3.abortMultipartUpload(abortReq)))).void
               }
           }
       }
@@ -324,24 +322,6 @@ object S3Store {
     }
   private def missingRootError(msg: String) =
     new IllegalArgumentException(s"$msg - root (bucket) is required to reference blobs in S3")
-
-  private def liftJavaFuture[F[_], A](fa: F[CompletableFuture[A]])(implicit F: Concurrent[F]): F[A] = fa.flatMap { cf =>
-    F.cancelable { cb =>
-      cf.handle[Unit]((result: A, err: Throwable) =>
-        Option(err) match {
-          case None =>
-            cb(Right(result))
-          case Some(_: CancellationException) =>
-            ()
-          case Some(ex: CompletionException) =>
-            cb(Left(Option(ex.getCause).getOrElse(ex)))
-          case Some(ex) =>
-            cb(Left(ex))
-        }
-      )
-      F.delay(cf.cancel(true)).void
-    }
-  }
 
   private def putObjectRequest(
     sseAlgorithm: Option[String],

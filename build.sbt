@@ -22,7 +22,7 @@ lazy val fs2blobstore = project
     moduleName := "root",
     skip in publish := true
   )
-  .aggregate(core, s3, sftp, box, gcs)
+  .aggregate(core, s3, sftp, box, gcs, azure)
 
 lazy val core = project
 
@@ -34,6 +34,8 @@ lazy val box = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val gcs = project.dependsOn(core % "compile->compile;test->test")
 
+lazy val azure = project.dependsOn(core % "compile->compile;test->test")
+
 lazy val docs = (project in file("project-docs"))
   .settings(
     mdocVariables := Map(
@@ -43,5 +45,5 @@ lazy val docs = (project in file("project-docs"))
     Compile / scalacOptions -= "-Ywarn-dead-code",
     mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94
   )
-  .dependsOn(gcs, box, sftp, s3, core % "compile->test")
+  .dependsOn(azure, gcs, box, sftp, s3, azure, core % "compile->test")
   .enablePlugins(MdocPlugin)
