@@ -56,3 +56,9 @@ services:
       - sftp-no-chroot:sftp-no-chroot
       - minio:minio-container
       - azurite:azurite-container
+
+    environment:
+      - S3_TEST_BUCKET=${S3_TEST_BUCKET}
+      - S3_TEST_ACCESS_KEY=${S3_TEST_ACCESS_KEY}
+      - S3_TEST_SECRET_KEY=${S3_TEST_SECRET_KEY}
+      - AWS_REGION=us-east-2

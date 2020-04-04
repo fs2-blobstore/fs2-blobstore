@@ -26,13 +26,13 @@ class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAft
 
   // Your S3 access key. You are free to use a different way of instantiating your AmazonS3,
   // but be careful not to commit this information.
-  val s3AccessKey: String = sys.env("S3_TEST_ACCESS_KEY")
+  lazy val s3AccessKey: String = sys.env("S3_TEST_ACCESS_KEY")
 
   // Your S3 secret key. You are free to use a different way of instantiating your AmazonS3,
   // but be careful not to commit this information.
-  val s3SecretKey: String = sys.env("S3_TEST_SECRET_KEY")
+  lazy val s3SecretKey: String = sys.env("S3_TEST_SECRET_KEY")
 
-  val s3Bucket: String = sys.env("S3_TEST_BUCKET")
+  lazy val s3Bucket: String = sys.env("S3_TEST_BUCKET")
 
   val testRun = java.util.UUID.randomUUID
 
