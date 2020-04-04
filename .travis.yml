@@ -26,7 +26,10 @@ script:
 jobs:
   include:
   - stage: release
-    script: sbt ci-release
+    script:
+    - sbt ci-release
+    - sbt docs/mdoc
+    - ci/doc-push.sh
 
 before_script:
 - if [ $TRAVIS_PULL_REQUEST = 'false' ]; then git checkout -qf $TRAVIS_BRANCH; fi
