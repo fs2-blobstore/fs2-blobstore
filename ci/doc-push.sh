@@ -9,4 +9,10 @@ echo "Pushing readme for version $version"
 git stash pop
 git add README.md
 git commit -m "Update readme for version $version"
-git push https://${GH_TOKEN}@github.com/fs2-blobstore/fs2-blobstore
+
+if [[ $? == 0]]; then
+  echo "Pushing updated readme"
+  git push https://${GH_TOKEN}@github.com/fs2-blobstore/fs2-blobstore
+else
+  echo "No changes to README, skipping push"
+fi

@@ -16,6 +16,8 @@ stages:
 - name: test
 - name: release
   if: "(branch = master AND type = push) OR (tag IS present)"
+- name: docs
+  if: "(branch = master AND tag IS present)"
 
 # Integration tests uses secrets and are not available on builds for pull requests
 script:
@@ -28,7 +30,9 @@ jobs:
   - stage: release
     script:
     - sbt ci-release
-    - sbt docs/mdoc
+  - stage: docs
+    script:
+    - "sbt 'docs/mdoc --out .'"
     - ci/doc-push.sh
 
 before_script:
@@ -68,3 +72,5 @@ env:
   - secure: ko2AHiwVRTm9flBv9w1sgVFEddza6ANxtglOeIHQwOwm44VTcKacGaZ6bBh9N4QQqZpf0JRkiIVRN4/0dhumpQt6eOGR0YWP1swKrWr+AY8gUlpfQtMR3hCqld7jxqynp6InqV54mv2/uiDBKWn/Cu+JS4GRK4h7MsEm2wZ01AXHRq1ITPK8F1qqrJqg3/g1O/Er+WfqAux2JK5PKFYflhgClZe9w/3YmYl1QVkd4Kk871so3df9BVmnHbpLbSjU8Slz8oIj1b2+//8E32OTOS485aVusGUY2Nyw3E1aomAyWGqeJjwbGfp/7Qik6CHwmnwZDRBzsp41c6wdkYLSmOG5kZ0y/Ln64EIgpt/t5DvGrBwCB+5KIzfNzU/9QidYf15vgpCpKDlKJGYS9mXQA8slEoYewIQqEQARnyMqFzTGljVb9dHAOEbDAZ3FeD66jDxVS36HL2vav2xBK32jb/RVRB2okiqE1/9eI3V17zXkikjbY1doJAAOOFLhIvb/1WFLT5PDrfSBRG5W040u2moLt2U8XIlnDbJtT9LvxoGolMbJHAn/gFD8mq0ckJkTSe3UmSrUvnBz3jb8eWUUe2EO5cbp4GprV2nzaklbJA0YX75UT+BTb1Hm+qQYthOJgWCk1Di4K7936avPA62k/R4GznmFF7AFz+S57yEZ7Es=
   - secure: caiYy0PMLBZU8WCXaeq18UKhakZmpRVrLCII1kXDctMU2ebNNyhjsghkary4yR0JCDzfgKVeH/DUFz5tVDaaP7+gn/1byX72N5zsxfN/8sVKMPdDQaF+DpGWs9JsQ5DL9lH2vQL1ZaFAmnR+Bb22kiYsArdnjlF2Bnw1knSeCJE5t6uRX2Ikm4O4nkeK/+9R+OeC+9Nvv2n1UpYeKF7Kw8QfvOCN0FwvGZ3Up3StjDg6rVWSYvlwP2l7xNAHLDMstHb7iGcBmog5zng0BFjBlSpvgeWCuFCnTocB5pw9ZAc++QG6juYQsQjM692i9oq0trVZb04xyl2kWlZzBfZ0rRPqEBX1PmnLvW68ebtZx3QKxr0syFhLyaRgWRCuVup7jWg7u+cBzUKW5Lr59AKfcS9z31nJYFnOKnAgAHuQmtqSMhhxYT9e2dNgix0iDSJE2bqriJLYKXiylrgnmxYd7SO8ZW52wKlANa3I+AUhngkzB7x38eBp6x5Omkb0m+1UJoov4g4HONkVibfTvkKLjhryq8X8vYJhP3IxuDZ41OkSWozVhYaSO18UFjptrJzTsC8B/JCfLiA+hScdUR9Ue1TTXCAmFLQcgonZjFw8GSwLKVdUm9BnVm7vdCy5qTHWSJ0TAWmEALNn4J5BIw6Xkcu83L+dypfh3ydcRM6mQQ4=
   - secure: Hn0nmd0SlYuEIDih4vSmuD425KBh1ZdVQtgzJb8rF8GKbpL7T1gX1aieVDjccy9/xqY3djryjWJ9DzOUPBR2ZiFgoLNl0kTy5/YbtZHlg6/12X5ItLhk1qCVt+nwFC+r7loYAuc+mrAhlI5d+TRXz3ZTlbge8/+ByXyMfl4tnt6NHddem5L9NC9JbNmYaGZkHfZuvlJOa9HrrMWrzbuXlSn+F+P+ejZZ/7qeW84NtFs8StjjlQgvkCGYQJVzIyh/u4qrPte60sUVkdw+U9ctSX752l/N29zt/dbu64gObO/nSt79LRHYjjagTk4A+3TuowGS98jcdCtTxQQl/c9LKu8H/WoqEvSv0KEurSTFGQ9/+/5gcTwXqWE5TdMHpomWgx4pLFac34v/Vg6aw877fdrf8cNErv0qkwA/IOMQ8NyqIFyVHOvUjffUVMedtdmOwpWzY//VebPdyktAEmB/ocp6/g1405F3KURJVIqrPF+18Iiwi3LVfGGBuJ7cTBShjp7+0JKtn8A2zYmyHN1eeAqZHIglDPVQpmGN07UHMb4Q28H06KEaX1BHnO7t4mFzcTa7XfvugcRHpBJgIm7eabfDZGvMAO8EEfzouTJA2eKCtOfMuWeKnqeDfdXuHx1FpXY9qkxGlxztTCS1dPevtgPRKOoRbQiNn8gi62FObdw=
+  # Travis GH_TOKEN
+  - secure: dMj7neFUgmANJ/QFmPDo4icp9V1H7HV9kU9xlHhsBsIEEp+K/1SprGv7tQxkkyIAqvXNE888pD9Qbmfh0ZZ3TiBnS+HetmUv55W4lKR8fncUH22SNliiOiM04B4pniMKwIdRKQjAtVmmPik98vmELK8aCaFcK57dBg+k4INSwnZMwp3dMVEkPGeeNcNnfSJy8z2++zRS4vP9hSzNO/oiz7enBeafNLV1mp/hv5dYA6NKv9Y0EvmLecXzwBT11Viw/MVrSF2dutvlAemM+8Jg+CePcwU7qE1JweuIosO0FCjXHG2Lm8xhEc5U+RAJ0Smd+B4ciNkyWBZ7aoRdwEVHUwpXAYaSpGPs86v57ftAcePybZMeJqh6BgZJg0cbpnn3dedDSx+VTs2UqEEwI6xd1168PeNCpGr6Uln70BNW/BllWiYpOd8IXRSsFFG7Wyvimi0pbQStvWlgEpaM+RqzJ+CrbITx3jUNqjAHYfgDbunDzZicU641PODHFDPPfTS4VTACgFTefm+/NqpGGeMJPj1uCQH1G5T1/BjSG2kP9N2+uFWzuiUwNXM/BQzKoQnXuVs90xuMec4wrAx5ElgHHx1SpQIFyJsgooI6yK/Wz2XQz8/YrMR/ju2543CyQymwZweuPqKCTm0ktqhvn7170FTudYFqYlsqlpABpTsD+0w=
