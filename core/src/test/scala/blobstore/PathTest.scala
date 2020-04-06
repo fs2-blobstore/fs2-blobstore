@@ -57,6 +57,17 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     Path("") mustBe BasePath.empty
   }
 
+  it should "parse paths with spaces" in {
+    Path("root with spaces/dir with spaces/file with spaces") mustBe Path(
+      Some("root with spaces"),
+      Chain("dir with spaces"),
+      Some("file with spaces"),
+      None,
+      None,
+      None
+    )
+  }
+
   it should "extend a path with no key correctly" in {
     val path = Path("some-bucket") / "key"
 

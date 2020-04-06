@@ -28,7 +28,7 @@ object BasePath {
   def fromString(s: String, forceRoot: Boolean): Option[Path] =
     if (s.isEmpty) Some(empty)
     else
-      scala.util.Try(URI.create(s)).toOption.flatMap { uri =>
+      scala.util.Try(URI.create(s.replaceAll(" ", "%20"))).toOption.flatMap { uri =>
         val maybePath = Option(uri.getPath)
         val pathSegments =
           maybePath.map(_.split("/").filterNot(_.isEmpty)).getOrElse(Array.empty)
