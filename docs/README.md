@@ -11,6 +11,7 @@
 
 
 - [Installing](#installing)
+- [Example](#example)
 - [Internals](#internals)
   - [Store Abstraction](#store-abstraction)
   - [Path Abstraction](#path-abstraction)
@@ -27,29 +28,82 @@
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 
-Minimal, idiomatic, stream-based Scala interface for key/value store implementations.
-It provides abstractions for S3-like key/value store backed by different persistence 
-mechanisms (i.e. S3, FileSystem, sftp, etc).
+Minimal, idiomatic, Scala interface based on [fs2](https://fs2.io) for blob- and file store implementations. This library provides sources as sinks for a variety of stores (S3, GCS, Azure, SFTP, Box) that you can compose with fs2 programs.
 
 ## Installing
 
-fs2-blobstore is deployed to maven central, add to build.sbt:
+fs2-blobstore is published to maven central, add to build.sbt:
 
-```sbtshell
+```
 libraryDependencies ++= Seq(
   "com.github.fs2-blobstore" %% "core"  % "@VERSION@",
   "com.github.fs2-blobstore" %% "sftp"  % "@VERSION@",
   "com.github.fs2-blobstore" %% "s3"    % "@VERSION@",
   "com.github.fs2-blobstore" %% "gcs"   % "@VERSION@",
   "com.github.fs2-blobstore" %% "azure" % "@VERSION@",
+  "com.github.fs2-blobstore" %% "box"   % "@VERSION@"
 )
 ```
 
-`core` module has minimal dependencies and only provides `FileStore` implementation.
-`sftp` module provides `SftpStore` and depends on [Jsch client](http://www.jcraft.com/jsch/). 
-`s3` module provides `S3Store` and depends on [AWS S3 SDK V2](https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/)
-`gcs` module provides `GcsStore` and depends on [Google Cloud Storage SDK](https://github.com/googleapis/java-storage)
-`azure` module provides `AzureStore` and depends on [Azure Storage SDK Client library for Java](https://docs.microsoft.com/en-us/java/api/overview/azure/storage)
+* `core` module has minimal dependencies and only provides `FileStore` implementation.
+* `sftp` module provides `SftpStore` and depends on [Jsch client](http://www.jcraft.com/jsch/). 
+* `s3` module provides `S3Store` and depends on [AWS S3 SDK V2](https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/)
+* `gcs` module provides `GcsStore` and depends on [Google Cloud Storage SDK](https://github.com/googleapis/java-storage)
+* `azure` module provides `AzureStore` and depends on [Azure Storage SDK Client library for Java](https://docs.microsoft.com/en-us/java/api/overview/azure/storage)
+* `box` module provides `BoxStore` and depends on the [Box SDK for Java](https://github.com/box/box-java-sdk/)
+
+## Example
+
+Upload all files under a S3 prefix to a SFTP server, filter blank lines and run 20 uploads in parallel. 
+
+```scala mdoc
+import blobstore.Path
+import blobstore.s3.S3Store
+import blobstore.sftp.SftpStore
+import cats.effect.{Blocker, ExitCode, IO, IOApp}
+import com.jcraft.jsch.{JSch, Session}
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import cats.syntax.flatMap._
+import fs2.Stream
+
+object Example extends IOApp {
+
+  val connectSftp: IO[Session] = IO {
+    val jsch = new JSch()
+    jsch.getSession("sftp.domain.com")
+  }.flatTap(session => IO(session.connect()))
+
+  val s3Client: S3AsyncClient = S3AsyncClient.builder().build()
+
+  /**
+    * Transfer 20 files in parallel and filter blank lines
+    */
+  def logic(s3: S3Store[IO], sftp: SftpStore[IO]): Stream[IO, Unit] =
+    s3.list(Path("s3://example-bucket/foo/"))
+      .map { path: Path =>
+        s3.get(path, chunkSize = 32 * 1024)
+          .through(fs2.text.utf8Decode)
+          .through(fs2.text.lines)
+          .filter(_.nonEmpty)
+          .intersperse("\n")
+          .through(fs2.text.utf8Encode)
+          .through(sftp.put(Path(s"upload/$path")))
+      }
+      .parJoin(maxOpen = 20)
+
+  override def run(args: List[String]): IO[ExitCode] = {
+    Blocker[IO].use { blocker =>
+      val program = for {
+        s3   <- Stream.eval(S3Store[IO](s3Client))
+        sftp <- SftpStore(absRoot = "", connectSftp, blocker)
+        _    <- logic(s3, sftp)
+      } yield ExitCode.Success
+
+      program.compile.lastOrError
+    }
+  }
+}
+```
 
 ## Internals
 ### Store Abstraction
