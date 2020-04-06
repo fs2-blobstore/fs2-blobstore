@@ -11,9 +11,10 @@ import cats.effect.ConcurrentEffect
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.BlobServiceAsyncClient
 import com.azure.storage.blob.models._
+import com.azure.storage.common.implementation.Constants
 import fs2.{Chunk, Pipe, Stream}
 import fs2.interop.reactivestreams._
-import reactor.core.publisher.Flux
+import reactor.core.publisher.{Flux, Mono}
 import util.liftJavaFuture
 
 import scala.jdk.CollectionConverters._
@@ -61,7 +62,7 @@ final class AzureStore[F[_]](
     }
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.null"))
-  override def put(path: Path): Pipe[F, Byte, Unit] =
+  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
     in =>
       AzureStore.pathToContainerAndBlob(path) match {
         case None => Stream.raiseError(AzureStore.missingRootError(s"Unable to write to '$path'"))
@@ -75,13 +76,19 @@ final class AzureStore[F[_]](
             .narrow(path)
             .flatMap(AzureStore.headersMetadataAccessTier)
             .fold {
-              // TODO: set overwrite depending on https://github.com/fs2-blobstore/fs2-blobstore/issues/42
-              blobClient.upload(flux, pto, true)
+              blobClient.upload(flux, pto, overwrite)
             } {
               case (headers, meta, tier) =>
-                // TODO: handle overwrite depending on https://github.com/fs2-blobstore/fs2-blobstore/issues/42
-                blobClient
-                  .uploadWithResponse(flux, pto, headers, meta.asJava, tier, null)
+                val (overwriteCheck, requestConditions) = if (overwrite) {
+                  Mono.empty -> null
+                } else {
+                  blobClient.exists.flatMap((exists: java.lang.Boolean) =>
+                    if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
+                    else Mono.empty[Unit]
+                  ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
+                }
+                overwriteCheck
+                  .`then`(blobClient.uploadWithResponse(flux, pto, headers, meta.asJava, tier, requestConditions))
                   .flatMap(resp => FluxUtil.toMono(resp))
             }
 
