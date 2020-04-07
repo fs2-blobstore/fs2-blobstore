@@ -106,9 +106,21 @@ final class SftpStore[F[_]](
       )
     }
 
-  override def put(path: Path): Pipe[F, Byte, Unit] = { in =>
-    def put(channel: ChannelSftp): F[OutputStream] =
-      mkdirs(path, channel) *> blocker.delay(channel.put(SftpStore.strPath(absRoot, path), ChannelSftp.OVERWRITE))
+  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
+    def put(channel: ChannelSftp): F[OutputStream] = {
+      val newOrOverwrite =
+        mkdirs(path, channel) *> blocker.delay(channel.put(SftpStore.strPath(absRoot, path), ChannelSftp.OVERWRITE))
+      if (overwrite) {
+        newOrOverwrite
+      } else {
+        blocker.delay(channel.ls(SftpStore.strPath(absRoot, path))).attempt.flatMap {
+          case Left(e: SftpException) if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE =>
+            newOrOverwrite
+          case Left(e)  => F.raiseError(e)
+          case Right(_) => F.raiseError(new IllegalArgumentException(s"File at path '$path' already exist."))
+        }
+      }
+    }
 
     def close(os: OutputStream): F[Unit] = blocker.delay(os.close())
 
