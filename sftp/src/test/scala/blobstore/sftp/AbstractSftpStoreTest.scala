@@ -29,10 +29,12 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
 
   def session: IO[Session]
 
-  private val rootDir                    = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
-  protected val mVar                     = MVar.empty[IO, ChannelSftp].unsafeRunSync()
-  override lazy val store: SftpStore[IO] = new SftpStore[IO]("", session.unsafeRunSync(), blocker, mVar, None, 10000)
-  override val root: String              = "sftp_tests"
+  private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
+  protected val mVar  = MVar.empty[IO, ChannelSftp].unsafeRunSync()
+  override lazy val store: SftpStore[IO] =
+    SftpStore[IO]("", session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
+
+  override val root: String = "sftp_tests"
 
   // remove dirs created by AbstractStoreTest
   override def afterAll(): Unit = {
@@ -51,10 +53,9 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
   behavior of "Sftp store"
 
   it should "list files in current directory" in {
-    val s = session.unsafeRunSync()
-
-    val store: Store[IO] = new SftpStore[IO]("", s, blocker, mVar, None, 10000)
-    val path             = Path(".")
+    val store: Store[IO] =
+      SftpStore[IO]("", session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
+    val path = Path(".")
 
     val p = store.list(path).compile.toList
 

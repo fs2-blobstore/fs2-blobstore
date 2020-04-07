@@ -46,7 +46,8 @@ final class AzureStore[F[_]](
   extends Store[F] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
 
-  override def list(path: Path): Stream[F, Path] = listUnderlying(path, defaultTrailingSlashFiles, defaultFullMetadata)
+  override def list(path: Path): Stream[F, AzurePath] =
+    listUnderlying(path, defaultTrailingSlashFiles, defaultFullMetadata)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
     AzureStore.pathToContainerAndBlob(path) match {

@@ -25,7 +25,8 @@ object BasePath {
     isDir: Option[Boolean],
     lastModified: Option[Instant]
   ): BasePath = new BasePath(root, pathFromRoot, fileName, size, isDir, lastModified)
-  def fromString(s: String, forceRoot: Boolean): Option[Path] =
+
+  def fromString(s: String, forceRoot: Boolean): Option[BasePath] =
     if (s.isEmpty) Some(empty)
     else
       scala.util.Try(URI.create(s)).toOption.flatMap { uri =>
@@ -36,7 +37,7 @@ object BasePath {
         val root =
           authority.orElse(if (forceRoot) pathSegments.headOption else None)
         if ((root.isEmpty && forceRoot) || root.exists(_.isEmpty))
-          Option.empty[Path]
+          Option.empty[BasePath]
         else {
           val (pathFromRoot, fileName) = {
             val ps = if (root.isDefined && authority.isEmpty) pathSegments.drop(1) else pathSegments

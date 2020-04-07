@@ -36,7 +36,7 @@ final class BoxStore[F[_]](
 ) extends Store[F] {
   private val rootFolder = new BoxFolder(api, rootFolderId)
 
-  override def list(path: Path): Stream[F, Path] = listUnderlying(path, Array.empty)
+  override def list(path: Path): Stream[F, BoxPath] = listUnderlying(path, Array.empty)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] = {
     val init: F[(OutputStream, InputStream)] = blocker.delay {
