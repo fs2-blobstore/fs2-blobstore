@@ -60,18 +60,14 @@ final class SftpStore[F[_]](
     case ch                => mVar.tryPut(ch).ifM(().pure[F], SftpStore.closeChannel(semaphore, blocker)(ch))
   }
 
-  /**
-    * @param path path to list
-    * @return Stream[F, Path]
-    */
-  override def list(path: Path): Stream[F, SftpPath] = {
+  override def list(path: Path, recursive: Boolean = false): Stream[F, SftpPath] = {
 
     def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
       cb(entry)
       ChannelSftp.LsEntrySelector.CONTINUE
     }
 
-    for {
+    val stream = for {
       q       <- Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
       channel <- Stream.resource(channelResource)
       entry <- q.dequeue.unNoneTerminate
@@ -90,6 +86,14 @@ final class SftpStore[F[_]](
         else path / (entry.getFilename ++ (if (isDir.contains(true)) "/" else ""))
 
       SftpPath(newPath.root, newPath.fileName, newPath.pathFromRoot, entry.getAttrs)
+    }
+    if (recursive) {
+      stream.flatMap {
+        case p if p.isDir.contains(true) => list(p, recursive)
+        case p                           => Stream.emit(p)
+      }
+    } else {
+      stream
     }
   }
 
