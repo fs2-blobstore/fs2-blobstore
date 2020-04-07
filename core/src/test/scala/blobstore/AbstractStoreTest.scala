@@ -27,6 +27,7 @@ import cats.implicits._
 import implicits._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
+import fs2.Stream
 
 import scala.concurrent.ExecutionContext
 
@@ -403,6 +404,23 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       list.headOption.flatMap(_.pathFromRoot.lastOption) must contain("path spaces")
       get mustBe a[Right[_, _]]
       remove mustBe a[Right[_, _]]
+    }
+    result.unsafeRunSync()
+  }
+
+  it should "be able to list recursively" in {
+    val dir: Path = dirPath("list-recursively")
+    val files     = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
+    val result = for {
+      _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
+      paths <- store.list(dir, recursive = true).compile.toList
+    } yield {
+      paths must have size 8
+      paths.flatMap(_.fileName) must contain theSameElementsAs List("a", "b", "c", "d", "e", "x", "y", "z")
+      paths.foreach { p =>
+        p.isDir must contain(false)
+        p.size must contain(1L)
+      }
     }
     result.unsafeRunSync()
   }
