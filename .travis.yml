@@ -59,7 +59,7 @@ after_success: sudo chown -R $HOME $(id -u):$(id -g)
 
 before_install:
 - git fetch --tags
-- openssl aes-256-cbc -K $encrypted_980a2da0c0ea_key -iv $encrypted_980a2da0c0ea_iv -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
+- if [ $TRAVIS_PULL_REQUEST = 'false' ]; then openssl aes-256-cbc -K $encrypted_980a2da0c0ea_key -iv $encrypted_980a2da0c0ea_iv -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d; fi
 
 env:
   global:
