@@ -22,14 +22,12 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
     val config = new Properties
     config.put("StrictHostKeyChecking", "no")
     session.setConfig(config)
-
-    session.connect()
-
-    session
+    session // Let the store connect this session
   }
 
   it should "honor absRoot on put" in {
     val s = session.unsafeRunSync()
+    s.connect(10000)
 
     val store: Store[IO] =
       new SftpStore[IO](s"/home/blob/", s, blocker, mVar, None, 10000)

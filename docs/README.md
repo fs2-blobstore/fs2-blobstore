@@ -63,7 +63,6 @@ import blobstore.sftp.SftpStore
 import cats.effect.{Blocker, ExitCode, IO, IOApp}
 import com.jcraft.jsch.{JSch, Session}
 import software.amazon.awssdk.services.s3.S3AsyncClient
-import cats.syntax.flatMap._
 import fs2.Stream
 
 object Example extends IOApp {
@@ -71,7 +70,7 @@ object Example extends IOApp {
   val connectSftp: IO[Session] = IO {
     val jsch = new JSch()
     jsch.getSession("sftp.domain.com")
-  }.flatTap(session => IO(session.connect()))
+  }
 
   val s3Client: S3AsyncClient = S3AsyncClient.builder().build()
 
@@ -302,10 +301,7 @@ object SftpExample extends IOApp {
   override def run(args: List[String]): IO[ExitCode] = Blocker[IO].use { blocker =>
     val session: IO[Session] = IO {
       val jsch = new JSch()
-      val session = jsch.getSession("sftp.domain.com")
-      session.connect()
-
-      session
+      jsch.getSession("sftp.domain.com")
     }
 
     val store: fs2.Stream[IO, SftpStore[IO]] = SftpStore("", session, blocker)

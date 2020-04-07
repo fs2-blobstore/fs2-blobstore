@@ -61,7 +61,8 @@ final class S3Store[F[_]](
     s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}"
   )
 
-  override def list(path: Path): Stream[F, Path] = listUnderlying(path, defaultFullMetadata, defaultTrailingSlashFiles)
+  override def list(path: Path): Stream[F, S3Path] =
+    listUnderlying(path, defaultFullMetadata, defaultTrailingSlashFiles)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] = S3Store.bucketKeyMetaFromPath(path) match {
     case None => Stream.raiseError(S3Store.missingRootError(s"Unable to read '$path'"))
@@ -142,7 +143,7 @@ final class S3Store[F[_]](
       liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
 
-  def listUnderlying(path: Path, fullMetadata: Boolean, expectTrailingSlashFiles: Boolean): Stream[F, Path] =
+  def listUnderlying(path: Path, fullMetadata: Boolean, expectTrailingSlashFiles: Boolean): Stream[F, S3Path] =
     S3Store.bucketKeyMetaFromPath(path) match {
       case None => Stream.raiseError(S3Store.missingRootError(s"Unable to list '$path'"))
       case Some((bucket, key, _)) =>

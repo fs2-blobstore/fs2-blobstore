@@ -21,7 +21,6 @@ import cats.syntax.all._
 import cats.instances.option._
 import cats.instances.string._
 import java.io.OutputStream
-import java.time.Instant
 
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
@@ -65,7 +64,7 @@ final class SftpStore[F[_]](
     * @param path path to list
     * @return Stream[F, Path]
     */
-  override def list(path: Path): Stream[F, Path] = {
+  override def list(path: Path): Stream[F, SftpPath] = {
 
     def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
       cb(entry)
@@ -89,10 +88,8 @@ final class SftpStore[F[_]](
       val newPath =
         if (path.fileName.contains(entry.getFilename)) path
         else path / (entry.getFilename ++ (if (isDir.contains(true)) "/" else ""))
-      newPath
-        .withSize(Option(entry.getAttrs.getSize), reset = false)
-        .withIsDir(isDir, reset = false)
-        .withLastModified(Option(entry.getAttrs.getMTime.toLong).map(Instant.ofEpochSecond), reset = false)
+
+      SftpPath(newPath.root, newPath.fileName, newPath.pathFromRoot, entry.getAttrs)
     }
   }
 
@@ -196,7 +193,14 @@ object SftpStore {
       Stream.raiseError[F](new IllegalArgumentException(s"maxChannels must be >= 1"))
     } else
       for {
-        session   <- Stream.bracket(fa)(session => blocker.delay(session.disconnect()))
+        session <- {
+          val attemptConnect = fa.flatTap { session =>
+            blocker.delay(session.connect()).recover {
+              case e: JSchException if e.getMessage == "session is already connected" => ()
+            }
+          }
+          Stream.bracket(attemptConnect)(session => blocker.delay(session.disconnect()))
+        }
         semaphore <- Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
         mVar <- Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
           mVar.tryTake.flatMap(_.fold(().pure[F])(closeChannel[F](semaphore, blocker)))

@@ -24,7 +24,7 @@ final class GcsStore[F[_]](
   CS: ContextShift[F]
 ) extends Store[F] {
 
-  override def list(path: Path): Stream[F, Path] = listUnderlying(path, defaultTrailingSlashFiles)
+  override def list(path: Path): Stream[F, GcsPath] = listUnderlying(path, defaultTrailingSlashFiles)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
     GcsStore.pathToBlobId(path) match {
