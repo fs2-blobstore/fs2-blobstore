@@ -328,6 +328,85 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     test.unsafeRunSync()
   }
 
+  it should "overwrite existing file on put with overwrite" in {
+    val dir: Path = dirPath("overwrite-existing")
+    val path      = writeFile(store, dir)("existing.txt")
+
+    fs2
+      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .through(store.put(path))
+      .compile
+      .drain
+      .unsafeRunSync()
+
+    val content = store
+      .get(path, 1024)
+      .compile
+      .to(Array)
+      .map(bytes => new String(bytes))
+      .unsafeRunSync()
+
+    content mustBe "new content"
+  }
+
+  it should "fail on put to Path with existing file without overwrite" in {
+    val dir: Path = dirPath("fail-no-overwrite")
+    val path      = writeFile(store, dir)("existing.txt")
+
+    val result = fs2
+      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .through(store.put(path, overwrite = false))
+      .compile
+      .drain
+      .attempt
+      .unsafeRunSync()
+
+    result mustBe a[Left[_, _]]
+  }
+
+  it should "put to new Path without overwrite" in {
+    val dir: Path = dirPath("no-overwrite")
+    val path      = dir / "new.txt"
+
+    fs2
+      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .through(store.put(path, overwrite = false))
+      .compile
+      .drain
+      .attempt
+      .unsafeRunSync()
+
+    val content = store
+      .get(path, 1024)
+      .compile
+      .to(Array)
+      .map(bytes => new String(bytes))
+      .unsafeRunSync()
+
+    content mustBe "new content"
+  }
+
+  it should "support paths with spaces" in {
+    val dir: Path = dirPath("path spaces")
+    val path      = writeFile(store, dir)("file with spaces")
+    val result = for {
+      list <- store
+        .list(path)
+        .map(_.withSize(None, reset = false).withLastModified(None, reset = false))
+        .compile
+        .toList
+      get    <- store.get(path, 1024).compile.drain.attempt
+      remove <- store.remove(path).attempt
+    } yield {
+      list must contain only path
+      list.headOption.flatMap(_.fileName) must contain("file with spaces")
+      list.headOption.flatMap(_.pathFromRoot.lastOption) must contain("path spaces")
+      get mustBe a[Right[_, _]]
+      remove mustBe a[Right[_, _]]
+    }
+    result.unsafeRunSync()
+  }
+
   def dirPath(name: String): Path = Path(s"$rootTestRun/$name/").withIsDir(Some(true), reset = false)
 
   def contents(filename: String): String = s"file contents to upload: $filename"

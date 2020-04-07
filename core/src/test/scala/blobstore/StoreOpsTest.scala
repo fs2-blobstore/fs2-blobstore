@@ -76,7 +76,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
 
 final case class DummyStore(check: Path => Assertion) extends Store[IO] {
   val buf = new ArrayBuffer[Byte]()
-  override def put(path: Path): Pipe[IO, Byte, Unit] = {
+  override def put(path: Path, overwrite: Boolean): Pipe[IO, Byte, Unit] = {
     check(path)
     in => {
       buf.appendAll(in.compile.toVector.unsafeRunSync())

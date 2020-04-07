@@ -66,23 +66,33 @@ final class BoxStore[F[_]](
     }
   }
 
-  override def put(path: Path): Pipe[F, Byte, Unit] = { in =>
+  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
     path.fileName match {
       case None =>
         Stream.raiseError(new IllegalArgumentException(s"Specified path '$path' doesn't point to a file."))
       case Some(name) =>
-        val init: F[(OutputStream, InputStream, BoxFolder)] =
-          putFolderAtPath(rootFolder, BoxPath.parentPath(path)).map { parentFolder =>
-            val os = new PipedOutputStream()
-            val is = new PipedInputStream(os)
-            (os, is, parentFolder)
+        val init: F[(OutputStream, InputStream, Either[BoxFile, BoxFolder])] = {
+          val os = new PipedOutputStream()
+          val is = new PipedInputStream(os)
+          boxFileAtPath(path).flatMap {
+            case Some(existing) if overwrite =>
+              (os: OutputStream, is: InputStream, existing.asLeft[BoxFolder]).pure[F]
+            case Some(_) =>
+              F.raiseError(new IllegalArgumentException(s"File at path '$path' already exist."))
+            case None =>
+              putFolderAtPath(rootFolder, BoxPath.parentPath(path)).map { parentFolder =>
+                (os: OutputStream, is: InputStream, parentFolder.asRight[BoxFile])
+              }
           }
+        }
 
-        val consume: ((OutputStream, InputStream, BoxFolder)) => Stream[F, Unit] = ios => {
+        val consume: ((OutputStream, InputStream, Either[BoxFile, BoxFolder])) => Stream[F, Unit] = ios => {
           val putToBox = Stream.eval(blocker.delay {
             path.size match {
-              case Some(size) if size > largeFileThreshold => ios._3.uploadLargeFile(ios._2, name, size)
-              case _                                       => ios._3.uploadFile(ios._2, name)
+              case Some(size) if size > largeFileThreshold =>
+                ios._3.fold(_.uploadLargeFile(ios._2, size), _.uploadLargeFile(ios._2, name, size))
+              case _ =>
+                ios._3.fold(_.uploadNewVersion(ios._2), _.uploadFile(ios._2, name))
             }
           }.void)
 
@@ -90,7 +100,7 @@ final class BoxStore[F[_]](
           putToBox concurrently writeBytes
         }
 
-        val release: ((OutputStream, InputStream, BoxFolder)) => F[Unit] = ios =>
+        val release: ((OutputStream, InputStream, Either[BoxFile, BoxFolder])) => F[Unit] = ios =>
           blocker.delay {
             ios._2.close()
             ios._1.close()
