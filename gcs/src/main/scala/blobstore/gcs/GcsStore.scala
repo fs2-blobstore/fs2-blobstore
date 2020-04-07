@@ -9,7 +9,7 @@ import cats.instances.string._
 import cats.instances.list._
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
-import com.google.cloud.storage.Storage.{BlobListOption, CopyRequest}
+import com.google.cloud.storage.Storage.{BlobListOption, BlobWriteOption, CopyRequest}
 import fs2.{Chunk, Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
@@ -39,7 +39,7 @@ final class GcsStore[F[_]](
         }
     }
 
-  override def put(path: Path): Pipe[F, Byte, Unit] =
+  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
     GcsStore.pathToBlobId(path) match {
       case None => _ => Stream.raiseError(GcsStore.missingRootError(s"Unable to write to '$path'"))
       case Some(blobId) =>
@@ -50,7 +50,8 @@ final class GcsStore[F[_]](
               val b = BlobInfo.newBuilder(blobId)
               (if (acls.nonEmpty) b.setAcl(acls.asJava) else b).build()
             }(_.blobInfo)
-          val writer = storage.writer(blobInfo)
+          val options = if (overwrite) Nil else List(BlobWriteOption.doesNotExist())
+          val writer  = storage.writer(blobInfo, options: _*)
           Channels.newOutputStream(writer)
         }
         fs2.io.writeOutputStream(fos, blocker, closeAfterUse = true)

@@ -85,12 +85,23 @@ final class S3Store[F[_]](
       Stream.eval(liftJavaFuture(F.delay(s3.getObject[Stream[F, Byte]](request, transformer)))).flatten
   }
 
-  override def put(path: Path): Pipe[F, Byte, Unit] =
+  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
     in =>
       S3Store.bucketKeyMetaFromPath(path) match {
         case None => Stream.raiseError(S3Store.missingRootError(s"Unable to write to '$path'"))
         case Some((bucket, key, meta)) =>
-          path.size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
+          val checkOverwrite = if (!overwrite) {
+            liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
+              .flatMap {
+                case Left(_: NoSuchKeyException) => F.unit
+                case Left(e)                     => F.raiseError[Unit](e)
+                case Right(_) =>
+                  F.raiseError[Unit](new IllegalArgumentException(s"File at path '$path' already exist."))
+              }
+          } else F.unit
+
+          Stream.eval(checkOverwrite) ++
+            path.size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
       }
 
   override def move(src: Path, dst: Path): F[Unit] =

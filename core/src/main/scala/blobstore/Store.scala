@@ -44,9 +44,10 @@ trait Store[F[_]] {
     * writing content to S3 server.
     *
     * @param path to put
+    * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
-  def put(path: Path): Pipe[F, Byte, Unit]
+  def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit]
 
   /**
     * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.

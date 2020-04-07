@@ -16,7 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import java.nio.file.{Files, Paths, Path => NioPath}
+import java.nio.file.{Files, Paths, StandardOpenOption, Path => NioPath}
 
 import scala.jdk.CollectionConverters._
 import cats.implicits._
@@ -57,10 +57,19 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
 
-  override def put(path: Path): Pipe[F, Byte, Unit] = { in =>
+  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
     val mkdir = Stream.eval(F.delay(Files.createDirectories(_toNioPath(path).getParent)).as(true))
+    val flags =
+      if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+      else List(StandardOpenOption.CREATE_NEW)
     mkdir.ifM(
-      fs2.io.file.writeAll(path, blocker).apply(in),
+      fs2.io.file
+        .writeAll(
+          path = path,
+          blocker = blocker,
+          flags = flags
+        )
+        .apply(in),
       Stream.raiseError[F](new Exception(s"failed to create dir: $path"))
     )
   }
