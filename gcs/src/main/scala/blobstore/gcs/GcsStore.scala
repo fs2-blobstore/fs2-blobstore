@@ -24,7 +24,8 @@ final class GcsStore[F[_]](
   CS: ContextShift[F]
 ) extends Store[F] {
 
-  override def list(path: Path): Stream[F, GcsPath] = listUnderlying(path, defaultTrailingSlashFiles)
+  override def list(path: Path, recursive: Boolean = false): Stream[F, GcsPath] =
+    listUnderlying(path, defaultTrailingSlashFiles, recursive)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
     GcsStore.pathToBlobId(path) match {
@@ -77,21 +78,14 @@ final class GcsStore[F[_]](
       case None         => GcsStore.missingRootError(s"Unable to remove '$path'").raiseError[F, Unit]
     }
 
-  def listUnderlying(path: Path, expectTrailingSlashFiles: Boolean): Stream[F, GcsPath] =
+  def listUnderlying(path: Path, expectTrailingSlashFiles: Boolean, recursive: Boolean): Stream[F, GcsPath] =
     GcsStore.pathToBlobId(path) match {
       case None => Stream.raiseError(GcsStore.missingRootError(s"Unable to list '$path'"))
       case Some(blobId) =>
+        val options         = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName))
+        val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
         Stream.unfoldChunkEval[F, () => Option[Page[Blob]], GcsPath] { () =>
-          Some(
-            storage.list(
-              blobId.getBucket,
-              BlobListOption.currentDirectory(),
-              BlobListOption.prefix(
-                if (blobId.getName == "/") ""
-                else blobId.getName
-              )
-            )
-          )
+          Some(storage.list(blobId.getBucket, blobListOptions: _*))
         } { getPage =>
           blocker.delay(getPage()).flatMap {
             case None => none[(Chunk[GcsPath], () => Option[Page[Blob]])].pure[F]
