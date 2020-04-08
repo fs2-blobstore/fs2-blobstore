@@ -84,4 +84,21 @@ trait Store[F[_]] {
     */
   def remove(path: Path): F[Unit]
 
+  /**
+    * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
+    *
+    * The `computePath` operation is used to compute the path of the first file
+    * and every subsequent file. Typically, the next file should be determined
+    * by analyzing the current state of the filesystem -- e.g., by looking at all
+    * files in a directory and generating a unique name.
+    *
+    * @note Put of all files uses overwrite semantic, i.e. if path returned by [[computePath]] already exists content will be overwritten.
+    *       If that doesn't suit your use case use [[computePath]] to guard against overwriting existing files.
+    *
+    * @param computePath operation to compute the path of the first file and all subsequent files.
+    * @param limit maximum size in bytes for each file.
+    * @return sink of bytes
+    */
+  def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit]
+
 }

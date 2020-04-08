@@ -20,6 +20,7 @@ import java.nio.file.{Paths, Path => NioPath}
 import java.util.concurrent.Executors
 
 import blobstore.fs.FileStore
+import cats.effect.concurrent.Ref
 import org.scalatest.BeforeAndAfterAll
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.effect.laws.util.TestInstances
@@ -30,11 +31,12 @@ import org.scalatest.matchers.must.Matchers
 import fs2.Stream
 
 import scala.concurrent.ExecutionContext
+import scala.util.Random
 
 trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-  val blocker                       = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
   val transferStoreRootDir: NioPath = Paths.get("tmp/transfer-store-root/")
   val transferStore: Store[IO]      = new FileStore[IO](transferStoreRootDir, blocker)
@@ -425,6 +427,43 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     result.unsafeRunSync()
   }
 
+  it should "put data while rotating files" in {
+    val fileCount      = 5L
+    val fileLength     = 20
+    val lastFileLength = 10
+    val dir: Path      = dirPath("put-rotating")
+    val bytes          = randomBA(fileLength)
+    val lastFileBytes  = randomBA(lastFileLength)
+    val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
+      Stream.emits(lastFileBytes.toIndexedSeq)
+
+    // Check overwrite
+    writeFile(store, dir)("3")
+
+    val test = for {
+      counter <- Ref.of[IO, Int](0)
+      _ <- data
+        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
+        .compile
+        .drain
+      files        <- store.listAll(dir)
+      fileContents <- files.traverse(p => store.get(p, fileLength).compile.to(Array).map(p -> _))
+    } yield {
+      files must have size (fileCount + 1)
+      files.flatMap(_.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
+      files.foreach { p =>
+        p.isDir must contain(false)
+        p.size must contain(if (p.fileName.contains(fileCount.toString)) lastFileLength else fileLength)
+      }
+      fileContents.foreach {
+        case (p, content) =>
+          content mustBe (if (p.fileName.contains(fileCount.toString)) lastFileBytes else bytes)
+      }
+
+    }
+    test.unsafeRunSync()
+  }
+
   def dirPath(name: String): Path = Path(s"$rootTestRun/$name/").withIsDir(Some(true), reset = false)
 
   def contents(filename: String): String = s"file contents to upload: $filename"
@@ -433,6 +472,12 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     val path = (tmpDir / filename).withIsDir(Some(false), reset = false)
     store.put(contents(filename), path).unsafeRunSync()
     path
+  }
+
+  def randomBA(length: Int): Array[Byte] = {
+    val ba = new Array[Byte](length)
+    Random.nextBytes(ba)
+    ba
   }
 
   // remove dirs created by AbstractStoreTest
