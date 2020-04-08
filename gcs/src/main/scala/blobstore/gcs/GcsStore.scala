@@ -1,9 +1,10 @@
 package blobstore
 package gcs
 
+import java.io.OutputStream
 import java.nio.channels.Channels
 
-import cats.effect.{Blocker, ContextShift, Sync}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
 import cats.syntax.all._
 import cats.instances.string._
 import cats.instances.list._
@@ -20,7 +21,7 @@ final class GcsStore[F[_]](
   acls: List[Acl] = Nil,
   defaultTrailingSlashFiles: Boolean = false
 )(
-  implicit F: Sync[F],
+  implicit F: Concurrent[F],
   CS: ContextShift[F]
 ) extends Store[F] {
 
@@ -41,25 +42,10 @@ final class GcsStore[F[_]](
     }
 
   override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
-    GcsStore.pathToBlobId(path) match {
-      case None => _ => Stream.raiseError(GcsStore.missingRootError(s"Unable to write to '$path'"))
-      case Some(blobId) =>
-        val fos = F.delay {
-          val blobInfo = GcsPath
-            .narrow(path)
-            .fold {
-              val b = BlobInfo.newBuilder(blobId)
-              (if (acls.nonEmpty) b.setAcl(acls.asJava) else b).build()
-            }(_.blobInfo)
-          val options = if (overwrite) Nil else List(BlobWriteOption.doesNotExist())
-          val writer  = storage.writer(blobInfo, options: _*)
-          Channels.newOutputStream(writer)
-        }
-        fs2.io.writeOutputStream(fos, blocker, closeAfterUse = true)
-    }
+    fs2.io.writeOutputStream(newOutputStream(path, overwrite), blocker, closeAfterUse = true)
 
   override def move(src: Path, dst: Path): F[Unit] =
-    copy(src, dst) *> remove(src)
+    copy(src, dst) >> remove(src)
 
   override def copy(src: Path, dst: Path): F[Unit] =
     for {
@@ -77,6 +63,13 @@ final class GcsStore[F[_]](
       case Some(blobId) => blocker.delay(storage.delete(blobId)).void
       case None         => GcsStore.missingRootError(s"Unable to remove '$path'").raiseError[F, Unit]
     }
+
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile: Resource[F, OutputStream] =
+      Resource.make(computePath.flatMap(p => newOutputStream(p)))(os => blocker.delay(os.close()))
+
+    putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
+  }
 
   def listUnderlying(path: Path, expectTrailingSlashFiles: Boolean, recursive: Boolean): Stream[F, GcsPath] =
     GcsStore.pathToBlobId(path) match {
@@ -107,6 +100,23 @@ final class GcsStore[F[_]](
           }
         }
     }
+
+  private def newOutputStream(path: Path, overwrite: Boolean = true): F[OutputStream] =
+    GcsStore.pathToBlobId(path) match {
+      case None => F.raiseError(GcsStore.missingRootError(s"Unable to write to '$path'"))
+      case Some(blobId) =>
+        F.delay {
+          val blobInfo = GcsPath
+            .narrow(path)
+            .fold {
+              val b = BlobInfo.newBuilder(blobId)
+              (if (acls.nonEmpty) b.setAcl(acls.asJava) else b).build()
+            }(_.blobInfo)
+          val options = if (overwrite) Nil else List(BlobWriteOption.doesNotExist())
+          val writer  = storage.writer(blobInfo, options: _*)
+          Channels.newOutputStream(writer)
+        }
+    }
 }
 
 object GcsStore {
@@ -114,10 +124,11 @@ object GcsStore {
     storage: Storage,
     blocker: Blocker,
     acls: List[Acl]
-  )(implicit F: Sync[F], CS: ContextShift[F]): GcsStore[F] = new GcsStore(storage, blocker, acls)
+  )(implicit F: Concurrent[F], CS: ContextShift[F]): GcsStore[F] = new GcsStore(storage, blocker, acls)
 
   private def missingRootError(msg: String) =
     new IllegalArgumentException(s"$msg - root (bucket) is required to reference blobs in GCS")
+
   private def pathToBlobId(path: Path): Option[BlobId] =
     GcsPath
       .narrow(path)
