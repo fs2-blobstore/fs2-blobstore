@@ -21,11 +21,23 @@ trait Store[F[_]] {
 
   /**
     * List paths. See [[StoreOps.ListOps]] for convenient listAll method.
+    *
     * @param path to list
+    * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
+    *                  otherwise – return files and folder at given path.
     * @return stream of Paths. Implementing stores must guarantee that returned Paths
     *         have correct values for size, isDir and lastModified.
+    * @example Given Path pointing at folder:
+    *          folder/a
+    *          folder/b
+    *          folder/c
+    *          folder/sub-folder/d
+    *          folder/sub-folder/sub-sub-folder/e
+    *
+    *          list(folder, recursive = true)  -> [a, b, c, d, e]
+    *          list(folder, recursive = false) -> [a, b, c, sub-folder]
     */
-  def list(path: Path): Stream[F, Path]
+  def list(path: Path, recursive: Boolean = false): Stream[F, Path]
 
   /**
     * Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.

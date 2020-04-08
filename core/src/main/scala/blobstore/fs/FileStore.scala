@@ -27,22 +27,33 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
   extends Store[F] {
   val absRoot: String = fsroot.toAbsolutePath.normalize.toString
 
-  override def list(path: Path): Stream[F, Path] = {
+  override def list(path: Path, recursive: Boolean = false): Stream[F, Path] = {
     val isDir  = Stream.eval(F.delay(Files.isDirectory(path)))
     val isFile = Stream.eval(F.delay(Files.exists(path)))
 
-    val files = Stream
-      .eval(F.delay(Files.list(path)))
-      .flatMap(x => Stream.fromIterator(x.iterator.asScala))
-      .evalMap(x =>
-        F.delay {
+    val stream: Stream[F, (NioPath, Boolean)] =
+      Stream
+        .eval(F.delay(if (recursive) Files.walk(path) else Files.list(path)))
+        .flatMap(x => Stream.fromIterator(x.iterator.asScala))
+        .flatMap { x =>
           val dir = Files.isDirectory(x)
-          Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "") ++ (if (dir) "/" else ""))
-            .withSize(Option(Files.size(x)), reset = false)
-            .withLastModified(Option(Files.getLastModifiedTime(path).toInstant), reset = false)
-            .withIsDir(Option(dir), reset = false)
+          if (recursive && dir) {
+            Stream.empty
+          } else {
+            Stream.emit(x -> dir)
+          }
         }
-      )
+
+    val files = stream
+      .evalMap {
+        case (x, dir) =>
+          F.delay {
+            Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "") ++ (if (dir) "/" else ""))
+              .withSize(Option(Files.size(x)), reset = false)
+              .withLastModified(Option(Files.getLastModifiedTime(path).toInstant), reset = false)
+              .withIsDir(Option(dir), reset = false)
+          }
+      }
 
     val file = Stream.eval {
       F.delay {

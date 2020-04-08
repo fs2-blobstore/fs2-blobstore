@@ -36,7 +36,8 @@ final class BoxStore[F[_]](
 ) extends Store[F] {
   private val rootFolder = new BoxFolder(api, rootFolderId)
 
-  override def list(path: Path): Stream[F, BoxPath] = listUnderlying(path, Array.empty)
+  override def list(path: Path, recursive: Boolean = false): Stream[F, BoxPath] =
+    listUnderlying(path, Array.empty, recursive)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] = {
     val init: F[(OutputStream, InputStream)] = blocker.delay {
@@ -131,7 +132,7 @@ final class BoxStore[F[_]](
     }
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
-  def listUnderlying(path: Path, fields: Array[String] = Array.empty): Stream[F, BoxPath] = {
+  def listUnderlying(path: Path, fields: Array[String] = Array.empty, recursive: Boolean): Stream[F, BoxPath] = {
     def getRoot: Stream[F, (Option[String], Option[String])] =
       BoxPath
         .narrow(path)
@@ -144,7 +145,7 @@ final class BoxStore[F[_]](
           }
         }(bp => Stream.emit(bp.root -> bp.rootId).covary[F])
 
-    Stream.eval(boxInfoAtPath(path, fields)).flatMap {
+    val stream = Stream.eval(boxInfoAtPath(path, fields)).flatMap {
       case Some(info) =>
         getRoot.flatMap {
           case (root, rootInfo) =>
@@ -168,6 +169,16 @@ final class BoxStore[F[_]](
             }
         }
       case None => Stream.empty
+    }
+    if (recursive) {
+      stream.flatMap {
+        case p if p.isDir.contains(true) =>
+          listUnderlying(p, fields, recursive)
+        case p =>
+          Stream.emit(p)
+      }
+    } else {
+      stream
     }
   }
 

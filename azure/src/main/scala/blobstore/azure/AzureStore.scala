@@ -47,8 +47,8 @@ final class AzureStore[F[_]](
   extends Store[F] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
 
-  override def list(path: Path): Stream[F, AzurePath] =
-    listUnderlying(path, defaultTrailingSlashFiles, defaultFullMetadata)
+  override def list(path: Path, recursive: Boolean = false): Stream[F, AzurePath] =
+    listUnderlying(path, defaultTrailingSlashFiles, defaultFullMetadata, recursive)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
     AzureStore.pathToContainerAndBlob(path) match {
@@ -153,7 +153,12 @@ final class AzureStore[F[_]](
         ).void.recover { case e: BlobStorageException if e.getStatusCode == 404 => () }
     }
 
-  def listUnderlying(path: Path, fullMetadata: Boolean, expectTrailingSlashFiles: Boolean): Stream[F, AzurePath] =
+  def listUnderlying(
+    path: Path,
+    fullMetadata: Boolean,
+    expectTrailingSlashFiles: Boolean,
+    recursive: Boolean
+  ): Stream[F, AzurePath] =
     AzureStore.pathToContainerAndBlob(path) match {
       case None => Stream.raiseError(AzureStore.missingRootError(s"Unable to list '$path'"))
       case Some((container, blobNameOrPrefix)) =>
@@ -161,7 +166,10 @@ final class AzureStore[F[_]](
           .setPrefix(if (blobNameOrPrefix == "/") "" else blobNameOrPrefix)
           .setDetails(new BlobListDetails().setRetrieveMetadata(fullMetadata))
         val containerClient = azure.getBlobContainerAsyncClient(container)
-        fromPublisher(containerClient.listBlobsByHierarchy("/", options))
+        val blobPagedFlux =
+          if (recursive) containerClient.listBlobs(options)
+          else containerClient.listBlobsByHierarchy("/", options)
+        fromPublisher(blobPagedFlux)
           .filterNot(blobItem => Option(blobItem.isDeleted).contains(true))
           .flatMap { blobItem: BlobItem =>
             val properties: F[Option[(BlobItemProperties, Map[String, String])]] =

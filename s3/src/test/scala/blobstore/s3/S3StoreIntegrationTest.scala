@@ -69,7 +69,7 @@ class S3StoreIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAft
     store.put("test", filePath).unsafeRunSync()
 
     val entities = store
-      .listUnderlying(dir, fullMetadata = false, expectTrailingSlashFiles = true)
+      .listUnderlying(dir, fullMetadata = false, expectTrailingSlashFiles = true, recursive = false)
       .compile
       .toList
       .unsafeRunSync()

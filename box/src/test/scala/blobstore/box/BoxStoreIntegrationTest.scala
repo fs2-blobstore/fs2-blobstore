@@ -97,7 +97,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
     @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
     val paths = store
       .asInstanceOf[BoxStore[IO]]
-      .listUnderlying(dirP, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS)
+      .listUnderlying(dirP, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS, recursive = false)
       .compile
       .toList
       .unsafeRunSync()
