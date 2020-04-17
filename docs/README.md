@@ -235,7 +235,6 @@ import blobstore.{Path, Store}
 import blobstore.fs.FileStore
 import java.nio.file.Paths
 import cats.effect.{Blocker, ExitCode, IO, IOApp}
-import cats.syntax.functor._
 
 object FileStoreExample extends IOApp {
   override def run(args: List[String]): IO[ExitCode] = Blocker[IO].use { blocker =>
