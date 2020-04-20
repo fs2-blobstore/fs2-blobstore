@@ -9,7 +9,7 @@ libraryDependencies ++= Seq(
   "org.typelevel" %% "cats-effect-laws" % "2.1.3" % "test"
 ) ++ (CrossVersion.partialVersion(scalaVersion.value) match {
   case Some((2, x)) if x < 13 =>
-    "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.5" :: Nil
+    "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6" :: Nil
   case _ =>
     Nil
 })
