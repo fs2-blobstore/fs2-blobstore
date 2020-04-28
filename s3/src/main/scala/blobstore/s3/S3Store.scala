@@ -53,7 +53,8 @@ final class S3Store[F[_]](
   sseAlgorithm: Option[String] = None,
   defaultFullMetadata: Boolean = false,
   defaultTrailingSlashFiles: Boolean = false,
-  bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt
+  bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
+  queueSize: Int = 32
 )(implicit F: ConcurrentEffect[F])
   extends Store[F] {
   require(
@@ -106,7 +107,7 @@ final class S3Store[F[_]](
       }
 
   override def move(src: Path, dst: Path): F[Unit] =
-    copy(src, dst) *> remove(src)
+    copy(src, dst) >> remove(src)
 
   override def copy(src: Path, dst: Path): F[Unit] =
     for {
@@ -142,6 +143,22 @@ final class S3Store[F[_]](
       val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
       liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
+
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] =
+    if (limit <= bufferSize.toLong) {
+      _.chunkN(limit.toInt)
+        .flatMap(chunk => Stream.eval(computePath).flatMap(path => Stream.chunk(chunk).through(put(path))))
+    } else {
+      val newFile = for {
+        path  <- Resource.liftF(computePath)
+        queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
+        _ <- Resource.make(
+          F.start(queue.dequeue.unNoneTerminate.flatMap(Stream.chunk).through(put(path)).compile.drain)
+        )(_.join)
+        _ <- Resource.make(F.unit)(_ => queue.enqueue1(None))
+      } yield queue
+      putRotateBase(limit, newFile)(queue => chunk => queue.enqueue1(Some(chunk)))
+    }
 
   def listUnderlying(
     path: Path,
@@ -318,12 +335,14 @@ object S3Store {
     sseAlgorithm: Option[String] = None,
     defaultFullMetadata: Boolean = false,
     defaultTrailingSlashFiles: Boolean = false,
-    bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt
+    bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
+    queueSize: Int = 32
   )(implicit F: ConcurrentEffect[F]): F[S3Store[F]] =
     if (bufferSize < S3Store.multiUploadMinimumPartSize) {
       new IllegalArgumentException(s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}").raiseError
     } else {
-      new S3Store(s3, objectAcl, sseAlgorithm, defaultFullMetadata, defaultTrailingSlashFiles, bufferSize).pure[F]
+      new S3Store(s3, objectAcl, sseAlgorithm, defaultFullMetadata, defaultTrailingSlashFiles, bufferSize, queueSize)
+        .pure[F]
     }
 
   private def bucketKeyMetaFromPath(path: Path): Option[(String, String, Option[S3MetaInfo])] =
@@ -403,7 +422,7 @@ object S3Store {
                   .eval(hotswap.swap(newPart(state.partNumber + 1, None)))
                   .flatMap { newCompletion =>
                     Pull.eval(completion).flatMap { cp =>
-                      Pull.output1[F, CompletedPart](cp) *>
+                      Pull.output1[F, CompletedPart](cp) >>
                         multipartGo(
                           MultipartState(state.partNumber + 1, newTotal),
                           stream = tl,
@@ -424,7 +443,7 @@ object S3Store {
             .eval(
               hotswap
                 .swap(newPart(state.partNumber, Some(currentBytes.toLong)))
-                .flatMap { newCompletion => hotswap.clear *> F.delay(byteBuffer.limit(currentBytes)) *> newCompletion }
+                .flatMap { newCompletion => hotswap.clear >> F.delay(byteBuffer.limit(currentBytes)) >> newCompletion }
             )
             .flatMap(Pull.output1)
         } else {

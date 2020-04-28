@@ -19,6 +19,9 @@ package s3
 import java.net.URI
 
 import cats.effect.IO
+import cats.effect.concurrent.Ref
+import cats.instances.list._
+import cats.syntax.traverse._
 import org.scalatest.{Assertion, Inside}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.auth.signer.AwsS3V4Signer
@@ -181,6 +184,28 @@ class S3StoreTest extends AbstractStoreTest with Inside {
           .copy(path, pathNoRoot)
           .unsafeRunSync() must have message s"Wrong dst '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
     }
+  }
+
+  it should "put rotating with file-limit > bufferSize" in {
+    val dir: Path = dirPath("put-rotating-s3")
+    val content   = randomBA(7 * 1024 * 1024)
+    val data      = Stream.emits(content)
+
+    val test = for {
+      counter <- Ref.of[IO, Int](0)
+      _ <- data
+        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), 6 * 1024 * 1024))
+        .compile
+        .drain
+      files        <- store.listAll(dir)
+      fileContents <- files.traverse(p => store.get(p, 1024).compile.to(Array))
+    } yield {
+      files must have size 2
+      files.flatMap(_.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)
+      fileContents.flatten mustBe content.toList
+    }
+
+    test.unsafeRunSync()
   }
 
   override def beforeAll(): Unit = {
