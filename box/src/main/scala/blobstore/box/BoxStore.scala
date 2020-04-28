@@ -18,7 +18,7 @@ package box
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 
-import cats.effect.{Blocker, Concurrent, ContextShift}
+import cats.effect.{Blocker, Concurrent, ContextShift, ExitCase, Resource}
 import cats.syntax.all._
 import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
 import fs2.{Pipe, Stream}
@@ -130,6 +130,42 @@ final class BoxStore[F[_]](
       case Some(bf) => blocker.delay(bf.delete())
       case None     => ().pure
     }
+
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile: Resource[F, OutputStream] = for {
+      p <- Resource.liftF(computePath)
+      name <- Resource.liftF(
+        F.fromEither(p.fileName.toRight(new IllegalArgumentException(s"Specified path '$p' doesn't point to a file.")))
+      )
+      fileOrFolder <- Resource.liftF(boxFileAtPath(p).flatMap {
+        case None       => putFolderAtPath(rootFolder, BoxPath.parentPath(p)).map(_.asRight[BoxFile])
+        case Some(file) => file.asLeft[BoxFolder].pure[F]
+      })
+      (os, is) <- Resource.make(F.delay {
+        val os = new PipedOutputStream()
+        val is = new PipedInputStream(os)
+        (os, is)
+      }) {
+        case (os, is) =>
+          F.delay {
+            is.close()
+            os.close()
+          }
+      }
+      _ <- Resource.makeCase(F.unit) {
+        case (_, ExitCase.Completed) =>
+          blocker.delay {
+            os.close()
+            fileOrFolder.fold(_.uploadNewVersion(is), _.uploadFile(is, name))
+            ()
+          }
+        case (_, _) =>
+          F.unit
+      }
+    } yield os
+
+    putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
+  }
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   def listUnderlying(path: Path, fields: Array[String] = Array.empty, recursive: Boolean): Stream[F, BoxPath] = {
