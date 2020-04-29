@@ -92,8 +92,8 @@ trait Store[F[_]] {
     * by analyzing the current state of the filesystem -- e.g., by looking at all
     * files in a directory and generating a unique name.
     *
-    * @note Put of all files uses overwrite semantic, i.e. if path returned by [[computePath]] already exists content will be overwritten.
-    *       If that doesn't suit your use case use [[computePath]] to guard against overwriting existing files.
+    * @note Put of all files uses overwrite semantic, i.e. if path returned by computePath already exists content will be overwritten.
+    *       If that doesn't suit your use case use computePath to guard against overwriting existing files.
     *
     * @param computePath operation to compute the path of the first file and all subsequent files.
     * @param limit maximum size in bytes for each file.
