@@ -21,8 +21,8 @@ stages:
 
 # Integration tests uses secrets and are not available on builds for pull requests
 script:
-  - 'if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then docker-compose run --rm sbt -Dsbt.ci=true ++$TRAVIS_SCALA_VERSION clean scalafmtCheckAll scalafmtSbtCheck docs/mdoc coverage "scalafix --check; testOnly * -- -l blobstore.IntegrationTest" coverageReport; fi'
-  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then docker-compose run --rm sbt -Dsbt.ci=true ++$TRAVIS_SCALA_VERSION clean scalafmtCheckAll scalafmtSbtCheck docs/mdoc coverage "scalafix --check; test" coverageReport; fi'
+  - 'if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then docker-compose run --rm sbt -Dsbt.ci=true ++$TRAVIS_SCALA_VERSION clean scalafmtCheckAll scalafmtSbtCheck doc docs/mdoc coverage "scalafix --check; testOnly * -- -l blobstore.IntegrationTest" coverageReport; fi'
+  - 'if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then docker-compose run --rm sbt -Dsbt.ci=true ++$TRAVIS_SCALA_VERSION clean scalafmtCheckAll scalafmtSbtCheck doc docs/mdoc coverage "scalafix --check; test" coverageReport; fi'
   - bash <(curl -s https://codecov.io/bash) -F "scala_${TRAVIS_SCALA_VERSION//[.-]/_}"
 
 jobs:
