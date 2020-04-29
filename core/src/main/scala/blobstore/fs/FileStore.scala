@@ -20,10 +20,11 @@ import java.nio.file.{Files, Paths, StandardOpenOption, Path => NioPath}
 
 import scala.jdk.CollectionConverters._
 import cats.implicits._
-import cats.effect.{Blocker, ContextShift, Sync}
-import fs2.{Pipe, Stream}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
+import fs2.io.file.{FileHandle, WriteCursor}
+import fs2.{Hotswap, Pipe, Stream}
 
-final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F])
+final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
   extends Store[F] {
   val absRoot: String = fsroot.toAbsolutePath.normalize.toString
 
@@ -69,49 +70,65 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
 
   override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
-    val mkdir = Stream.eval(F.delay(Files.createDirectories(_toNioPath(path).getParent)).as(true))
     val flags =
       if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
       else List(StandardOpenOption.CREATE_NEW)
-    mkdir.ifM(
-      fs2.io.file
-        .writeAll(
-          path = path,
-          blocker = blocker,
-          flags = flags
-        )
-        .apply(in),
-      Stream.raiseError[F](new Exception(s"failed to create dir: $path"))
-    )
+    Stream.eval(createParentDir(path)) >> fs2.io.file.writeAll(path = path, blocker = blocker, flags = flags).apply(in)
   }
 
   override def move(src: Path, dst: Path): F[Unit] =
-    F.delay {
-      Files.createDirectories(_toNioPath(dst).getParent)
-      Files.move(src, dst)
-    }.void
+    createParentDir(dst) >> F.delay(Files.move(src, dst)).void
 
-  override def copy(src: Path, dst: Path): F[Unit] = {
-    F.delay {
-      Files.createDirectories(_toNioPath(dst).getParent)
-      Files.copy(src, dst)
-    }.void
-  }
+  override def copy(src: Path, dst: Path): F[Unit] =
+    createParentDir(dst) >> F.delay(Files.copy(src, dst)).void
 
   override def remove(path: Path): F[Unit] = F.delay {
     Files.deleteIfExists(path)
     ()
   }
 
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = { in =>
+    val openNewFile: Resource[F, FileHandle[F]] =
+      Resource
+        .liftF(computePath)
+        .flatTap(p => Resource.liftF(createParentDir(p)))
+        .flatMap { p =>
+          FileHandle.fromPath(
+            path = p,
+            blocker = blocker,
+            flags = StandardOpenOption.CREATE :: StandardOpenOption.WRITE :: StandardOpenOption.TRUNCATE_EXISTING :: Nil
+          )
+        }
+
+    def newCursor(file: FileHandle[F]): F[WriteCursor[F]] =
+      WriteCursor.fromFileHandle[F](file, append = false)
+
+    Stream
+      .resource(Hotswap(openNewFile))
+      .flatMap {
+        case (hotswap, fileHandle) =>
+          Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+            goRotate(limit, 0L, in, cursor, hotswap, openNewFile)(
+              c => chunk => c.writePull(chunk),
+              fh => Stream.eval(newCursor(fh))
+            ).stream
+          }
+      }
+  }
+
+  private def createParentDir(p: Path): F[Unit] =
+    F.delay(Files.createDirectories(_toNioPath(p).getParent))
+      .handleErrorWith { e => F.raiseError(new Exception(s"failed to create dir: $p", e)) }
+      .void
+
   implicit private def _toNioPath(path: Path): NioPath = {
     val withRoot = path.root.fold(path.pathFromRoot)(path.pathFromRoot.prepend)
     val withName = path.fileName.fold(withRoot)(withRoot.append)
     Paths.get(absRoot, withName.toList: _*)
   }
-
 }
 
 object FileStore {
-  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): FileStore[F] =
+  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): FileStore[F] =
     new FileStore(fsroot, blocker)
 }

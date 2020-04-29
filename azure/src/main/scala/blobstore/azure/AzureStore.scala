@@ -1,13 +1,14 @@
 package blobstore
 package azure
 
+import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.temporal.ChronoUnit
 
 import cats.syntax.all._
 import cats.instances.string._
 import cats.instances.option._
-import cats.effect.ConcurrentEffect
+import cats.effect.{ConcurrentEffect, Resource}
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.BlobServiceAsyncClient
 import com.azure.storage.blob.models._
@@ -42,7 +43,8 @@ final class AzureStore[F[_]](
   defaultFullMetadata: Boolean = false,
   defaultTrailingSlashFiles: Boolean = false,
   blockSize: Int = 50 * 1024 * 1024,
-  numBuffers: Int = 2
+  numBuffers: Int = 2,
+  queueSize: Int = 32
 )(implicit F: ConcurrentEffect[F])
   extends Store[F] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
@@ -97,7 +99,7 @@ final class AzureStore[F[_]](
       }
 
   override def move(src: Path, dst: Path): F[Unit] =
-    copy(src, dst) *> remove(src)
+    copy(src, dst) >> remove(src)
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.null"))
   override def copy(src: Path, dst: Path): F[Unit] =
@@ -153,6 +155,38 @@ final class AzureStore[F[_]](
         ).void.recover { case e: BlobStorageException if e.getStatusCode == 404 => () }
     }
 
+  @SuppressWarnings(Array("scalafix:DisableSyntax.null"))
+  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+    val openNewFile = for {
+      path <- Resource.liftF(computePath)
+      (container, blob) <- Resource.liftF(
+        AzureStore
+          .pathToContainerAndBlob(path)
+          .fold[F[(String, String)]](AzureStore.missingRootError(s"Unable to write to '$path'").raiseError)(F.pure)
+      )
+      queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[ByteBuffer]](queueSize))
+      blobClient = azure
+        .getBlobContainerAsyncClient(container)
+        .getBlobAsyncClient(blob)
+      pto  = new ParallelTransferOptions(blockSize, numBuffers, null)
+      flux = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher())
+      upload = AzurePath
+        .narrow(path)
+        .flatMap(AzureStore.headersMetadataAccessTier)
+        .fold {
+          blobClient.upload(flux, pto, true)
+        } {
+          case (headers, meta, tier) =>
+            blobClient
+              .uploadWithResponse(flux, pto, headers, meta.asJava, tier, null)
+              .flatMap(resp => FluxUtil.toMono(resp))
+        }
+      _ <- Resource.make(F.start(liftJavaFuture(F.delay(upload.toFuture)).void))(_.join)
+      _ <- Resource.make(F.unit)(_ => queue.enqueue1(None))
+    } yield queue
+    putRotateBase(limit, openNewFile)(queue => bytes => queue.enqueue1(Some(bytes.toByteBuffer)))
+  }
+
   def listUnderlying(
     path: Path,
     fullMetadata: Boolean,
@@ -204,10 +238,11 @@ object AzureStore {
     defaultFullMetadata: Boolean = false,
     defaultTrailingSlashFiles: Boolean = false,
     blockSize: Int = 50 * 1024 * 1024,
-    numBuffers: Int = 2
+    numBuffers: Int = 2,
+    queueSize: Int = 32
   )(implicit F: ConcurrentEffect[F]): F[AzureStore[F]] =
     if (numBuffers < 2) new IllegalArgumentException(s"Number of buffers must be at least 2").raiseError
-    else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers).pure[F]
+    else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize).pure[F]
 
   private def missingRootError(msg: String) =
     new IllegalArgumentException(s"$msg - root (container) is required to reference blobs in Azure Storage")

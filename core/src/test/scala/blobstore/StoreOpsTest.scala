@@ -6,7 +6,6 @@ import java.util.concurrent.Executors
 
 import cats.effect.{Blocker, IO}
 import cats.effect.laws.util.TestInstances
-import cats.implicits._
 import fs2.{Pipe, Stream}
 import org.scalatest.Assertion
 import org.scalatest.flatspec.AnyFlatSpec
@@ -62,7 +61,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
     Stream
       .bracket(IO(Files.createTempFile("test-file", ".bin")))(p => IO(p.toFile.delete).void)
       .flatMap { nioPath =>
-        Stream.eval(store.get(path, nioPath, blocker)) *> Stream.eval {
+        Stream.eval(store.get(path, nioPath, blocker)) >> Stream.eval {
           IO {
             Files.readAllBytes(nioPath) mustBe bytes
           }
@@ -83,9 +82,10 @@ final case class DummyStore(check: Path => Assertion) extends Store[IO] {
       Stream.emit(())
     }
   }
-  override def get(path: Path, chunkSize: Int): Stream[IO, Byte]              = Stream.emits(buf)
-  override def list(path: Path, recursive: Boolean = false): Stream[IO, Path] = ???
-  override def move(src: Path, dst: Path): IO[Unit]                           = ???
-  override def copy(src: Path, dst: Path): IO[Unit]                           = ???
-  override def remove(path: Path): IO[Unit]                                   = ???
+  override def get(path: Path, chunkSize: Int): Stream[IO, Byte]                   = Stream.emits(buf)
+  override def list(path: Path, recursive: Boolean = false): Stream[IO, Path]      = ???
+  override def move(src: Path, dst: Path): IO[Unit]                                = ???
+  override def copy(src: Path, dst: Path): IO[Unit]                                = ???
+  override def remove(path: Path): IO[Unit]                                        = ???
+  override def putRotate(computePath: IO[Path], limit: Long): Pipe[IO, Byte, Unit] = ???
 }
