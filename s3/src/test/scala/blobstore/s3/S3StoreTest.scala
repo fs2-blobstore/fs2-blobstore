@@ -82,7 +82,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     val ct = "text/plain"
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
-      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
+      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
     val filePath = S3Path(root, s"test-$testRun/set-underlying/file1", Some(s3Meta))
     Stream("data".getBytes.toIndexedSeq: _*).through(store.put(filePath)).compile.drain.unsafeRunSync()
@@ -93,7 +93,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
         case Some(meta) =>
           meta.storageClass must contain(sc)
           meta.contentType must contain(ct)
-          meta.metadata mustBe Map("Key" -> "Value")
+          meta.metadata.map { case (k, v) => k.toLowerCase -> v.toLowerCase } mustBe Map("key" -> "value")
       }
     }
   }
@@ -120,7 +120,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
         case Some(meta) =>
           meta.storageClass must contain(sc)
           meta.contentType must contain(ct)
-          meta.metadata mustBe Map("Key" -> "Value")
+          meta.metadata.map { case (k, v) => k.toLowerCase -> v.toLowerCase } mustBe Map("key" -> "value")
       }
     }
   }
