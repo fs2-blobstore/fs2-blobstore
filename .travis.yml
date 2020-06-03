@@ -7,7 +7,7 @@ services:
 
 scala:
 - 2.12.11
-- 2.13.1
+- 2.13.2
 
 jdk:
 - openjdk8
