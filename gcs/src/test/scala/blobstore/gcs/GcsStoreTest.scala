@@ -11,8 +11,14 @@ import org.scalatest.{Assertion, Inside}
 import scala.jdk.CollectionConverters._
 
 class GcsStoreTest extends AbstractStoreTest with Inside {
-  override val store: Store[IO] =
-    new GcsStore[IO](LocalStorageHelper.getOptions.getService, blocker, defaultTrailingSlashFiles = true)
+  val gcsStore: GcsStore[IO] = GcsStore[IO](
+    LocalStorageHelper.getOptions.getService,
+    blocker,
+    defaultTrailingSlashFiles = true,
+    defaultDirectDownload = false
+  )
+
+  override val store: Store[IO] = gcsStore
 
   override val root: String = "bucket"
 
@@ -102,5 +108,20 @@ class GcsStoreTest extends AbstractStoreTest with Inside {
           .copy(path, pathNoRoot)
           .unsafeRunSync() must have message s"Wrong dst '$pathNoRoot' - root (bucket) is required to reference blobs in GCS"
     }
+  }
+
+  it should "support direct download" in {
+    val dir: Path = dirPath("direct-download")
+    val filename  = s"test-${System.currentTimeMillis}.txt"
+    val path      = writeFile(store, dir)(filename)
+
+    val content = gcsStore
+      .getUnderlying(path, 4096, direct = true, maxChunkInFlight = None)
+      .through(fs2.text.utf8Decode)
+      .compile
+      .toList
+      .map(_.mkString)
+
+    content.unsafeRunSync() must be(contents(filename))
   }
 }

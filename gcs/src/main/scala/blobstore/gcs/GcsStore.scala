@@ -4,7 +4,7 @@ package gcs
 import java.io.OutputStream
 import java.nio.channels.Channels
 
-import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
 import cats.syntax.all._
 import cats.instances.string._
 import cats.instances.list._
@@ -19,9 +19,11 @@ final class GcsStore[F[_]](
   storage: Storage,
   blocker: Blocker,
   acls: List[Acl] = Nil,
-  defaultTrailingSlashFiles: Boolean = false
+  defaultTrailingSlashFiles: Boolean = false,
+  defaultDirectDownload: Boolean = false,
+  defaultMaxChunksInFlight: Option[Int] = None
 )(
-  implicit F: Concurrent[F],
+  implicit F: ConcurrentEffect[F],
   CS: ContextShift[F]
 ) extends Store[F] {
 
@@ -29,17 +31,7 @@ final class GcsStore[F[_]](
     listUnderlying(path, defaultTrailingSlashFiles, recursive)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
-    GcsStore.pathToBlobId(path) match {
-      case None => Stream.raiseError(GcsStore.missingRootError(s"Unable to read '$path'"))
-      case Some(blobId) =>
-        val fis = blocker.delay {
-          Option(storage.get(blobId)).map(blob => Channels.newInputStream(blob.reader()))
-        }
-        Stream.eval(fis).flatMap {
-          case Some(is) => fs2.io.readInputStream(is.pure[F], chunkSize, blocker, closeAfterUse = true)
-          case None     => Stream.raiseError[F](new StorageException(404, s"Object not found, $path"))
-        }
-    }
+    getUnderlying(path, chunkSize, direct = defaultDirectDownload, maxChunkInFlight = defaultMaxChunksInFlight)
 
   override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
     fs2.io.writeOutputStream(newOutputStream(path, overwrite), blocker, closeAfterUse = true)
@@ -70,6 +62,35 @@ final class GcsStore[F[_]](
 
     putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
   }
+
+  def getUnderlying(path: Path, chunkSize: Int, direct: Boolean, maxChunkInFlight: Option[Int]): Stream[F, Byte] =
+    GcsStore.pathToBlobId(path) match {
+      case None => Stream.raiseError(GcsStore.missingRootError(s"Unable to read '$path'"))
+      case Some(blobId) =>
+        Stream.eval(blocker.delay(Option(storage.get(blobId)))).flatMap {
+          case None => Stream.raiseError[F](new StorageException(404, s"Object not found, $path"))
+          case Some(blob) =>
+            if (direct) {
+              getDirect(blob, chunkSize, maxChunkInFlight)
+            } else {
+              fs2.io.readInputStream(
+                Channels.newInputStream(blob.reader()).pure[F],
+                chunkSize,
+                blocker,
+                closeAfterUse = true
+              )
+            }
+        }
+    }
+
+  private def getDirect(blob: Blob, chunkSize: Int, maxChunkInFlight: Option[Int]): Stream[F, Byte] =
+    Stream.eval(Fs2OutputStream[F](chunkSize, maxChunkInFlight)).flatMap { os =>
+      os.stream.concurrently(
+        Stream.eval(
+          F.guarantee(blocker.delay(blob.downloadTo(os)))(F.delay(os.close()))
+        )
+      )
+    }
 
   def listUnderlying(path: Path, expectTrailingSlashFiles: Boolean, recursive: Boolean): Stream[F, GcsPath] =
     GcsStore.pathToBlobId(path) match {
@@ -123,8 +144,19 @@ object GcsStore {
   def apply[F[_]](
     storage: Storage,
     blocker: Blocker,
-    acls: List[Acl]
-  )(implicit F: Concurrent[F], CS: ContextShift[F]): GcsStore[F] = new GcsStore(storage, blocker, acls)
+    acls: List[Acl] = Nil,
+    defaultTrailingSlashFiles: Boolean = false,
+    defaultDirectDownload: Boolean = false,
+    defaultMaxChunksInFlight: Option[Int] = None
+  )(implicit F: ConcurrentEffect[F], CS: ContextShift[F]): GcsStore[F] =
+    new GcsStore(
+      storage = storage,
+      blocker = blocker,
+      acls = acls,
+      defaultTrailingSlashFiles = defaultTrailingSlashFiles,
+      defaultDirectDownload = defaultDirectDownload,
+      defaultMaxChunksInFlight = defaultMaxChunksInFlight
+    )
 
   private def missingRootError(msg: String) =
     new IllegalArgumentException(s"$msg - root (bucket) is required to reference blobs in GCS")
