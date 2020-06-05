@@ -36,12 +36,12 @@ fs2-blobstore is published to maven central, add to build.sbt:
 
 ```
 libraryDependencies ++= Seq(
-  "com.github.fs2-blobstore" %% "core"  % "0.7.2",
-  "com.github.fs2-blobstore" %% "sftp"  % "0.7.2",
-  "com.github.fs2-blobstore" %% "s3"    % "0.7.2",
-  "com.github.fs2-blobstore" %% "gcs"   % "0.7.2",
-  "com.github.fs2-blobstore" %% "azure" % "0.7.2",
-  "com.github.fs2-blobstore" %% "box"   % "0.7.2"
+  "com.github.fs2-blobstore" %% "core"  % "0.7.3",
+  "com.github.fs2-blobstore" %% "sftp"  % "0.7.3",
+  "com.github.fs2-blobstore" %% "s3"    % "0.7.3",
+  "com.github.fs2-blobstore" %% "gcs"   % "0.7.3",
+  "com.github.fs2-blobstore" %% "azure" % "0.7.3",
+  "com.github.fs2-blobstore" %% "box"   % "0.7.3"
 )
 ```
 
