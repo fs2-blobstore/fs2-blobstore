@@ -90,7 +90,11 @@ final class GcsStore[F[_]](
               getDirect(blob, chunkSize, maxChunkInFlight)
             } else {
               fs2.io.readInputStream(
-                Channels.newInputStream(blob.reader()).pure[F],
+                Channels.newInputStream {
+                  val reader = blob.reader()
+                  reader.setChunkSize(chunkSize)
+                  reader
+                }.pure[F],
                 chunkSize,
                 blocker,
                 closeAfterUse = true
