@@ -47,7 +47,7 @@ final class GcsStore[F[_]](
     listUnderlying(path, defaultTrailingSlashFiles, recursive)
 
   override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
-    getUnderlying(path, chunkSize, direct = defaultDirectDownload, maxChunkInFlight = defaultMaxChunksInFlight)
+    getUnderlying(path, chunkSize, direct = defaultDirectDownload, maxChunksInFlight = defaultMaxChunksInFlight)
 
   override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
     fs2.io.writeOutputStream(newOutputStream(path, overwrite), blocker, closeAfterUse = true)
@@ -79,7 +79,7 @@ final class GcsStore[F[_]](
     putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
   }
 
-  def getUnderlying(path: Path, chunkSize: Int, direct: Boolean, maxChunkInFlight: Option[Int]): Stream[F, Byte] =
+  def getUnderlying(path: Path, chunkSize: Int, direct: Boolean, maxChunksInFlight: Option[Int]): Stream[F, Byte] =
     GcsStore.pathToBlobId(path) match {
       case None => Stream.raiseError(GcsStore.missingRootError(s"Unable to read '$path'"))
       case Some(blobId) =>
@@ -87,7 +87,7 @@ final class GcsStore[F[_]](
           case None => Stream.raiseError[F](new StorageException(404, s"Object not found, $path"))
           case Some(blob) =>
             if (direct) {
-              getDirect(blob, chunkSize, maxChunkInFlight)
+              getDirect(blob, chunkSize, maxChunksInFlight)
             } else {
               fs2.io.readInputStream(
                 Channels.newInputStream {
@@ -103,8 +103,8 @@ final class GcsStore[F[_]](
         }
     }
 
-  private def getDirect(blob: Blob, chunkSize: Int, maxChunkInFlight: Option[Int]): Stream[F, Byte] =
-    Stream.eval(Fs2OutputStream[F](chunkSize, maxChunkInFlight)).flatMap { os =>
+  private def getDirect(blob: Blob, chunkSize: Int, maxChunksInFlight: Option[Int]): Stream[F, Byte] =
+    Stream.eval(Fs2OutputStream[F](chunkSize, maxChunksInFlight)).flatMap { os =>
       os.stream.concurrently(
         Stream.eval(
           F.guarantee(blocker.delay(blob.downloadTo(os)))(F.delay(os.close()))
