@@ -92,7 +92,7 @@ final class GcsStore[F[_]](
               fs2.io.readInputStream(
                 Channels.newInputStream {
                   val reader = blob.reader()
-                  reader.setChunkSize(chunkSize)
+                  reader.setChunkSize(chunkSize.max(GcsStore.minimalReaderChunkSize))
                   reader
                 }.pure[F],
                 chunkSize,
@@ -177,6 +177,8 @@ object GcsStore {
       defaultDirectDownload = defaultDirectDownload,
       defaultMaxChunksInFlight = defaultMaxChunksInFlight
     )
+
+  private val minimalReaderChunkSize = 2 * 1024 * 1024 // BlobReadChannel.DEFAULT_CHUNK_SIZE
 
   private def missingRootError(msg: String) =
     new IllegalArgumentException(s"$msg - root (bucket) is required to reference blobs in GCS")
