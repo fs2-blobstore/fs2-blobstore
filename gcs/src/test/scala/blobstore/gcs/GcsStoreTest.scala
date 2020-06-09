@@ -116,7 +116,7 @@ class GcsStoreTest extends AbstractStoreTest with Inside {
     val path      = writeFile(store, dir)(filename)
 
     val content = gcsStore
-      .getUnderlying(path, 4096, direct = true, maxChunkInFlight = None)
+      .getUnderlying(path, 4096, direct = true, maxChunksInFlight = None)
       .through(fs2.text.utf8Decode)
       .compile
       .toList
