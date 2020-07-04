@@ -58,7 +58,12 @@ object Url {
 
   type Http = Url[scheme.Http, StandardAuthority, String]
   type Https = Url[scheme.Https, StandardAuthority, String]
-  type Standard = Url[String, StandardAuthority, String]
+  type PlainUrl = Url[String, StandardAuthority, String]
+
+  object PlainUrl {
+    def apply(s: String): ValidatedNec[UrlParseError, Url.PlainUrl] = Url.standard(s)
+    def unsafe(s: String): Url.PlainUrl = Url.standardUnsafe(s)
+  }
 
   /**
     * RFC 3986, Appendix B.  Parsing a URI Reference with a Regular Expression, https://www.ietf.org/rfc/rfc3986.txt
@@ -80,12 +85,12 @@ object Url {
     */
   private val regex = "^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?".r
 
-  def apply(s: String): ValidatedNec[UrlParseError, Url.Standard] = standard(s)
+  def apply(s: String): ValidatedNec[UrlParseError, Url.PlainUrl] = standard(s)
 
-  def parse(s: String): ValidatedNec[UrlParseError, Url.Standard] = standard(s)
+  def parse(s: String): ValidatedNec[UrlParseError, Url.PlainUrl] = standard(s)
 
   // The reason we're using regexes and not just relying on java.net.URL is that URL doesn't handle schemes like 'gs' or 's3'
-  def standard(c: String): ValidatedNec[UrlParseError, Url.Standard] = {
+  def standard(c: String): ValidatedNec[UrlParseError, Url.PlainUrl] = {
     // Treat `m.group` as unsafe, since it really is
     def tryOpt[A](a: => A): Try[Option[A]] = Try(a).map(Option.apply)
 
@@ -106,10 +111,10 @@ object Url {
     }.getOrElse(CouldntParseUrl(c).invalidNec)
   }
 
-  def standardF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url.Standard] =
+  def standardF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url.PlainUrl] =
     standard(c).leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
-  def standardUnsafe(c: String): Url.Standard = standard(c) match {
+  def standardUnsafe(c: String): Url.PlainUrl = standard(c) match {
     case Valid(u)   => u
     case Invalid(e) => throw MultipleUrlValidationException(e)
   }

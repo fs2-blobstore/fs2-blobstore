@@ -3,7 +3,7 @@ package blobstore.experiment.url
 import java.time.Instant
 
 trait Blob[-A] {
-  def toUrl(a: A): Url.Standard
+  def toUrl(a: A): Url.PlainUrl
 
   def authority(a: A): Authority
 

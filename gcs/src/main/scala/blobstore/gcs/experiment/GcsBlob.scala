@@ -15,7 +15,7 @@ case class GcsBlob(blob: Blob)
 
 object GcsBlob {
   implicit val blob: url.Blob[Blob] = new url.Blob[Blob] {
-    override def toUrl(a: Blob): Url.Standard = Url.standardUnsafe(show"gs://${a.getBucket}/${a.getName}")
+    override def toUrl(a: Blob): Url.PlainUrl = Url.standardUnsafe(show"gs://${a.getBucket}/${a.getName}")
 
     override def authority(a: Blob): Authority = Bucket.unsafe(a.getBucket)
 

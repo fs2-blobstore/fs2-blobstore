@@ -53,6 +53,12 @@ object Authority {
       */
     private val regex = "^(?:([^:@]+)(?::([^@]+))?@)?([^:/@]+)(?::([0-9]+))?$".r
 
+    def apply(candidate: String): ValidatedNec[AuthorityParseError, StandardAuthority] = parse(candidate)
+    def unsafe(candidate: String): StandardAuthority = parse(candidate) match {
+      case Valid(a) => a
+      case Invalid(e) => throw MultipleUrlValidationException(e)
+    }
+
     def parseF[F[_]: ApplicativeError[*[_], Throwable]](host: String): F[StandardAuthority] =
       parse(host).toEither.leftMap(MultipleUrlValidationException).liftTo[F]
 
