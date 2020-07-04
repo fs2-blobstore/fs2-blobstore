@@ -16,6 +16,7 @@ test-output
 .metals
 .bloop
 project/metals.sbt
+out
 
 # Project specific
 box_appkey.json
