@@ -33,7 +33,6 @@ trait Path {
     * @example Given path pointing inside S3 bucket 'bucket':
     *          val p: Path = ???
     *          p.root == Some("bucket")
-    *
     */
   def root: Option[String]
 
@@ -74,7 +73,6 @@ trait Path {
     * @example Given path pointing to a local 20 byte file:
     *          val p: Path = ???
     *          p.size = Some(20)
-    *
     */
   def size: Option[Long]
 

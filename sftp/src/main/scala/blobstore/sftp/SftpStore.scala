@@ -37,8 +37,10 @@ final class SftpStore[F[_]](
   mVar: MVar[F, ChannelSftp],
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
-)(implicit F: ConcurrentEffect[F], CS: ContextShift[F])
-  extends Store[F] {
+)(
+  implicit F: ConcurrentEffect[F],
+  CS: ContextShift[F]
+) extends Store[F] {
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   private val openChannel: F[ChannelSftp] = {

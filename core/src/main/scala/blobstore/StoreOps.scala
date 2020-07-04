@@ -166,7 +166,6 @@ trait StoreOps {
 
     /**
       * Remove all files from a store recursively, given a path
-      *
       */
     def removeAll(dstPath: Path)(implicit F: Sync[F]): F[Int] = {
       import implicits._
