@@ -12,7 +12,12 @@ inThisBuild(
     ),
     homepage := Some(url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.11.0" cross CrossVersion.full),
+    libraryDependencies ++= Seq(
+      compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.0" cross CrossVersion.full),
+      "com.github.ghik" % "silencer-lib" % "1.7.0" % Provided cross CrossVersion.full
+    )
   )
 )
 
