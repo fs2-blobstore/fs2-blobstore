@@ -1,0 +1,20 @@
+name: Gitflow
+on:
+  push:
+  pull_request_review:
+  check_run:
+    types: [completed]
+
+jobs:
+  flow:
+    name: Gitflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Logerfo/gitflow-action@0.0.4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dev: dev
+          master: master
+          label: gitflow
+          auto-merge: true
+          require-merge: true

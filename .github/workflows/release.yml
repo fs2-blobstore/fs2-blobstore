@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  # Copied from generated step in ci.yml
+  publish:
+    name: Publish artifacts
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.12.11, 2.13.3]
+        java: [adopt@1.11]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v2
+
+      - name: Setup Java and Scala
+        uses: olafurpg/setup-scala@v5
+        with:
+          java-version: ${{ matrix.java }}
+
+      - name: Cache ivy2
+        uses: actions/cache@v1
+        with:
+          path: ~/.ivy2/cache
+          key: ${{ runner.os }}-sbt-ivy-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (generic)
+        uses: actions/cache@v1
+        with:
+          path: ~/.coursier/cache/v1
+          key: ${{ runner.os }}-generic-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (linux)
+        if: contains(runner.os, 'linux')
+        uses: actions/cache@v1
+        with:
+          path: ~/.cache/coursier/v1
+          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (macOS)
+        if: contains(runner.os, 'macos')
+        uses: actions/cache@v1
+        with:
+          path: ~/Library/Caches/Coursier/v1
+          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (windows)
+        if: contains(runner.os, 'windows')
+        uses: actions/cache@v1
+        with:
+          path: ~/AppData/Local/Coursier/Cache/v1
+          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache sbt
+        uses: actions/cache@v1
+        with:
+          path: ~/.sbt
+          key: ${{ runner.os }}-sbt-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Check that workflows are up to date
+        run: sbt ++${{ matrix.scala }} githubWorkflowCheck
+
+      - name: sbt ci-release
+        env:
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        run: sbt ++${{ matrix.scala }} ci-release
+
+  # After publish update README.md with new version
+  update-readme:
+    name: Update Readme
+    runs-on: ubuntu-latest
+    needs: publish
+    steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v2
+
+      - name: Setup Java and Scala
+        uses: olafurpg/setup-scala@v5
+        with:
+          java-version: adopt@1.11
+
+      - name: Cache ivy2
+        uses: actions/cache@v1
+        with:
+          path: ~/.ivy2/cache
+          key: ${{ runner.os }}-sbt-ivy-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (generic)
+        uses: actions/cache@v1
+        with:
+          path: ~/.coursier/cache/v1
+          key: ${{ runner.os }}-generic-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (linux)
+        if: contains(runner.os, 'linux')
+        uses: actions/cache@v1
+        with:
+          path: ~/.cache/coursier/v1
+          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (macOS)
+        if: contains(runner.os, 'macos')
+        uses: actions/cache@v1
+        with:
+          path: ~/Library/Caches/Coursier/v1
+          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache coursier (windows)
+        if: contains(runner.os, 'windows')
+        uses: actions/cache@v1
+        with:
+          path: ~/AppData/Local/Coursier/Cache/v1
+          key: ${{ runner.os }}-sbt-coursier-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Cache sbt
+        uses: actions/cache@v1
+        with:
+          path: ~/.sbt
+          key: ${{ runner.os }}-sbt-cache-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+
+      - name: Generate updated README.md
+        run: sbt 'docs/mdoc --out .'
+
+      - name: Commit and push updated README.md
+        uses: EndBug/add-and-commit@v4
+        with:
+          message: "Update readme for released version"
+          add: "README.md"
+          ref: "master"
