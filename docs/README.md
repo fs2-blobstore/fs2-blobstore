@@ -193,25 +193,40 @@ consistent with all other `Store` implementations.
 
 **Running Tests:**
 
-Tests are set up to run via docker-compose:
+Tests are set up to run via docker-compose using 
+[minio](https://www.minio.io/docker.html) (Amazon S3 compatible object storage server),
+[Azurite](https://github.com/Azure/Azurite) (A lightweight server clone of Azure Storage) and 
+[SFTP](https://github.com/atmoz/sftp) containers 
+(GCS is tested against the in-memory [`local Storage`](https://github.com/googleapis/google-cloud-java/blob/master/TESTING.md#testing-code-that-uses-storage)).
+
+On Linux:
 
 ```bash
-docker-compose run --rm sbt "testOnly * -- -l blobstore.IntegrationTest"
+docker-compose up -d
+# Launch sbt shell
+sbt
+# Run all tests not annotated as IntegrationTest
+> testOnly * -- -l blobstore.IntegrationTest
+> ...
+docker-compose down -v --remove-orphans
 ```
 
-This will start a [minio](https://www.minio.io/docker.html) (Amazon S3 compatible 
-object storage server), [Azurite](https://github.com/Azure/Azurite) (A lightweight server clone of Azure Storage) and SFTP containers and run all tests not annotated as 
-`@IntegrationTest`. GCS is tested against the in-memory 
-[`local Storage`](https://github.com/googleapis/google-cloud-java/blob/master/TESTING.md#testing-code-that-uses-storage)
+On Mac due to Docker Desktop for Mac [limitations](https://docs.docker.com/docker-for-mac/networking/#known-limitations-use-cases-and-workarounds) 
+have to run sbt in container as well, limiting interactivity of tests:
+
+```
+docker-compose -f docker-compose-mac.yml run --rm sbt "testOnly * -- -l blobstore.IntegrationTest"
+```
 
 Yes, we understand `SftpStoreTest`, `AzureStoreTest` and `S3StoreTest` are also _integration tests_ 
 because they connect to external services, but we don't mark them as such because 
 we found these containers that allow to run them along unit tests, and we want to 
 exercise as much of the store code as possible.  
 
-Currently, tests for `BoxStore` are annotated with `@IntegrationTest` because we
-have not found a box docker image. To run `BoxStore` integration tests locally
-you need to provide `BOX_TEST_BOX_DEV_TOKEN`.
+Currently, tests for `BoxStore` and one test for S3Store are annotated with `@IntegrationTest` because we
+have not found a box docker image and because minio doesn't support tested use case. 
+
+To run `BoxStore` integration tests locally you need to provide `BOX_TEST_BOX_DEV_TOKEN`.
 
 Run box tests with:
 
@@ -219,7 +234,12 @@ Run box tests with:
 sbt box/test
 ```
 
-**Note:** this will exercise `AbstractStoreTest` tests against your box.com account.
+To run S3 integration tests locally tou need to provide `S3_TEST_ACCESS_KEY`, `S3_TEST_SECRET_KEY` and `S3_TEST_BUCKET`.
+
+Run s3 integration tests with:
+```bash
+sbt ++2.13.3 's3/testOnly * -- -n blobstore.IntegrationTest'
+```
 
 ## Store Implementations
 

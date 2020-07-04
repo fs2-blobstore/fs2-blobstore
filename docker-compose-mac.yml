@@ -1,0 +1,82 @@
+---
+version: "2"
+
+services:
+  sftp-container:
+    image: atmoz/sftp
+
+    volumes:
+      - ./tmp/sftp-store-root:/home/blob
+
+    command: "blob:password:::sftp_tests"
+
+  sftp-no-chroot-container:
+    image: atmoz/sftp
+
+    volumes:
+      - ./tmp/sftp-store-root:/home/blob
+      - ./sftp/src/test/resources/sshd_config:/etc/ssh/sshd_config
+
+    command: "blob:password:::sftp_tests"
+
+  minio-container:
+    image: minio/minio
+
+    environment:
+      - MINIO_ACCESS_KEY=my_access_key
+      - MINIO_SECRET_KEY=my_secret_key
+
+    volumes:
+      - ./tmp/s3-store-root:/data
+
+    command: "server --compat /data"
+
+  azurite-container:
+    image: mcr.microsoft.com/azure-storage/azurite
+
+    volumes:
+      - ./tmp/azure-store-root:/data
+
+    command: "azurite-blob --blobHost 0.0.0.0 --loose"
+
+  sbt:
+    image: hseeberger/scala-sbt:11.0.7_1.3.13_2.13.3
+
+    entrypoint: /usr/bin/sbt
+    working_dir: /opt/app
+
+    volumes:
+    - ~/.sbt:/root/.sbt
+    - ~/.ivy2:/root/.ivy2
+    - ~/.coursier:/root/.coursier
+    - .:/opt/app
+
+    links:
+      - sftp-container
+      - sftp-no-chroot-container
+      - minio-container
+      - azurite-container
+
+    sbt:
+      image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
+
+      entrypoint: /usr/bin/sbt
+      working_dir: /opt/app
+
+      volumes:
+        - ~/.sbt:/root/.sbt
+        - ~/.ivy2:/root/.ivy2
+        - ~/.coursier:/root/.coursier
+        - .:/opt/app
+
+      links:
+        - sftp:sftp-container
+        - sftp-no-chroot:sftp-no-chroot
+        - minio:minio-container
+        - azurite:azurite-container
+
+      environment:
+        - S3_TEST_BUCKET=${S3_TEST_BUCKET}
+        - S3_TEST_ACCESS_KEY=${S3_TEST_ACCESS_KEY}
+        - S3_TEST_SECRET_KEY=${S3_TEST_SECRET_KEY}
+        - AWS_REGION=us-east-2
