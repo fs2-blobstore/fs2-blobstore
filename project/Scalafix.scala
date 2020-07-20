@@ -9,11 +9,11 @@ object Scalafix extends AutoPlugin {
   override def requires = ScalafixPlugin
 
   override def buildSettings: Seq[Def.Setting[_]] = Seq(
-    addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.3.18" cross CrossVersion.full),
+    addCompilerPlugin("org.scalameta" % "semanticdb-scalac" % "4.3.20" cross CrossVersion.full),
     scalacOptions ++= List(
       "-Yrangepos", // required by SemanticDB compiler plugin
       "-P:semanticdb:synthetics:on"
     ),
-    scalafixDependencies += "com.github.vovapolu" %% "scaluzzi" % "0.1.8"
+    scalafixDependencies += "com.github.vovapolu" %% "scaluzzi" % "0.1.12"
   )
 }
