@@ -111,6 +111,15 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
   def move[A](src: (Bucket, Path[A]), dst: (Bucket, Path[A])): F[Unit]
 
   /**
+    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
+    * @param src path
+    * @param dst path
+    * @return F[Unit]
+    */
+  def move(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] =
+    move(src.authority -> src.path, dst.authority -> dst.path)
+
+  /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     * @param src path
     * @param dst path
@@ -119,11 +128,28 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
   def copy[A](src: (Bucket, Path[A]), dst: (Bucket, Path[A])): F[Unit]
 
   /**
+    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
+    * @param src path
+    * @param dst path
+    * @return F[Unit]
+    */
+  def copy(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] =
+    copy(src.authority -> src.path, dst.authority -> dst.path)
+
+  /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param path to remove
     * @return F[Unit]
     */
   def remove[A](bucketName: Bucket, path: Path[A]): F[Unit]
+
+  /**
+    * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
+    * @param path to remove
+    * @return F[Unit]
+    */
+  def remove(path: Url[Scheme, Bucket]): F[Unit] =
+    remove(path.authority, path.path)
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -149,6 +175,13 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     */
   def get[A](bucketName: Bucket, path: Path[A]): Stream[F, Byte] = get(bucketName, path, 4096)
 
+  /**
+    * Get bytes for the given Path.
+    * @param chunkSize bytes to read in each chunk.
+    * @return stream of bytes
+    */
+  def get(url: Url[Scheme, Bucket], chunkSize: Int): Stream[F, Byte] =
+    get(url.authority, url.path, chunkSize)
 
   /**
     * getContents with default UTF8 decoder
@@ -169,39 +202,5 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
   def getContents[A](bucketName: Bucket, path: Path[A], decoder: Pipe[F, Byte, String])(implicit F: Sync[F]): F[String] = {
     get(bucketName, path).through(decoder).compile.toList.map(_.mkString)
   }
-
-  /**
-    * Get bytes for the given Path.
-    * @param chunkSize bytes to read in each chunk.
-    * @return stream of bytes
-    */
-  def get(url: Url[Scheme, Bucket], chunkSize: Int): Stream[F, Byte] =
-    get(url.authority, url.path, chunkSize)
-
-  /**
-    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
-    */
-  def move(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] = ???
-
-  /**
-    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
-    */
-  def copy(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] = ???
-
-  /**
-    * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
-    * @param path to remove
-    * @return F[Unit]
-    */
-  def remove(path: Url[Scheme, Bucket]): F[Unit] =
-    remove(path.authority, path.path)
-
-
 
 }

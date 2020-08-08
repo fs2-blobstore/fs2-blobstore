@@ -3,14 +3,14 @@ inThisBuild(
     scalaVersion := "2.13.2",
     crossScalaVersions := Seq("2.12.11", "2.13.2"),
     organization := "com.github.fs2-blobstore",
-    licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
-      Developer("rolandomanrique", "Rolando Manrique", "", url("http://github.com/rolandomanrique")),
-      Developer("stew", "Stew O'Connor", "", url("https://github.com/stew")),
-      Developer("gafiatulin", "Victor Gafiatulin", "", url("https://github.com/gafiatulin")),
-      Developer("jgogstad", "Jostein Gogstad", "", url("https://github.com/jgogstad"))
+      Developer("rolandomanrique", "Rolando Manrique", "", sbt.url("http://github.com/rolandomanrique")),
+      Developer("stew", "Stew O'Connor", "", sbt.url("https://github.com/stew")),
+      Developer("gafiatulin", "Victor Gafiatulin", "", sbt.url("https://github.com/gafiatulin")),
+      Developer("jgogstad", "Jostein Gogstad", "", sbt.url("https://github.com/jgogstad"))
     ),
-    homepage := Some(url("https://github.com/fs2-blobstore/fs2-blobstore")),
+    homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
     addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.11.0" cross CrossVersion.full),
@@ -27,7 +27,9 @@ lazy val fs2blobstore = project
     moduleName := "root",
     skip in publish := true
   )
-  .aggregate(core, s3, sftp, box, gcs, azure)
+  .aggregate(url, core, s3, sftp, box, gcs, azure)
+
+lazy val url = project
 
 lazy val core = project
 
@@ -40,6 +42,7 @@ lazy val box = project.dependsOn(core % "compile->compile;test->test")
 lazy val gcs = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val azure = project.dependsOn(core % "compile->compile;test->test")
+
 
 lazy val docs = (project in file("project-docs"))
   .settings(
