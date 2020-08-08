@@ -31,7 +31,7 @@ lazy val fs2blobstore = project
 
 lazy val url = project
 
-lazy val core = project
+lazy val core = project.dependsOn(url)
 
 lazy val s3 = project.dependsOn(core % "compile->compile;test->test")
 
