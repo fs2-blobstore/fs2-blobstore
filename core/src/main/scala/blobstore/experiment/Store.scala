@@ -25,7 +25,7 @@ abstract class Store[F[_]: MonadError[*[_], Throwable], Scheme <: String, Author
     *          list(folder, recursive = true)  -> [a, b, c, d, e]
     *          list(folder, recursive = false) -> [a, b, c, sub-folder]
     */
-  def list(url: Url[Scheme, Authority, Blob], recursive: Boolean = false): Stream[F, Path[Blob]]
+  def list(url: Url[Scheme, Authority], recursive: Boolean = false): Stream[F, Path[Blob]]
 
   /**
     * Get bytes for the given Path.
@@ -33,7 +33,7 @@ abstract class Store[F[_]: MonadError[*[_], Throwable], Scheme <: String, Author
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  def get(url: Url[Scheme, Authority, Blob], chunkSize: Int): Stream[F, Byte]
+  def get(url: Url[Scheme, Authority], chunkSize: Int): Stream[F, Byte]
 
   /**
     * Provides a Sink that writes bytes into the provided path.
@@ -46,7 +46,7 @@ abstract class Store[F[_]: MonadError[*[_], Throwable], Scheme <: String, Author
     * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
-  def put(url: Url[Scheme, Authority, Blob], overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
+  def put(url: Url[Scheme, Authority], overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
 
   /**
     * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
@@ -54,7 +54,7 @@ abstract class Store[F[_]: MonadError[*[_], Throwable], Scheme <: String, Author
     * @param dst path
     * @return F[Unit]
     */
-  def move(src: Url[Scheme, Authority, Blob], dst: Url[Scheme, Authority, Blob]): F[Unit]
+  def move(src: Url[Scheme, Authority], dst: Url[Scheme, Authority]): F[Unit]
 
   /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -62,14 +62,14 @@ abstract class Store[F[_]: MonadError[*[_], Throwable], Scheme <: String, Author
     * @param dst path
     * @return F[Unit]
     */
-  def copy(src: Url[Scheme, Authority, Blob], dst: Url[Scheme, Authority, Blob]): F[Unit]
+  def copy(src: Url[Scheme, Authority], dst: Url[Scheme, Authority]): F[Unit]
 
   /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param path to remove
     * @return F[Unit]
     */
-  def remove(path: Url[Scheme, Authority, Blob]): F[Unit]
+  def remove(path: Url[Scheme, Authority]): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.

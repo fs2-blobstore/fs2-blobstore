@@ -76,12 +76,12 @@ object IpV4Address {
     case Invalid(e) => throw MultipleUrlValidationException(e)
   }
 
-  def compare(x: IpV4Address, y: IpV4Address): Int =
-    x.bytes.toHList.zip(y.bytes.toHList).foldMap(0)(IpV4Address.compareBytes)(_ + _)
-
-  object compareBytes extends (Const[(Byte, Byte)]#λ  ~> Const[Int]#λ) {
+  private object compareBytes extends (Const[(Byte, Byte)]#λ  ~> Const[Int]#λ) {
     override def apply[T](f: (Byte, Byte)): Int = (f._1 & 0xff) compare (f._2 & 0xff)
   }
+
+  def compare(x: IpV4Address, y: IpV4Address): Int =
+    x.bytes.toHList.zip(y.bytes.toHList).foldMap(0)(IpV4Address.compareBytes)(_ + _)
 
   implicit val ordering: Ordering[IpV4Address] = compare
   implicit val order: Order[IpV4Address] = Order.fromOrdering[IpV4Address]

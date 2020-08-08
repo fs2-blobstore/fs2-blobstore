@@ -15,7 +15,7 @@ import blobstore.experiment.url.Path.AbsolutePath
 import blobstore.gcs.Fs2OutputStream
 import blobstore.putRotateBase
 import com.google.api.gax.paging.Page
-import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
+import com.google.cloud.storage.{Acl, Blob => GcsBlob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
 import fs2.{Chunk, Pipe, Stream}
 

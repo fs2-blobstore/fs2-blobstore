@@ -4,7 +4,7 @@ import blobstore.experiment.exception.{AuthorityParseError, MultipleUrlValidatio
 import blobstore.experiment.exception.AuthorityParseError.{InvalidHost, MissingHost}
 import blobstore.experiment.exception.UrlParseError.{CouldntParseUrl, MissingScheme}
 import blobstore.experiment.url.Authority.{Bucket, StandardAuthority}
-import blobstore.experiment.url.Path.{EmptyPath, RootlessPath}
+import blobstore.experiment.url.Path.{RootlessPath}
 import cats.{ApplicativeError, Show}
 import cats.data.{NonEmptyChain, OptionT, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
@@ -19,25 +19,21 @@ import com.github.ghik.silencer.silent
 import scala.util.Try
 import scala.util.matching.Regex
 
-class Url[+S <: String, A <: Authority, P] private (val scheme: S, val authority: A, val path: Path[P])  extends Product3[S, A, Path[P]] with Serializable {
-//  def narrowBucket: Validated[BucketParseError.NotValidBucketUrl, Url.Bucket] = authority match {
-//    case bucket@Bucket(_ ,_) => new Url[Bucket](scheme, bucket, path).valid
-//    case a: StandardAuthority => BucketParseError.NotValidBucketUrl(new Url[StandardAuthority](scheme, a, path)).invalid
-//  }
+class Url[+S <: String, A <: Authority] private (val scheme: S, val authority: A, val path: Path.Plain)  extends Product3[S, A, Path.Plain] with Serializable {
   override def _1: S = scheme
 
   override def _2: A = authority
 
-  override def _3: Path[P] = path
+  override def _3: Path.Plain = path
 
   @silent("unchecked")
   override def canEqual(that: Any): Boolean =
-    that.isInstanceOf[Url[String, Authority, Any]]
+    that.isInstanceOf[Url[String, Authority]]
 
-  def withScheme[SS <: String](newScheme: SS): Validated[SchemeError, Url[SS, A, P]] =
+  def withScheme[SS <: String](newScheme: SS): Validated[SchemeError, Url[SS, A]] =
     Url.validateScheme(newScheme).map(s => new Url(s, authority, path))
 
-  def unsafeWithScheme[SS <: String](newScheme: SS): Url[SS, A, P] = withScheme(newScheme) match {
+  def unsafeWithScheme[SS <: String](newScheme: SS): Url[SS, A] = withScheme(newScheme) match {
     case Valid(a) => a
     case Invalid(e) => throw SingleValidationException(e)
   }
@@ -45,7 +41,7 @@ class Url[+S <: String, A <: Authority, P] private (val scheme: S, val authority
   def withAuthority[AA <: Authority](newAuthority: AA): ValidatedNec[AuthorityParseError, AA] = ???
   def unusafeWithAuthority[AA <: Authority](newAuthority: AA): AA = ???
 
-  def withPath[PP](newPath: Path[PP]): Url[S, A, Path[PP]] = ???
+  def withPath[PP](newPath: Path[PP]): Url[S, A] = ???
 }
 
 object Url {
@@ -56,9 +52,9 @@ object Url {
   }
 
 
-  type Http = Url[scheme.Http, StandardAuthority, String]
-  type Https = Url[scheme.Https, StandardAuthority, String]
-  type PlainUrl = Url[String, StandardAuthority, String]
+  type Http = Url[scheme.Http, StandardAuthority]
+  type Https = Url[scheme.Https, StandardAuthority]
+  type PlainUrl = Url[String, StandardAuthority]
 
   object PlainUrl {
     def apply(s: String): ValidatedNec[UrlParseError, Url.PlainUrl] = Url.standard(s)
@@ -101,13 +97,13 @@ object Url {
 
       val typedAuthority: ValidatedNec[AuthorityParseError, StandardAuthority] = authority.leftMap(NonEmptyChain(_)).flatMap(StandardAuthority.parse(_).toEither).toValidated
 
-      val path: Path.Plain = OptionT(tryOpt(m.group(5))).map(Path.apply).getOrElse(EmptyPath).getOrElse(EmptyPath)
+      val path: Path.Plain = OptionT(tryOpt(m.group(5))).map(Path.apply).getOrElse(Path.empty).getOrElse(Path.empty)
       val scheme =
         OptionT(
           tryOpt(m.group(2)).toEither.leftMap(t => MissingScheme(c, Some(t))).leftWiden[UrlParseError]
         ).getOrElseF(MissingScheme(c, None).asLeft[String]).toValidatedNec
 
-      (scheme, typedAuthority).mapN((s, a) => new Url[String, StandardAuthority, String](s, a, path))
+      (scheme, typedAuthority).mapN((s, a) => new Url[String, StandardAuthority](s, a, path))
     }.getOrElse(CouldntParseUrl(c).invalidNec)
   }
 
@@ -124,7 +120,7 @@ object Url {
   def validateScheme[S <: String](candidate: S): Validated[SchemeError, S] =
     Validated.fromOption(schemeRegex.matches(candidate).guard[Option].as(candidate), SchemeError.InvalidScheme(candidate))
 
-  def compare[A <: Authority, P](one: Url[String, A, P], two: Url[String, A, P]): Int = {
+  def compare[A <: Authority, P](one: Url[String, A], two: Url[String, A]): Int = {
     val scheme = one.scheme compare two.scheme
     val authority = (one.authority, two.authority) match {
       case (StandardAuthority(host1, userInfo1, port1), StandardAuthority(host2, userInfo2, port2)) =>
@@ -138,10 +134,10 @@ object Url {
 
 //  implicit def ordering[A <: Authority]: Ordering[Url[A]] = compare
 //  implicit def order[A <: Authority]: Order[Url[A]] = Order.fromOrdering
-
-  implicit def show[S <: String, A <: Authority, P]: Show[Url[S, A, P]] = u => {
+//
+  implicit def show[S <: String, A <: Authority]: Show[Url[S, A]] = u => {
     val pathString = u.path match {
-      case r: RootlessPath[P] => show"/${r.show}"
+      case r: RootlessPath[_] => show"/${r.show}"
       case a => a.show
     }
     show"${u.scheme}://${u.authority}${pathString}"

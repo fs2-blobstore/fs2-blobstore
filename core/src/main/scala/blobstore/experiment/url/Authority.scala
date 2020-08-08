@@ -28,7 +28,7 @@ object Authority {
 
   /**
     * An authority as defined by RFC3986. Can point to any valid host on a computer network. Characterized by supporting
-    * userinfo, port as well as IP addreses in addition to normal hostnames.
+    * userinfo, port as well as IP addresses in addition to normal hostnames.
     *
     * @param host A valid host. This is either a domain name, or an IPv4 or IPv6 address
     * @param userInfo Optional userinfo component holding username and optionally password

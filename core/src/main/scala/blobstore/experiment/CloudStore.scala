@@ -99,17 +99,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
       .compile
       .drain
 
-  /**
-    * Provides a Sink that writes bytes into the provided path.
-    *
-    * It is highly recommended to provide [[Path.size]] when writing as it allows for optimizations in some store.
-    * Specifically, S3Store will behave very poorly if no size is provided as it will load all bytes in memory before
-    * writing content to S3 server.
-    *
-    * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
-    * @return sink of bytes
-    */
-  def put(url: Url[Scheme, Bucket, BlobType], overwrite: Boolean, size: Option[Long]): Pipe[F, Byte, Unit] =
+  def put(url: Url[Scheme, Bucket], overwrite: Boolean, size: Option[Long]): Pipe[F, Byte, Unit] =
     _.through(put(url.authority, url.path, overwrite, size))
 
   /**
@@ -185,7 +175,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  def get(url: Url[Scheme, Bucket, BlobType], chunkSize: Int): Stream[F, Byte] =
+  def get(url: Url[Scheme, Bucket], chunkSize: Int): Stream[F, Byte] =
     get(url.authority, url.path, chunkSize)
 
   /**
@@ -194,7 +184,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param dst path
     * @return F[Unit]
     */
-  def move(src: Url[Scheme, Bucket, BlobType], dst: Url[Scheme, Bucket, BlobType]): F[Unit] = ???
+  def move(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] = ???
 
   /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -202,14 +192,14 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param dst path
     * @return F[Unit]
     */
-  def copy(src: Url[Scheme, Bucket, BlobType], dst: Url[Scheme, Bucket, BlobType]): F[Unit] = ???
+  def copy(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] = ???
 
   /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param path to remove
     * @return F[Unit]
     */
-  def remove(path: Url[Scheme, Bucket, BlobType]): F[Unit] =
+  def remove(path: Url[Scheme, Bucket]): F[Unit] =
     remove(path.authority, path.path)
 
 
