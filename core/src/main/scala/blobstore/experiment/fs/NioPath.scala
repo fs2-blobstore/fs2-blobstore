@@ -3,7 +3,7 @@ package blobstore.experiment.fs
 import java.nio.file.{Files, Path}
 import java.time.Instant
 
-import blobstore.experiment.url.Blob
+import blobstore.url.Blob
 
 
 case class NioPath(value: Path)

@@ -1,9 +1,9 @@
-package blobstore.experiment.url
+package blobstore.url
 
 import cats.{Order, Show}
+import cats.instances.option._
 import cats.instances.string._
 import cats.instances.tuple._
-import cats.instances.option._
 import cats.syntax.all._
 
 case class UserInfo private (user: String, password: Option[String] = None) extends Ordering[UserInfo] {

@@ -3,8 +3,8 @@ package blobstore.experiment.fs
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
 import blobstore.experiment.SingleAuthorityStore
-import blobstore.experiment.url.Path
 import blobstore.goRotate
+import blobstore.url.Path
 
 import scala.jdk.CollectionConverters._
 import cats.implicits._

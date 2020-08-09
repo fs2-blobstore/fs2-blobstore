@@ -1,7 +1,7 @@
-package blobstore.experiment.url
+package blobstore.url
 
-import blobstore.experiment.exception.{HostParseError, MultipleUrlValidationException}
-import blobstore.experiment.url.Hostname.Label
+import blobstore.url.exception.{HostParseError, MultipleUrlValidationException}
+import blobstore.url.Hostname.Label
 import cats.{ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}

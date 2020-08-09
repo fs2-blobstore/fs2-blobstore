@@ -1,4 +1,4 @@
-package blobstore.experiment.exception
+package blobstore.url.exception
 
 import cats.Semigroup
 

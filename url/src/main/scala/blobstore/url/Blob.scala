@@ -1,4 +1,4 @@
-package blobstore.experiment.url
+package blobstore.url
 
 import java.time.Instant
 

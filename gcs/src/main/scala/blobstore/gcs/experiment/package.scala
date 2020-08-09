@@ -1,6 +1,6 @@
 package blobstore.gcs
 
-import blobstore.experiment.url.Blob
+import blobstore.url.Blob
 import com.google.cloud.storage.{Blob => GcsBlob}
 import shapeless.Witness
 

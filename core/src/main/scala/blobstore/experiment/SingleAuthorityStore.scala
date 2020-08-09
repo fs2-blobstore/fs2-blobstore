@@ -1,7 +1,7 @@
 package blobstore.experiment
 
 
-import blobstore.experiment.url.{Blob, Path}
+import blobstore.url.{Blob, Path}
 import fs2.{Pipe, Stream}
 
 

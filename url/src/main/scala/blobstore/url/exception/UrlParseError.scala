@@ -1,6 +1,6 @@
-package blobstore.experiment.exception
+package blobstore.url.exception
 
-import blobstore.experiment.url.{Host, Port, Url, UserInfo}
+import blobstore.url.{Host, Port, Url, UserInfo}
 import cats.data.NonEmptyChain
 import cats.instances.string._
 import cats.instances.int._

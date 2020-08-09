@@ -2,8 +2,8 @@ package blobstore.experiment
 
 import java.nio.charset.StandardCharsets
 
-import blobstore.experiment.url.{Blob, Path, Url}
-import blobstore.experiment.url.Authority.Bucket
+import blobstore.url.Authority.Bucket
+import blobstore.url.{Blob, Path, Url}
 import cats.MonadError
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.all._
@@ -74,7 +74,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
   def put[A](bucketName: Bucket, path: Path[A], overwrite: Boolean, size: Option[Long]): Pipe[F, Byte, Unit]
 
   def put(bucketName: Bucket, path: Path[BlobType], overwrite: Boolean)(implicit B: Blob[BlobType]): Pipe[F, Byte, Unit] =
-    put(bucketName, path, overwrite, Option(B.size(path.info)))
+    put(bucketName, path, overwrite, Option(path.size))
 
   def put[A](bucketName: Bucket, contents: String, path: Path[A], overwrite: Boolean)(implicit F: Sync[F]): F[Unit] = {
     val bytes = contents.getBytes(StandardCharsets.UTF_8)

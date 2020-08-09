@@ -1,10 +1,10 @@
-package blobstore.experiment.url
+package blobstore.url
 
-import blobstore.experiment.exception.{AuthorityParseError, MultipleUrlValidationException, SchemeError, SingleValidationException, UrlParseError}
-import blobstore.experiment.exception.AuthorityParseError.{InvalidHost, MissingHost}
-import blobstore.experiment.exception.UrlParseError.{CouldntParseUrl, MissingScheme}
-import blobstore.experiment.url.Authority.{Bucket, StandardAuthority}
-import blobstore.experiment.url.Path.{RootlessPath}
+import blobstore.url.exception.{AuthorityParseError, MultipleUrlValidationException, SchemeError, SingleValidationException, UrlParseError}
+import blobstore.url.exception.AuthorityParseError.{InvalidHost, MissingHost}
+import blobstore.url.exception.UrlParseError.{CouldntParseUrl, MissingScheme}
+import blobstore.url.Authority.{Bucket, StandardAuthority}
+import blobstore.url.Path.{RootlessPath}
 import cats.{ApplicativeError, Show}
 import cats.data.{NonEmptyChain, OptionT, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
@@ -13,8 +13,8 @@ import cats.instances.option._
 import cats.instances.string._
 import cats.instances.try_._
 import cats.syntax.all._
-import shapeless.Witness
 import com.github.ghik.silencer.silent
+import shapeless.Witness
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -137,7 +137,7 @@ object Url {
 //
   implicit def show[S <: String, A <: Authority]: Show[Url[S, A]] = u => {
     val pathString = u.path match {
-      case r: RootlessPath[_] => show"/${r.show}"
+      case r: RootlessPath[_] => show"/$r"
       case a => a.show
     }
     show"${u.scheme}://${u.authority}${pathString}"

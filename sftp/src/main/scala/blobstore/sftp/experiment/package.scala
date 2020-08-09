@@ -2,8 +2,9 @@ package blobstore.sftp
 
 import java.time.Instant
 
-import blobstore.experiment.url.{Authority, Blob}
+import blobstore.experiment.url.Blob
 import blobstore.experiment.url.Url.PlainUrl
+import blobstore.url.Blob
 import com.jcraft.jsch.SftpATTRS
 
 package object experiment {

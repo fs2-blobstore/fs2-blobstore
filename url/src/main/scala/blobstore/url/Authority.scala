@@ -1,7 +1,7 @@
-package blobstore.experiment.url
+package blobstore.url
 
-import blobstore.experiment.exception.{AuthorityParseError, BucketParseError, MultipleUrlValidationException}
-import blobstore.experiment.url.Authority.{Bucket, StandardAuthority}
+import blobstore.url.exception.{AuthorityParseError, BucketParseError, MultipleUrlValidationException}
+import blobstore.url.Authority.{Bucket, StandardAuthority}
 import cats.{ApplicativeError, ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}

@@ -7,7 +7,7 @@ import cats.instances.string._
 import java.io.OutputStream
 
 import blobstore.experiment.SingleAuthorityStore
-import blobstore.experiment.url.Path
+import blobstore.url.Path
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
 import fs2.{Pipe, Stream}

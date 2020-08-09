@@ -10,12 +10,12 @@ import _root_.cats.instances.string._
 import _root_.cats.syntax.all._
 import blobstore.experiment.CloudStore
 import blobstore.experiment.url.Authority.Bucket
-import blobstore.experiment.url.Path
 import blobstore.experiment.url.Path.AbsolutePath
 import blobstore.gcs.Fs2OutputStream
 import blobstore.putRotateBase
+import blobstore.url.Path
 import com.google.api.gax.paging.Page
-import com.google.cloud.storage.{Acl, Blob => GcsBlob, BlobId, BlobInfo, Storage, StorageException}
+import com.google.cloud.storage.{Acl, BlobId, BlobInfo, Storage, StorageException, Blob => GcsBlob}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
 import fs2.{Chunk, Pipe, Stream}
 
