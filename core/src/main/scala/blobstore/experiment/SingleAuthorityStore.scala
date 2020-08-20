@@ -1,11 +1,11 @@
 package blobstore.experiment
 
 
-import blobstore.url.{Blob, Path}
+import blobstore.url.{FsObject, Path}
 import fs2.{Pipe, Stream}
 
 
-abstract class SingleAuthorityStore[F[_], B: Blob] {
+abstract class SingleAuthorityStore[F[_], B: FsObject] {
 
   /**
     * List paths.

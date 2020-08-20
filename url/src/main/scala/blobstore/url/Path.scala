@@ -2,6 +2,7 @@ package blobstore.url
 
 import java.time.Instant
 
+import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import cats.{Functor, Show}
 import cats.data.Chain
 import cats.instances.int._
@@ -18,14 +19,39 @@ import cats.syntax.all._
   *
   * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.3, Path
   */
-sealed trait Path[+A] {
+sealed trait Path[A] {
   def representation: A
   def segments: Chain[String]
   def fileName: Option[String] = segments.lastOption.filter(l => !l.endsWith("/"))
 
-  def size(implicit B: Blob[A]): Long                    = Blob[A].size(representation)
-  def isDir(implicit B: Blob[A]): Boolean                = Blob[A].isDir(representation)
-  def lastModified(implicit B: Blob[A]): Option[Instant] = Blob[A].lastModified(representation)
+  def plain: Path.Plain = this match {
+    case AbsolutePath(_, segments) => AbsolutePath("/" + segments.mkString_("/"), segments)
+    case RootlessPath(_, segments) => RootlessPath(segments.mkString_(""), segments)
+  }
+
+  def /(segment: String)(implicit ev: String =:= A): Path[A] = this match {
+    case AbsolutePath(_, s) =>
+      val c = s :+ segment
+      AbsolutePath("/" + ev(c.mkString_("/")), c)
+    case RootlessPath(_, segments) =>
+      val s = segments :+ segment
+      if (segments.isEmpty) RootlessPath(segment, s)
+      else RootlessPath(s.mkString_("/"), s)
+  }
+
+  def as[B](b: B): Path[B] = this match {
+    case AbsolutePath(_, segments) => AbsolutePath(b, segments)
+    case RootlessPath(_, segments) => RootlessPath(b, segments)
+  }
+
+  def addSegment[B](segment: String, representation: B): Path[B] = this match {
+    case AbsolutePath(_, _) => AbsolutePath(representation, segments :+ segment)
+    case RootlessPath(_, _) => RootlessPath(representation, segments :+ segment)
+  }
+
+  def size(implicit B: FsObject[A]): Long                    = FsObject[A].size(representation)
+  def isDir(implicit B: FsObject[A]): Boolean                = FsObject[A].isDir(representation)
+  def lastModified(implicit B: FsObject[A]): Option[Instant] = FsObject[A].lastModified(representation)
 }
 
 object Path {
@@ -40,9 +66,11 @@ object Path {
   case class AbsolutePath[A](representation: A, segments: Chain[String]) extends Path[A]
 
   object AbsolutePath {
-    def unapply(s: String): Option[AbsolutePath[String]] =
+    def parse(s: String): Option[AbsolutePath[String]] =
       if (s.startsWith("/")) Some(AbsolutePath(s, Chain(s.split("/").toList: _*)))
       else None
+
+    val root: AbsolutePath[String] = AbsolutePath("/", Chain.empty)
 
     implicit def show[A]: Show[AbsolutePath[A]]          = "/" + _.segments.mkString_("/")
     implicit def order[A: Order]: Order[AbsolutePath[A]] = (x, y) => Order[A].compare(x.representation, y.representation)
@@ -50,29 +78,30 @@ object Path {
 
   case class RootlessPath[A](representation: A, segments: Chain[String]) extends Path[A]
   object RootlessPath {
-    def unapply(s: String): Option[RootlessPath[String]] =
+    def parse(s: String): Option[RootlessPath[String]] =
       if (s.nonEmpty && !s.startsWith("/")) Some(RootlessPath(s, Chain(s.split("/").toList: _*)))
       else None
 
+    def relativeHome: RootlessPath[String] = RootlessPath("", Chain.empty)
+
     implicit def show[A]: Show[RootlessPath[A]]          = _.segments.mkString_("/")
     implicit def order[A: Order]: Order[RootlessPath[A]] = (x, y) => Order[A].compare(x.representation, y.representation)
+    implicit def ordering[A: Ordering]: Ordering[RootlessPath[A]] = order[A](Order.fromOrdering[A]).toOrdering
   }
 
   def empty: RootlessPath[String] = RootlessPath("", Chain.empty)
 
-  def apply(s: String): Path.Plain = s match {
-    case AbsolutePath(p) => p
-    case RootlessPath(p) => p
-
-    // Convincing the compiler that all Strings are in fact paths
-    case _ => RootlessPath(s, Chain(s.split("/").toList: _*))
-  }
+  def apply(s: String): Path.Plain =
+    AbsolutePath.parse(s).orElse(RootlessPath.parse(s)).getOrElse(
+      RootlessPath(s, Chain(s.split("/").toList: _*)) // Paths either have a root or they don't, this block is never executed
+    )
 
   def compare[A](one: Path[A], two: Path[A]): Int = {
     one.show compare two.show
   }
 
   implicit def order[A: Order]: Order[Path[A]] = compare
+  implicit def ordering[A: Ordering]: Ordering[Path[A]] = order[A](Order.fromOrdering[A]).toOrdering
 
   implicit def eq[A]: Eq[Path[A]] = compare[A](_, _) === 0
 

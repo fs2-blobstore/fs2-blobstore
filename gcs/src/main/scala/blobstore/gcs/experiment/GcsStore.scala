@@ -9,8 +9,8 @@ import _root_.cats.instances.list._
 import _root_.cats.instances.string._
 import _root_.cats.syntax.all._
 import blobstore.experiment.CloudStore
-import blobstore.experiment.url.Authority.Bucket
-import blobstore.experiment.url.Path.AbsolutePath
+import blobstore.url.Authority.Bucket
+import blobstore.url.Path.AbsolutePath
 import blobstore.gcs.Fs2OutputStream
 import blobstore.putRotateBase
 import blobstore.url.Path
@@ -28,7 +28,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   defaultTrailingSlashFiles: Boolean = false,
   defaultDirectDownload: Boolean = false,
   defaultMaxChunksInFlight: Option[Int] = None
-) extends CloudStore[F, GcsProtocol, GcsBlob] {
+) extends CloudStore[F, GcsBlob] {
 
   override def list[A](bucketName: Bucket, path: Path[A], recursive: Boolean = false): Stream[F, Path[GcsBlob]] =
     listWithOptions(bucketName, path, recursive)
@@ -76,7 +76,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
 
     }
 
-  private def getDirect(blob: Blob, chunkSize: Int, maxChunksInFlight: Option[Int]): Stream[F, Byte] =
+  private def getDirect(blob: GcsBlob, chunkSize: Int, maxChunksInFlight: Option[Int]): Stream[F, Byte] =
     Stream.eval(Fs2OutputStream[F](chunkSize, maxChunksInFlight)).flatMap { os =>
       os.stream.concurrently(
         Stream.eval(
@@ -85,33 +85,32 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
       )
     }
 
-  def listUnderlying[A](bucketName: Bucket, path: Path[A], expectTrailingSlashFiles: Boolean, recursive: Boolean, optionss: BlobListOption*): Stream[F, Path[GcsBlob]] = {
+  def listUnderlying[A](bucketName: Bucket, path: Path[A], expectTrailingSlashFiles: Boolean, recursive: Boolean, inputOptions: BlobListOption*): Stream[F, Path[GcsBlob]] = {
     val blobId = GcsStore.toBlobId(bucketName, path)
 
-    // TODO: Resolve conflicts between input options and default options
-        val options         = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ optionss
-        val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
-        Stream.unfoldChunkEval[F, () => Option[Page[Blob]], Path[GcsBlob]] { () =>
-          Some(storage.list(blobId.getBucket, blobListOptions: _*))
-        } { getPage =>
-          blocker.delay(getPage()).flatMap {
-            case None => none[(Chunk[Path[GcsBlob]], () => Option[Page[Blob]])].pure[F]
-            case Some(page) =>
-              page.getValues.asScala.toList
-                .traverse {
-                  case blob if blob.isDirectory =>
-                    if (expectTrailingSlashFiles) blocker.delay(Option(storage.get(blob.getBlobId)).getOrElse(blob))
-                    else blob.pure[F]
-                  case blob =>
-                    blob.pure[F]
-                }
-                .map { paths =>
-                  (
-                    Chunk.seq(paths.map(blob => AbsolutePath(GcsBlob(blob), Chain(blob.getName.split("/").toIndexedSeq:_ *)))),
-                    () => if (page.hasNextPage) Some(page.getNextPage) else None
-                    ).some
-                }
-        }
+    val options = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ inputOptions
+    val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
+    Stream.unfoldChunkEval[F, () => Option[Page[GcsBlob]], Path[GcsBlob]] { () =>
+      Some(storage.list(blobId.getBucket, blobListOptions: _*))
+    } { getPage =>
+      blocker.delay(getPage()).flatMap {
+        case None => none[(Chunk[Path[GcsBlob]], () => Option[Page[GcsBlob]])].pure[F]
+        case Some(page) =>
+          page.getValues.asScala.toList
+            .traverse {
+              case blob if blob.isDirectory =>
+                if (expectTrailingSlashFiles) blocker.delay(Option(storage.get(blob.getBlobId)).getOrElse(blob))
+                else blob.pure[F]
+              case blob =>
+                blob.pure[F]
+            }
+            .map { paths =>
+              (
+                Chunk.seq(paths.map(blob => AbsolutePath(blob, Chain(blob.getName.split("/").toIndexedSeq: _ *)))),
+                () => if (page.hasNextPage) Some(page.getNextPage) else None
+                ).some
+            }
+      }
     }
   }
 
@@ -167,9 +166,5 @@ object GcsStore {
   private val minimalReaderChunkSize = 2 * 1024 * 1024 // BlobReadChannel.DEFAULT_CHUNK_SIZE
 
   private def toBlobId[A](bucketName: Bucket, path: Path[A]): BlobId =
-          BlobId.of(
-            bucketName.name.show,
-            path.segments
-              .mkString_("/") ++ path.fileName.fold("/")((if (path.segments.isEmpty) "" else "/") ++ _)
-          )
+    BlobId.of(bucketName.name.show, path.show)
 }

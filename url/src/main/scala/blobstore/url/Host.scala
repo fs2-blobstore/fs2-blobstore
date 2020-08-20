@@ -27,7 +27,7 @@ sealed trait Host
 
 object Host {
 
-  def parse(s: String): Validated[NonEmptyChain[HostParseError], Host] = Hostname.parse(s).orElse(IpV4Address.parse(s))
+  def parse(s: String): ValidatedNec[HostParseError, Host] = Hostname.parse(s).orElse(IpV4Address.parse(s))
 
   def unsafe(s: String): Host = parse(s) match {
     case Valid(v) => v
@@ -40,7 +40,7 @@ object Host {
       case b @ Hostname(_)    => Right(b)
     }(Order[Either[IpV4Address, Hostname]])
 
-  implicit val ordering: Ordering[Host] = Order[Host].compare(_,_)
+  implicit val ordering: Ordering[Host] = order.toOrdering
 
   implicit val show: Show[Host] = {
     case a @ IpV4Address(_,_,_,_) => a.show
@@ -49,12 +49,10 @@ object Host {
 
 }
 
-case class IpV4Address(octet1: Byte, octet2: Byte, octet3: Byte, octet4: Byte) extends Host with Ordered[IpV4Address] {
+case class IpV4Address(octet1: Byte, octet2: Byte, octet3: Byte, octet4: Byte) extends Host {
   val bytes: Sized[IndexedSeq[Byte], _4] = Sized(octet1, octet2, octet3, octet4)
 
   override def toString: String = s"${octet1 & 0xff}.${octet2 & 0xff}.${octet3 & 0xff}.${octet4 & 0xff}"
-
-  override def compare(that: IpV4Address): Int = IpV4Address.compare(this, that)
 }
 
 object IpV4Address {
@@ -88,10 +86,8 @@ object IpV4Address {
   implicit val show: Show[IpV4Address]   = Show.fromToString[IpV4Address]
 }
 
-case class Hostname private (labels: NonEmptyChain[Label]) extends Host with Ordered[Hostname]{
+case class Hostname private (labels: NonEmptyChain[Label]) extends Host {
   override def toString: String = labels.mkString_(".")
-
-  override def compare(that: Hostname): Int = Hostname.compare(this, that)
 }
 
 object Hostname {
@@ -114,6 +110,7 @@ object Hostname {
   object Label {
     implicit val show: Show[Label] = _.value
     implicit val order: Order[Label] = _.value compare _.value
+    implicit val ordering: Ordering[Label] = order.toOrdering
   }
 
   def parse(value: String): ValidatedNec[HostParseError, Hostname] = {

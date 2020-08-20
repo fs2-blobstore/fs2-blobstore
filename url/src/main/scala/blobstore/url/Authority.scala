@@ -1,7 +1,6 @@
 package blobstore.url
 
 import blobstore.url.exception.{AuthorityParseError, BucketParseError, MultipleUrlValidationException}
-import blobstore.url.Authority.{Bucket, StandardAuthority}
 import cats.{ApplicativeError, ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
@@ -12,16 +11,7 @@ import cats.instances.string._
 import cats.syntax.all._
 
 sealed trait Authority {
-  def toStandardAuthority: StandardAuthority = this match {
-    case u: StandardAuthority => u
-    case b: Bucket => StandardAuthority(b.name, None, None)
-  }
-
-  def toBucket: Option[Bucket] = this match {
-    case StandardAuthority(h@Hostname(_), None, None) => Some(new Bucket(h, None))
-    case b: Bucket => Some(b)
-    case _ => None
-  }
+  def host: Host
 }
 
 object Authority {
@@ -80,6 +70,7 @@ object Authority {
 
     implicit val show: Show[StandardAuthority]   = s => s.host.show + s.port.map(_.show).map(":" + _).getOrElse("")
     implicit val order: Order[StandardAuthority] = Order.by(_.show)
+    implicit val ordering: Ordering[StandardAuthority] = order.toOrdering
   }
 
   /**
@@ -90,25 +81,17 @@ object Authority {
     * @param name The domain name identifying the bucket
     * @param region An optional region associated with the bucket
     */
-  final class Bucket private[url] (val name: Hostname, val region: Option[String]) extends Authority with Product2[Hostname, Option[String]] with Serializable with Ordered[Bucket] {
+  case class Bucket(name: Hostname, region: Option[String]) extends Authority {
+    override val host: Host = name
+
     def withRegion(region: String): Bucket = new Bucket(name, Some(region))
-
-    override val _1: Hostname = name
-
-    override val _2: Option[String] = region
-
-    override def compare(that: Bucket): Int = Bucket.compare(this, that)
-
-    override def canEqual(that: Any): Boolean = that.isInstanceOf[Bucket]
   }
 
   object Bucket {
 
     def apply(c: String): ValidatedNec[BucketParseError, Bucket] = parse(c)
 
-    def unapply(s: String): Option[Bucket] = Hostname.parse(s).toOption.map(h => new Bucket(h, None))
-
-    def unapply(s: Authority): Option[Bucket] = s match {
+    def withAuthority(s: Authority): Option[Bucket] = s match {
       case StandardAuthority(h@Hostname(_), None, None) => Some(new Bucket(h, None))
       case b: Bucket => Some(b)
       case _ => None
@@ -144,13 +127,12 @@ object Authority {
 
     def unsafeWithRegion(c: String, region: String): Bucket = unsafe(c).withRegion(region)
 
-    // Assume that two buckets are equal if they have the same name, disregard region
-    def compare(one: Bucket, two: Bucket): Int = one.name compare two.name
-
-    implicit val ordering: Ordering[Bucket] = compare
-    implicit val order: Order[Bucket] = Order.fromOrdering
+    implicit val order: Order[Bucket] = _.name compare _.name
+    implicit val ordering: Ordering[Bucket] = order.toOrdering
     implicit val show: Show[Bucket] = _.name.show
   }
+
+  def parse(s: String): ValidatedNec[AuthorityParseError, Authority] = StandardAuthority.parse(s)
 
   type AuthorityCoproduct = Either[StandardAuthority, Bucket]
 
@@ -162,12 +144,11 @@ object Authority {
   implicit val order: Order[Authority] =
     ContravariantMonoidal[Order].liftContravariant[Authority, AuthorityCoproduct](authorityToCoproduct)(Order[AuthorityCoproduct])
 
-  implicit val ordering: Ordering[Authority] = order.compare _
+  implicit val ordering: Ordering[Authority] = order.toOrdering
 
   implicit val show: Show[Authority] = {
     case url: StandardAuthority => url.show
     case b: Bucket => b.show
   }
-
 
 }

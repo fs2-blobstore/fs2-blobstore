@@ -3,7 +3,7 @@ package blobstore.experiment
 import java.nio.charset.StandardCharsets
 
 import blobstore.url.Authority.Bucket
-import blobstore.url.{Blob, Path, Url}
+import blobstore.url.{FsObject, Path, Url}
 import cats.MonadError
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.all._
@@ -18,10 +18,9 @@ import fs2.{Pipe, Stream}
   * users authenticate with the samee authority that the store is accessing.
   *
   * @tparam F Compurational context
-  * @tparam Scheme This scheme is required for all URLs
   * @tparam BlobType Typically a native type from the cloud vendor's client libraries that describes a blob
   */
-abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, BlobType] {
+abstract class CloudStore[F[_]: MonadError[*[_], Throwable], BlobType] {
 
   /**
     * List paths.
@@ -73,7 +72,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     */
   def put[A](bucketName: Bucket, path: Path[A], overwrite: Boolean, size: Option[Long]): Pipe[F, Byte, Unit]
 
-  def put(bucketName: Bucket, path: Path[BlobType], overwrite: Boolean)(implicit B: Blob[BlobType]): Pipe[F, Byte, Unit] =
+  def put(bucketName: Bucket, path: Path[BlobType], overwrite: Boolean)(implicit B: FsObject[BlobType]): Pipe[F, Byte, Unit] =
     put(bucketName, path, overwrite, Option(path.size))
 
   def put[A](bucketName: Bucket, contents: String, path: Path[A], overwrite: Boolean)(implicit F: Sync[F]): F[Unit] = {
@@ -99,7 +98,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
       .compile
       .drain
 
-  def put(url: Url[Scheme, Bucket], overwrite: Boolean, size: Option[Long]): Pipe[F, Byte, Unit] =
+  def put(url: Url[Bucket], overwrite: Boolean, size: Option[Long]): Pipe[F, Byte, Unit] =
     _.through(put(url.authority, url.path, overwrite, size))
 
   /**
@@ -116,7 +115,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param dst path
     * @return F[Unit]
     */
-  def move(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] =
+  def move(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     move(src.authority -> src.path, dst.authority -> dst.path)
 
   /**
@@ -133,7 +132,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param dst path
     * @return F[Unit]
     */
-  def copy(src: Url[Scheme, Bucket], dst: Url[Scheme, Bucket]): F[Unit] =
+  def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     copy(src.authority -> src.path, dst.authority -> dst.path)
 
   /**
@@ -148,7 +147,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param path to remove
     * @return F[Unit]
     */
-  def remove(path: Url[Scheme, Bucket]): F[Unit] =
+  def remove(path: Url[Bucket]): F[Unit] =
     remove(path.authority, path.path)
 
   /**
@@ -180,7 +179,7 @@ abstract class CloudStore[F[_]: MonadError[*[_], Throwable], Scheme <: String, B
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  def get(url: Url[Scheme, Bucket], chunkSize: Int): Stream[F, Byte] =
+  def get(url: Url[Bucket], chunkSize: Int): Stream[F, Byte] =
     get(url.authority, url.path, chunkSize)
 
   /**

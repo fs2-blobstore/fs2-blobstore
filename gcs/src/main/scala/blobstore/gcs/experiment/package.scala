@@ -1,17 +1,14 @@
 package blobstore.gcs
 
-import blobstore.url.Blob
+import java.time.Instant
+
+import blobstore.url.FsObject
 import com.google.cloud.storage.{Blob => GcsBlob}
-import shapeless.Witness
 
 package object experiment {
 
-  type GcsProtocol = Witness.`"gs"`.T
-
-  implicit val blob: Blob[GcsBlob] = new url.Blob[GcsBlob] {
-    override def toUrl(a: GcsBlob): Url.PlainUrl = Url.standardUnsafe(show"gs://${a.getBucket}/${a.getName}")
-
-    override def authority(a: GcsBlob): Authority = Bucket.unsafe(a.getBucket)
+  implicit val blob: FsObject[GcsBlob] = new FsObject[GcsBlob] {
+    override def name(a: GcsBlob): String = a.getName
 
     override def size(a: GcsBlob): Long = a.getSize
 
