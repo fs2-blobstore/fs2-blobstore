@@ -21,8 +21,7 @@ object GcsBlob {
       size = fso.size(blob),
       isDir = fso.isDir(blob),
       storageClass = Option(storageClass),
-      lastModified = fso.lastModified(blob),
-      created = fso.created(blob)
+      lastModified = fso.lastModified(blob)
     )
   }
   
@@ -35,7 +34,5 @@ object GcsBlob {
     override def isDir(a: GcsBlob): Boolean = a.blob.isDirectory
 
     override def lastModified(a: GcsBlob): Option[Instant] = Option(a.blob.getUpdateTime).map(Instant.ofEpochMilli(_))
-
-    override def created(a: GcsBlob): Option[Instant] = Option(a.blob.getCreateTime).map(Instant.ofEpochMilli(_))
   }
 }

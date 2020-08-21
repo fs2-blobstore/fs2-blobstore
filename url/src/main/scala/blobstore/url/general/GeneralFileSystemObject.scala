@@ -14,8 +14,7 @@ case class GeneralFileSystemObject(
   size: Option[Long],
   isDir: Boolean,
   storageClass: Option[GeneralStorageClass],
-  lastModified: Option[Instant],
-  created: Option[Instant]
+  lastModified: Option[Instant]
 )
 
 object GeneralFileSystemObject {
@@ -27,7 +26,5 @@ object GeneralFileSystemObject {
     override def isDir(a: GeneralFileSystemObject): Boolean = a.isDir
 
     override def lastModified(a: GeneralFileSystemObject): Option[Instant] = a.lastModified
-
-    override def created(a: GeneralFileSystemObject): Option[Instant] = a.created
   }
 }

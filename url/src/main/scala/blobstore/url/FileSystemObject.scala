@@ -13,8 +13,6 @@ trait FileSystemObject[-A] {
   def isDir(a: A): Boolean
 
   def lastModified(a: A): Option[Instant]
-
-  def created(a: A): Option[Instant]
 }
 
 object FileSystemObject {

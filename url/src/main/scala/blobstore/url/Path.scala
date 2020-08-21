@@ -59,7 +59,6 @@ sealed trait Path[A] {
   def size(implicit B: FileSystemObject[A]): Option[Long]            = FileSystemObject[A].size(representation)
   def isDir(implicit B: FileSystemObject[A]): Boolean                = FileSystemObject[A].isDir(representation)
   def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
-  def created(implicit B: FileSystemObject[A]): Option[Instant]      = FileSystemObject[A].created(representation)
 }
 
 object Path {

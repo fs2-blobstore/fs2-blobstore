@@ -1,46 +1,32 @@
-/*
-Copyright 2018 LendUp Global, Inc.
+package blobstore.sftp.experiment
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
- */
-package blobstore
-package sftp
-
-import com.jcraft.jsch._
-import cats.syntax.all._
-import cats.instances.option._
-import cats.instances.string._
 import java.io.OutputStream
 
+import blobstore.{_writeAllToOutputStream1, putRotateBase, HierarchicalStore, NewStore}
+import blobstore.sftp.SftpFsElement
+import blobstore.url.{Authority, Path}
+import blobstore.url.Path.{AbsolutePath, RootlessPath}
+import blobstore.NewStore.StoreDelegator
+import blobstore.url.exception.MultipleUrlValidationException
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
+import cats.instances.option._
+import cats.syntax.all._
+import com.jcraft.jsch._
 import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
-import implicits._
 
 import scala.util.Try
 
 final class SftpStore[F[_]](
-  absRoot: String,
+  val authority: Authority,
   private[sftp] val session: Session,
   blocker: Blocker,
   mVar: MVar[F, ChannelSftp],
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
-)(
-  implicit F: ConcurrentEffect[F],
-  CS: ContextShift[F]
-) extends Store[F] {
+)(implicit F: ConcurrentEffect[F], CS: ContextShift[F])
+  extends HierarchicalStore[F, SftpFsElement] {
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   private val openChannel: F[ChannelSftp] = {
@@ -62,7 +48,7 @@ final class SftpStore[F[_]](
     case ch                => mVar.tryPut(ch).ifM(().pure[F], SftpStore.closeChannel(semaphore, blocker)(ch))
   }
 
-  override def list(path: Path, recursive: Boolean = false): Stream[F, SftpPath] = {
+  override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[SftpFsElement]] = {
 
     def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
       cb(entry)
@@ -76,40 +62,36 @@ final class SftpStore[F[_]](
         .filter(e => e.getFilename != "." && e.getFilename != "..")
         .concurrently(
           Stream.eval {
-            val strPath = SftpStore.strPath(absRoot, path).stripSuffix("/")
-            val es      = entrySelector(e => Effect[F].runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())
-            blocker.delay(channel.ls(strPath, es)).attempt.flatMap(_ => q.enqueue1(None))
+            val es = entrySelector(e => Effect[F].runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())
+            blocker.delay(channel.ls(path.show, es)).attempt.flatMap(_ => q.enqueue1(None))
           }
         )
     } yield {
-      val isDir = Option(entry.getAttrs.isDir)
-      val newPath =
-        if (path.fileName.contains(entry.getFilename)) path
-        else path / (entry.getFilename ++ (if (isDir.contains(true)) "/" else ""))
+      val isDir   = Option(entry.getAttrs.isDir)
+      val element = SftpFsElement(entry.getLongname, entry.getAttrs)
 
-      SftpPath(newPath.root, newPath.fileName, newPath.pathFromRoot, entry.getAttrs)
+      if (path.fileName.contains(entry.getFilename)) path.as(element)
+      else path.addSegment(entry.getFilename ++ (if (isDir.contains(true)) "/" else ""), element)
     }
     if (recursive) {
       stream.flatMap {
-        case p if p.isDir.contains(true) => list(p, recursive)
-        case p                           => Stream.emit(p)
+        case p if p.isDir => list(p, recursive)
+        case p            => Stream.emit(p)
       }
-    } else {
-      stream
-    }
+    } else stream
   }
 
-  override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
+  override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] =
     Stream.resource(channelResource).flatMap { channel =>
       fs2.io.readInputStream(
-        blocker.delay(channel.get(SftpStore.strPath(absRoot, path))),
+        blocker.delay(channel.get(path.show)),
         chunkSize = chunkSize,
         closeAfterUse = true,
         blocker = blocker
       )
     }
 
-  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
+  override def put[A](path: Path[A], overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
     def pull(channel: ChannelSftp): Stream[F, Unit] =
       Stream
         .resource(outputStreamResource(channel, path, overwrite))
@@ -118,35 +100,37 @@ final class SftpStore[F[_]](
     Stream.resource(channelResource).flatMap(channel => pull(channel))
   }
 
-  override def move(src: Path, dst: Path): F[Unit] = channelResource.use { channel =>
+  override def move[A](src: Path[A], dst: Path[A]): F[Unit] = channelResource.use { channel =>
     mkdirs(dst, channel) >> blocker.delay(
-      channel.rename(SftpStore.strPath(absRoot, src), SftpStore.strPath(absRoot, dst))
+      channel.rename(src.show, dst.show)
     )
   }
 
-  override def copy(src: Path, dst: Path): F[Unit] = {
+  override def copy[A](src: Path[A], dst: Path[A]): F[Unit] = {
     val s = for {
       channel <- Stream.resource(channelResource)
       _       <- Stream.eval(mkdirs(dst, channel))
-      _       <- get(src).through(this.bufferedPut(dst, blocker))
+
+      // TODO: Implement this without flushing to disk
+      //      _       <- get(src, 4096).through(this.bufferedPut(dst, blocker))
     } yield ()
 
     s.compile.drain
   }
 
-  override def remove(path: Path): F[Unit] = channelResource.use { channel =>
-    blocker.delay {
-      try {
-        val strPath = SftpStore.strPath(absRoot, path)
-        if (path.isDir.getOrElse(path.fileName.isEmpty)) channel.rmdir(strPath) else channel.rm(strPath)
-      } catch {
-        // Let the remove() call succeed if there is no file at this path
-        case e: SftpException if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE => ()
+  override def remove[A](path: Path[A]): F[Unit] = channelResource.use { channel =>
+    blocker.delay(channel.stat(path.show)).flatMap { stat =>
+    {
+      val rm = if (stat.isDir) blocker.delay(channel.rmdir(path.show)) else blocker.delay(channel.rm(path.show))
+      rm.handleErrorWith {
+        case e: SftpException if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE => ().pure[F]
+        case e                                                           => e.raiseError[F, Unit]
       }
+    }
     }
   }
 
-  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+  override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
       for {
         p       <- Resource.liftF(computePath)
@@ -157,34 +141,33 @@ final class SftpStore[F[_]](
     putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
   }
 
-  private def mkdirs(path: Path, channel: ChannelSftp): F[Unit] =
-    blocker.delay {
-      val pathString = SftpStore.strPath(absRoot, path)
-      val root       = if (pathString.startsWith("/")) "/" else ""
-
-      pathString.split('/').foldLeft(root) {
-        case (acc, s) =>
-          Try(channel.mkdir(acc))
-          val candidate = List(acc, s).filter(_.nonEmpty).mkString("/")
-          // Don't .replaceAll("//"). Directories containing "//" are valid according to spec
-          if (root == "/" && candidate.startsWith("//")) candidate.replaceFirst("//", "/")
-          else candidate
-      }
-      ()
+  private def mkdirs[A](path: Path[A], channel: ChannelSftp): F[Unit] = {
+    val root: Path.Plain = path match {
+      case AbsolutePath(_, _) => AbsolutePath.root
+      case RootlessPath(_, _) => RootlessPath.relativeHome
     }
 
-  private def outputStreamResource(
+    fs2.Stream.emits(path.segments.toList)
+      .covary[F]
+      .evalScan(root) { (acc, el) =>
+        blocker.delay(Try(channel.mkdir(acc.show))).as(acc / el)
+      }
+      .compile
+      .drain
+  }
+
+  private def outputStreamResource[A](
     channel: ChannelSftp,
-    path: Path,
+    path: Path[A],
     overwrite: Boolean = true
   ): Resource[F, OutputStream] = {
     def put(channel: ChannelSftp): F[OutputStream] = {
       val newOrOverwrite =
-        mkdirs(path, channel) >> blocker.delay(channel.put(SftpStore.strPath(absRoot, path), ChannelSftp.OVERWRITE))
+        mkdirs(path, channel) >> blocker.delay(channel.put(path.show, ChannelSftp.OVERWRITE))
       if (overwrite) {
         newOrOverwrite
       } else {
-        blocker.delay(channel.ls(SftpStore.strPath(absRoot, path))).attempt.flatMap {
+        blocker.delay(channel.ls(path.show)).attempt.flatMap {
           case Left(e: SftpException) if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE =>
             newOrOverwrite
           case Left(e)  => F.raiseError(e)
@@ -197,18 +180,19 @@ final class SftpStore[F[_]](
 
     Resource.make(put(channel))(close)
   }
+
+  override val liftToWeak: NewStore[F] = new StoreDelegator[F, SftpFsElement](SftpFsElement.toGeneral, Right(this))
 }
 
 object SftpStore {
 
   /**
-    * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
-    *
-    * @param fa F[ChannelSftp] how to connect to SFTP server
-    * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.
-    */
+   * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
+   *
+   * @param fa F[ChannelSftp] how to connect to SFTP server
+   * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.
+   */
   def apply[F[_]: ConcurrentEffect](
-    absRoot: String,
     fa: F[Session],
     blocker: Blocker,
     maxChannels: Option[Long] = None,
@@ -226,21 +210,15 @@ object SftpStore {
           }
           Stream.bracket(attemptConnect)(session => blocker.delay(session.disconnect()))
         }
+        authority <- Stream.eval(Authority.parse(session.getHost).leftMap(MultipleUrlValidationException.apply).liftTo[F])
         semaphore <- Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
         mVar <- Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
           mVar.tryTake.flatMap(_.fold(().pure[F])(closeChannel[F](semaphore, blocker)))
         )
-      } yield new SftpStore[F](absRoot, session, blocker, mVar, semaphore, connectTimeout)
+      } yield new SftpStore[F](authority, session, blocker, mVar, semaphore, connectTimeout)
 
   private def closeChannel[F[_]](semaphore: Option[Semaphore[F]], blocker: Blocker)(
     ch: ChannelSftp
   )(implicit F: ConcurrentEffect[F], CS: ContextShift[F]): F[Unit] =
     F.productR(semaphore.fold(F.unit)(_.release))(blocker.delay(ch.disconnect()))
-
-  private def strPath(absRoot: String, path: Path): String = {
-    val withName = path.fileName.fold(path.pathFromRoot)(path.pathFromRoot.append)
-    val withRoot = path.root.fold(withName)(withName.prepend)
-    val str      = withRoot.prepend(absRoot).filter(_.nonEmpty).mkString_("/")
-    str ++ (if (path.fileName.isEmpty) "/" else "")
-  }
 }
