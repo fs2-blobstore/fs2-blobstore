@@ -7,7 +7,7 @@ import blobstore.url.general.{GeneralFileSystemObject, GeneralStorageClass}
 import com.google.cloud.storage.{Blob, StorageClass}
 
 // This can be a newtype, we only need it to add an instance to the default implicit search path
-case class GcsBlob(blob: Blob)
+case class GcsBlob(blob: Blob) extends AnyVal
 object GcsBlob {
   def toGeneral(blob: GcsBlob): GeneralFileSystemObject = {
     val storageClass = blob.blob.getStorageClass match {
