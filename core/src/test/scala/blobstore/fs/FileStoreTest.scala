@@ -16,25 +16,22 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import java.nio.file.{Paths, Path => NioPath}
+import blobstore.url.{Authority, Path}
 import cats.effect.IO
 
-class FileStoreTest extends AbstractStoreTest {
+class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
 
-  val rootDir: NioPath          = Paths.get("tmp/file-store-root/")
-  override val store: Store[IO] = FileStore[IO](rootDir, blocker)
-  override val root: String     = "file_tests"
+  override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
+
+  override val fileSystemRoot: Path.Plain                    = testRunRoot
+  private val localStore: FileStore[IO]                      = FileStore[IO](blocker)
+  override val store: Store[IO, Authority.Standard, NioPath] = localStore.liftTo[Authority.Standard, NioPath](identity)
+  override val authority: Authority.Standard                 = Authority.Standard.localhost
+  override val scheme: String                                = "file"
 
   behavior of "FileStore.put"
   it should "not have side effects when creating a Sink" in {
-    store.put(Path(s"fs_tests_$testRun/path/file.txt"))
-    store.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync().isEmpty must be(true)
+    localStore.put(Path(s"fs_tests_$testRun/path/file.txt"))
+    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe empty
   }
-
-  // remove dirs created by AbstractStoreTest
-  override def afterAll(): Unit = {
-    super.afterAll()
-    cleanup(rootDir.resolve(s"$root/test-$testRun"))
-  }
-
 }

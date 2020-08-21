@@ -51,12 +51,12 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
 
   lazy val rootFolder: BoxFolder#Info = {
     val rootInfo = BoxFolder.getRootFolder(api).asScala.toList.collectFirst {
-      case f: BoxFolder#Info if f.getName == root => f
+      case f: BoxFolder#Info if f.getName == authority => f
     }
 
     rootInfo match {
       case Some(i) => i
-      case None    => fail(new Exception(s"Root folder not found: $root"))
+      case None    => fail(new Exception(s"Root folder not found: $authority"))
     }
   }
 
@@ -83,15 +83,15 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
   override lazy val store: Store[IO] = BoxStore[IO](api, blocker)
 
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
-  override val root: String = "BoxStoreTest"
+  override val authority: String = "BoxStoreTest"
 
   behavior of "BoxStore"
 
   it should "expose underlying metadata" in {
-    val dirP = dirPath("expose-underlying")
+    val dirP = dirUrl("expose-underlying")
 
-    writeFile(store, dirP)("abc.txt")
-    val subFolderFile = writeFile(store, dirP / "subfolder")("cde.txt")
+    writeLocalFile(store, dirP)("abc.txt")
+    val subFolderFile = writeLocalFile(store, dirP / "subfolder")("cde.txt")
 
     @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
     val paths = store

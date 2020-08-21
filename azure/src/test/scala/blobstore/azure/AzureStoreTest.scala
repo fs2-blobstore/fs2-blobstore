@@ -14,8 +14,8 @@ import org.scalatest.{Assertion, Inside}
 import reactor.core.publisher.Mono
 
 class AzureStoreTest extends AbstractStoreTest with Inside {
-  override val root: String = "container"
-  val options               = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
+  override val authority: String = "container"
+  val options               = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null)
   // TODO: Remove this once version of azure-storage-blob containing https://github.com/Azure/azure-sdk-for-java/pull/9123 is released
   val azuriteContainerIp = InetAddress.getByName("azurite-container").getHostAddress
   val azure = new BlobServiceClientBuilder()
@@ -51,7 +51,7 @@ class AzureStoreTest extends AbstractStoreTest with Inside {
 
   it should "expose underlying metadata" in {
     val dir  = dirPath("expose-underlying")
-    val path = writeFile(store, dir)("abc.txt")
+    val path = writeLocalFile(store, dir)("abc.txt")
 
     val entities = store.list(path).map(AzurePath.narrow).unNone.compile.toList.unsafeRunSync()
 
@@ -69,7 +69,7 @@ class AzureStoreTest extends AbstractStoreTest with Inside {
     val ct         = "text/plain"
     val at         = AccessTier.COOL
     val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
-    val filePath   = new AzurePath(root, s"test-$testRun/set-underlying/file", Some(properties), Map("key" -> "value"))
+    val filePath   = new AzurePath(authority, s"test-$testRun/set-underlying/file", Some(properties), Map("key" -> "value"))
     Stream("data".getBytes.toIndexedSeq: _*).through(store.put(filePath)).compile.drain.unsafeRunSync()
     val entities = store.list(filePath).map(AzurePath.narrow).unNone.compile.toList.unsafeRunSync()
 
@@ -118,9 +118,9 @@ class AzureStoreTest extends AbstractStoreTest with Inside {
   override def beforeAll(): Unit = {
     super.beforeAll()
     azure
-      .deleteBlobContainer(root)
+      .deleteBlobContainer(authority)
       .onErrorResume(_ => Mono.empty())
-      .`then`(azure.createBlobContainer(root))
+      .`then`(azure.createBlobContainer(authority))
       .toFuture
       .get(1, TimeUnit.MINUTES)
     ()

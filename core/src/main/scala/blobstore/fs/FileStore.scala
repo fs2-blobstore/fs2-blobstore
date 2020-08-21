@@ -16,85 +16,104 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import java.nio.file.{Files, Paths, StandardOpenOption, Path => NioPath}
+import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
+
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.Path.Plain
 
 import scala.jdk.CollectionConverters._
-import cats.implicits._
-import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
+import cats.syntax.all._
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import fs2.io.file.{FileHandle, WriteCursor}
 import fs2.{Hotswap, Pipe, Stream}
 
-final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
-  extends Store[F] {
-  val absRoot: String = fsroot.toAbsolutePath.normalize.toString
+import scala.util.Try
 
-  override def list(path: Path, recursive: Boolean = false): Stream[F, Path] = {
-    val isDir  = Stream.eval(F.delay(Files.isDirectory(path)))
-    val isFile = Stream.eval(F.delay(Files.exists(path)))
+class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
+  extends PathStore[F, NioPath] {
 
-    val stream: Stream[F, (NioPath, Boolean)] =
+  override def authority: Authority = Authority.Standard.localhost
+
+  override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[NioPath]] = {
+    val isDir  = Stream.eval(F.delay(Files.isDirectory(path.nioPath)))
+    val isFile = Stream.eval(F.delay(Files.exists(path.nioPath)))
+
+    val stream: Stream[F, (JPath, Boolean)] =
       Stream
-        .eval(F.delay(if (recursive) Files.walk(path) else Files.list(path)))
+        .eval(F.delay(if (recursive) Files.walk(path.nioPath) else Files.list(path.nioPath)))
         .flatMap(x => Stream.fromIterator(x.iterator.asScala))
         .flatMap { x =>
-          val dir = Files.isDirectory(x)
-          if (recursive && dir) {
+          val isDir = Files.isDirectory(x)
+          if (recursive && isDir) {
             Stream.empty
           } else {
-            Stream.emit(x -> dir)
+            Stream.emit(x -> isDir)
           }
         }
 
     val files = stream
       .evalMap {
-        case (x, dir) =>
-          F.delay {
-            Path(x.toAbsolutePath.toString.replaceFirst(absRoot, "") ++ (if (dir) "/" else ""))
-              .withSize(Option(Files.size(x)), reset = false)
-              .withLastModified(Option(Files.getLastModifiedTime(path).toInstant), reset = false)
-              .withIsDir(Option(dir), reset = false)
-          }
+        case (x, isDir) =>
+          F.delay(NioPath(
+            x,
+            Try(Files.size(x)).toOption,
+            isDir,
+            Try(Files.getLastModifiedTime(path.nioPath)).toOption.map(_.toInstant)
+          ))
       }
 
     val file = Stream.eval {
       F.delay {
-        path
-          .withSize(Option(Files.size(path)), reset = false)
-          .withLastModified(Option(Files.getLastModifiedTime(path).toInstant), reset = false)
+        NioPath(
+          path = Paths.get(path.show),
+          size = Try(Files.size(path.nioPath)).toOption,
+          isDir = false,
+          lastModified = Try(Files.getLastModifiedTime(path.nioPath)).toOption.map(_.toInstant)
+        )
       }
     }
 
-    isDir.ifM(files, isFile.ifM(file, Stream.empty.covaryAll[F, Path]))
+    isDir.ifM(files, isFile.ifM(file, Stream.empty.covaryAll[F, NioPath])).map(p => Path.of(p.path.toString, p))
   }
 
-  override def get(path: Path, chunkSize: Int): Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
+  override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] =
+    fs2.io.file.readAll[F](path.nioPath, blocker, chunkSize)
 
-  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
-    val flags =
-      if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-      else List(StandardOpenOption.CREATE_NEW)
-    Stream.eval(createParentDir(path)) >> fs2.io.file.writeAll(path = path, blocker = blocker, flags = flags).apply(in)
+  override def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = {
+    in =>
+      val flags =
+        if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+        else List(StandardOpenOption.CREATE_NEW)
+      Stream.eval(createParentDir(path.plain)) >> fs2.io.file.writeAll(
+        path = path.nioPath,
+        blocker = blocker,
+        flags = flags
+      ).apply(
+        in
+      )
   }
 
-  override def move(src: Path, dst: Path): F[Unit] =
-    createParentDir(dst) >> F.delay(Files.move(src, dst)).void
+  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] =
+    createParentDir(dst.plain) >> F.delay(Files.move(src.nioPath, dst.nioPath)).void
 
-  override def copy(src: Path, dst: Path): F[Unit] =
-    createParentDir(dst) >> F.delay(Files.copy(src, dst)).void
+  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
+    createParentDir(dst.plain) >> F.delay(Files.copy(src.nioPath, dst.nioPath)).void
 
-  override def remove(path: Path): F[Unit] = F.delay {
-    Files.deleteIfExists(path)
-    ()
-  }
+  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
+    if (recursive)
+      fs2.io.file.directoryStream(blocker, path.nioPath).parEvalMap(maxConcurrent = 20)(p =>
+        blocker.delay(Files.deleteIfExists(p))
+      ).compile.drain
+    else blocker.delay(Files.deleteIfExists(path.nioPath)).void
 
-  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = { in =>
+  override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
     val openNewFile: Resource[F, FileHandle[F]] =
       Resource
         .liftF(computePath)
-        .flatTap(p => Resource.liftF(createParentDir(p)))
+        .flatTap(p => Resource.liftF(createParentDir(p.plain)))
         .flatMap { p =>
           FileHandle.fromPath(
-            path = p,
+            path = p.nioPath,
             blocker = blocker,
             flags = StandardOpenOption.CREATE :: StandardOpenOption.WRITE :: StandardOpenOption.TRUNCATE_EXISTING :: Nil
           )
@@ -116,19 +135,60 @@ final class FileStore[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concu
       }
   }
 
-  private def createParentDir(p: Path): F[Unit] =
-    F.delay(Files.createDirectories(_toNioPath(p).getParent))
+  private def createParentDir(p: Path.Plain): F[Unit] =
+    F.delay(Files.createDirectories(p.nioPath.getParent))
       .handleErrorWith { e => F.raiseError(new Exception(s"failed to create dir: $p", e)) }
       .void
 
-  implicit private def _toNioPath(path: Path): NioPath = {
-    val withRoot = path.root.fold(path.pathFromRoot)(path.pathFromRoot.prepend)
-    val withName = path.fileName.fold(withRoot)(withRoot.append)
-    Paths.get(absRoot, withName.toList: _*)
+  override def stat[A](path: Path[A]): F[Option[Path[NioPath]]] =
+    Sync[F].delay {
+      val p = path.nioPath
+
+      if (!Files.exists(p)) None
+      else
+        path.as(NioPath(
+          p,
+          Try(Files.size(p)).toOption,
+          Try(Files.isDirectory(p)).toOption.getOrElse(isDir(path)),
+          Try(Files.getLastModifiedTime(path.nioPath)).toOption.map(_.toInstant)
+        )).some
+    }
+
+  // The local file system can't have file names ending with slash
+  private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")
+
+  /**
+    * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+    *
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
+    * to this store.
+    */
+  override def liftTo[A <: Authority, B](f: NioPath => B, g: Plain => Plain): Store[F, A, B] =
+    new Store.DelegatingStore[F, NioPath, A, B](f, Right(this), g)
+
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
+  fsb: FileSystemObject[B]): F[Int] = {
+    dstStore.stat(dstUrl).map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+      list(srcPath.plain)
+        .evalMap { p =>
+          if (p.isDir) {
+            transferTo(dstStore, p, dstUrl `//` p.lastSegment)
+          } else {
+            val dp = if (dstIsDir) dstUrl / p.lastSegment else dstUrl
+            get(p, 4096).through(dstStore.put(dp)).compile.drain.as(1)
+          }
+        }
+        .fold(0)(_ + _)
+        .compile.lastOrError
+    }
   }
+
+  override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
+    get(path, chunkSize).through(fs2.text.utf8Decode).compile.string
 }
 
 object FileStore {
-  def apply[F[_]](fsroot: NioPath, blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): FileStore[F] =
-    new FileStore(fsroot, blocker)
+  def apply[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): FileStore[F] =
+    new FileStore(blocker)
 }
