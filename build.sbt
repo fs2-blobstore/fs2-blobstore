@@ -1,18 +1,23 @@
 inThisBuild(
   Seq(
-    scalaVersion := "2.13.3",
-    crossScalaVersions := Seq("2.12.12", "2.13.3"),
+    scalaVersion := "2.13.2",
+    crossScalaVersions := Seq("2.12.11", "2.13.2"),
     organization := "com.github.fs2-blobstore",
-    licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
-      Developer("rolandomanrique", "Rolando Manrique", "", url("http://github.com/rolandomanrique")),
-      Developer("stew", "Stew O'Connor", "", url("https://github.com/stew")),
-      Developer("gafiatulin", "Victor Gafiatulin", "", url("https://github.com/gafiatulin")),
-      Developer("jgogstad", "Jostein Gogstad", "", url("https://github.com/jgogstad"))
+      Developer("rolandomanrique", "Rolando Manrique", "", sbt.url("http://github.com/rolandomanrique")),
+      Developer("stew", "Stew O'Connor", "", sbt.url("https://github.com/stew")),
+      Developer("gafiatulin", "Victor Gafiatulin", "", sbt.url("https://github.com/gafiatulin")),
+      Developer("jgogstad", "Jostein Gogstad", "", sbt.url("https://github.com/jgogstad"))
     ),
-    homepage := Some(url("https://github.com/fs2-blobstore/fs2-blobstore")),
+    homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    addCompilerPlugin("org.typelevel" %% "kind-projector" % "0.11.0" cross CrossVersion.full),
+    libraryDependencies ++= Seq(
+      compilerPlugin("com.github.ghik" % "silencer-plugin" % "1.7.0" cross CrossVersion.full),
+      "com.github.ghik" % "silencer-lib" % "1.7.0" % Provided cross CrossVersion.full
+    )
   )
 )
 
@@ -22,9 +27,11 @@ lazy val fs2blobstore = project
     moduleName := "root",
     skip in publish := true
   )
-  .aggregate(core, s3, sftp, box, gcs, azure)
+  .aggregate(url, core, s3, sftp, box, gcs, azure)
 
-lazy val core = project
+lazy val url = project
+
+lazy val core = project.dependsOn(url)
 
 lazy val s3 = project.dependsOn(core % "compile->compile;test->test")
 
