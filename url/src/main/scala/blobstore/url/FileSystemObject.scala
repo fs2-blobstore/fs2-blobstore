@@ -8,11 +8,13 @@ import java.time.Instant
 trait FileSystemObject[-A] {
   def name(a: A): String
 
-  def size(a: A): Long // TODO: Make Optin[Long]
+  def size(a: A): Option[Long]
 
   def isDir(a: A): Boolean
 
   def lastModified(a: A): Option[Instant]
+
+  def created(a: A): Option[Instant]
 }
 
 object FileSystemObject {

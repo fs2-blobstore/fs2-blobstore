@@ -3,6 +3,7 @@ package blobstore.url
 import java.time.Instant
 
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
+import blobstore.url.general.GeneralFileSystemObject
 import cats.{Functor, Show}
 import cats.data.Chain
 import cats.instances.int._
@@ -44,14 +45,21 @@ sealed trait Path[A] {
     case RootlessPath(_, segments) => RootlessPath(b, segments)
   }
 
+  /**
+    * Adds a segment to the path while ensuring that the segments and path representation are kept in sync
+    *
+    * If you're just working with String paths, see [[/]]
+    */
   def addSegment[B](segment: String, representation: B): Path[B] = this match {
     case AbsolutePath(_, _) => AbsolutePath(representation, segments :+ segment)
     case RootlessPath(_, _) => RootlessPath(representation, segments :+ segment)
   }
 
-  def size(implicit B: FileSystemObject[A]): Long                    = FileSystemObject[A].size(representation)
+  def fullName(implicit B: FileSystemObject[A]): String              = FileSystemObject[A].name(representation)
+  def size(implicit B: FileSystemObject[A]): Option[Long]            = FileSystemObject[A].size(representation)
   def isDir(implicit B: FileSystemObject[A]): Boolean                = FileSystemObject[A].isDir(representation)
   def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
+  def created(implicit B: FileSystemObject[A]): Option[Instant]      = FileSystemObject[A].created(representation)
 }
 
 object Path {
@@ -63,6 +71,13 @@ object Path {
     */
   type Plain = Path[String]
 
+  /**
+    * A file system object represented with a "general" structure
+    *
+    * This is typically used in stores that abstracts multiple file systems
+    */
+  type GeneralObject = Path[GeneralFileSystemObject]
+
   case class AbsolutePath[A](representation: A, segments: Chain[String]) extends Path[A]
 
   object AbsolutePath {
@@ -72,8 +87,9 @@ object Path {
 
     val root: AbsolutePath[String] = AbsolutePath("/", Chain.empty)
 
-    implicit def show[A]: Show[AbsolutePath[A]]          = "/" + _.segments.mkString_("/")
-    implicit def order[A: Order]: Order[AbsolutePath[A]] = (x, y) => Order[A].compare(x.representation, y.representation)
+    implicit def show[A]: Show[AbsolutePath[A]] = "/" + _.segments.mkString_("/")
+    implicit def order[A: Order]: Order[AbsolutePath[A]] = (x, y) =>
+      Order[A].compare(x.representation, y.representation)
   }
 
   case class RootlessPath[A](representation: A, segments: Chain[String]) extends Path[A]
@@ -84,8 +100,9 @@ object Path {
 
     def relativeHome: RootlessPath[String] = RootlessPath("", Chain.empty)
 
-    implicit def show[A]: Show[RootlessPath[A]]          = _.segments.mkString_("/")
-    implicit def order[A: Order]: Order[RootlessPath[A]] = (x, y) => Order[A].compare(x.representation, y.representation)
+    implicit def show[A]: Show[RootlessPath[A]] = _.segments.mkString_("/")
+    implicit def order[A: Order]: Order[RootlessPath[A]] = (x, y) =>
+      Order[A].compare(x.representation, y.representation)
     implicit def ordering[A: Ordering]: Ordering[RootlessPath[A]] = order[A](Order.fromOrdering[A]).toOrdering
   }
 
@@ -93,14 +110,17 @@ object Path {
 
   def apply(s: String): Path.Plain =
     AbsolutePath.parse(s).orElse(RootlessPath.parse(s)).getOrElse(
-      RootlessPath(s, Chain(s.split("/").toList: _*)) // Paths either have a root or they don't, this block is never executed
+      RootlessPath(
+        s,
+        Chain(s.split("/").toList: _*)
+      ) // Paths either have a root or they don't, this block is never executed
     )
 
   def compare[A](one: Path[A], two: Path[A]): Int = {
     one.show compare two.show
   }
 
-  implicit def order[A: Order]: Order[Path[A]] = compare
+  implicit def order[A: Order]: Order[Path[A]]          = compare
   implicit def ordering[A: Ordering]: Ordering[Path[A]] = order[A](Order.fromOrdering[A]).toOrdering
 
   implicit def eq[A]: Eq[Path[A]] = compare[A](_, _) === 0

@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets
 import blobstore.url.{Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.url.exception.MultipleUrlValidationException
+import blobstore.url.general.GeneralFileSystemObject
 import cats.{ApplicativeError, MonadError}
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.instances.try_._
@@ -28,9 +29,9 @@ import scala.util.{Failure, Success, Try}
  */
 trait NewStore[F[_]] { // We could validate schemes here as well ...
 
-  def list(url: Url.Plain, recursive: Boolean): Stream[F, Path.Plain]
+  def list(url: Url.Plain, recursive: Boolean): Stream[F, Path.GeneralObject]
 
-  def listAll(url: Url.Plain, recursive: Boolean)(implicit F: Sync[F]): F[List[Path.Plain]]
+  def listAll(url: Url.Plain, recursive: Boolean)(implicit F: Sync[F]): F[List[Path.GeneralObject]]
 
   def get[A](url: Url.Plain, chunkSize: Int): Stream[F, Byte]
 
@@ -89,19 +90,20 @@ trait NewStore[F[_]] { // We could validate schemes here as well ...
 object NewStore {
 
   private[blobstore] class StoreDelegator[F[_]: MonadError[*[_], Throwable], Blob](
+    weakenBlob: Blob => GeneralFileSystemObject,
     underlying: Either[FlatStore[F, Blob], HierarchicalStore[F, Blob]]
   ) extends NewStore[F] {
 
-    override def list(url: Url.Plain, recursive: Boolean): Stream[F, Path.Plain] =
-      biFlatMapLift[Stream[F, *], Path.Plain](url)(
-        _.list(_, recursive).map(_.plain),
-        _.list(_, recursive).map(_.plain)
+    override def list(url: Url.Plain, recursive: Boolean): Stream[F, Path.GeneralObject] =
+      biFlatMapLift[Stream[F, *], Path.GeneralObject](url)(
+        _.list(_, recursive).map(_.map(weakenBlob)),
+        _.list(_, recursive).map(_.map(weakenBlob))
       )
 
-    override def listAll(url: Url.Plain, recursive: Boolean)(implicit F: Sync[F]): F[List[Path.Plain]] =
-      biFlatMapLift[F, List[Path.Plain]](url)(
-        _.listAll(_, recursive).map(_.map(_.plain)),
-        _.list(_, recursive).map(_.plain).compile.toList
+    override def listAll(url: Url.Plain, recursive: Boolean)(implicit F: Sync[F]): F[List[Path.GeneralObject]] =
+      biFlatMapLift[F, List[Path.GeneralObject]](url)(
+        _.listAll(_, recursive).map(_.map(_.map(weakenBlob))),
+        _.list(_, recursive).map(_.map(weakenBlob)).compile.toList
       )
 
     override def get[A](url: Url.Plain, chunkSize: Int): Stream[F, Byte] =

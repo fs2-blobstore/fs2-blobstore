@@ -1,8 +1,6 @@
 package blobstore
 
 import blobstore.url.{Authority, Path}
-import blobstore.NewStore.StoreDelegator
-import cats.MonadError
 import fs2.{Pipe, Stream}
 
 
@@ -91,5 +89,5 @@ abstract class HierarchicalStore[F[_], B] {
     */
   def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  def liftToWeak(implicit M: MonadError[F, Throwable]): NewStore[F] = new StoreDelegator(Right(this))
+  def liftToWeak: NewStore[F]
 }

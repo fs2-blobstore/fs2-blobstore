@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets
 
 import blobstore.url.{FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
-import blobstore.NewStore.StoreDelegator
 import cats.MonadError
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.all._
@@ -84,7 +83,7 @@ abstract class FlatStore[F[_]: MonadError[*[_], Throwable], BlobType] {
       put(url.authority, url.path, overwrite, size)
 
   def put(bucketName: Bucket, path: Path[BlobType], overwrite: Boolean)(implicit B: FileSystemObject[BlobType]): Pipe[F, Byte, Unit] =
-    put(bucketName, path, overwrite, Option(path.size))
+    put(bucketName, path, overwrite, path.size)
 
   def put[A](bucketName: Bucket, contents: String, path: Path[A], overwrite: Boolean)(implicit F: Sync[F]): F[Unit] = {
     val bytes = contents.getBytes(StandardCharsets.UTF_8)
@@ -174,6 +173,6 @@ abstract class FlatStore[F[_]: MonadError[*[_], Throwable], BlobType] {
     */
   def putRotate[A](bucketName: Bucket, computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit]
 
-  def liftToWeak: NewStore[F] = new StoreDelegator[F, BlobType](Left(this))
+  def liftToWeak: NewStore[F]
 
 }
