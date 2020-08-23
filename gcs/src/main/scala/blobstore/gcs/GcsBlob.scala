@@ -3,20 +3,20 @@ package blobstore.gcs
 import java.time.Instant
 
 import blobstore.url.FileSystemObject
-import blobstore.url.general.{GeneralFileSystemObject, GeneralStorageClass}
+import blobstore.url.general.{UniversalFileSystemObject, GeneralStorageClass}
 import com.google.cloud.storage.{Blob, StorageClass}
 
 // This can be a newtype, we only need it to add an instance to the default implicit search path
 case class GcsBlob(blob: Blob) extends AnyVal
 object GcsBlob {
-  def toGeneral(blob: GcsBlob): GeneralFileSystemObject = {
+  def toUniversal(blob: GcsBlob): UniversalFileSystemObject = {
     val storageClass = blob.blob.getStorageClass match {
       case StorageClass.COLDLINE | StorageClass.ARCHIVE => GeneralStorageClass.ColdStorage
       case _                                            => GeneralStorageClass.Standard
     }
 
     val fso = FileSystemObject[GcsBlob]
-    GeneralFileSystemObject(
+    UniversalFileSystemObject(
       name = fso.name(blob),
       size = fso.size(blob),
       isDir = fso.isDir(blob),

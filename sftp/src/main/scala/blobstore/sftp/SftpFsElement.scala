@@ -3,16 +3,16 @@ package blobstore.sftp
 import java.time.Instant
 
 import blobstore.url.FileSystemObject
-import blobstore.url.general.GeneralFileSystemObject
+import blobstore.url.general.UniversalFileSystemObject
 import com.jcraft.jsch.SftpATTRS
 
 case class SftpFsElement(name: String, attrs: SftpATTRS)
 
 object SftpFsElement {
-  def toGeneral(blob: SftpFsElement): GeneralFileSystemObject = {
+  def toGeneral(blob: SftpFsElement): UniversalFileSystemObject = {
 
     val fso = FileSystemObject[SftpFsElement]
-    GeneralFileSystemObject(
+    UniversalFileSystemObject(
       name = fso.name(blob),
       size = fso.size(blob),
       isDir = fso.isDir(blob),

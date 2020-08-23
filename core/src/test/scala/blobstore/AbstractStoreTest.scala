@@ -19,7 +19,7 @@ import java.util.UUID
 import java.nio.file.{Paths, Path => NioPath}
 import java.util.concurrent.Executors
 
-import blobstore.fs.FileStore
+import blobstore.fs.LocalStore
 import cats.effect.concurrent.Ref
 import org.scalatest.BeforeAndAfterAll
 import cats.effect.{Blocker, ContextShift, IO}
@@ -39,7 +39,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
   val transferStoreRootDir: NioPath = Paths.get("tmp/transfer-store-root/")
-  val transferStore: Store[IO]      = new FileStore[IO](transferStoreRootDir, blocker)
+  val transferStore: Store[IO]      = new LocalStore[IO](transferStoreRootDir, blocker)
 
   val store: Store[IO]
   val root: String

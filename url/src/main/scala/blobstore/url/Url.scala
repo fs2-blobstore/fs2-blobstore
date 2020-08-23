@@ -9,7 +9,7 @@ import cats.data.ValidatedNec
 import cats.instances.string._
 import cats.syntax.all._
 
-case class Url[A <: Authority](scheme: String, authority: A, path: Path.Plain) {
+case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) {
   def withAuthority[B <: Authority](authority: B): Url[B] = Url(scheme, authority, path)
 }
 

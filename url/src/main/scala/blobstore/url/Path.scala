@@ -3,7 +3,7 @@ package blobstore.url
 import java.time.Instant
 
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
-import blobstore.url.general.GeneralFileSystemObject
+import blobstore.url.general.UniversalFileSystemObject
 import cats.{Functor, Show}
 import cats.data.Chain
 import cats.instances.int._
@@ -75,7 +75,7 @@ object Path {
     *
     * This is typically used in stores that abstracts multiple file systems
     */
-  type GeneralObject = Path[GeneralFileSystemObject]
+  type GeneralObject = Path[UniversalFileSystemObject]
 
   case class AbsolutePath[A](representation: A, segments: Chain[String]) extends Path[A]
 

@@ -1,13 +1,12 @@
-package blobstore.sftp.experiment
+package blobstore.sftp
 
 import java.io.OutputStream
 
-import blobstore.{_writeAllToOutputStream1, putRotateBase, HierarchicalStore, NewStore}
-import blobstore.sftp.SftpFsElement
+import blobstore.{_writeAllToOutputStream1, putRotateBase, FileStore}
 import blobstore.url.{Authority, Path}
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
-import blobstore.NewStore.StoreDelegator
 import blobstore.url.exception.MultipleUrlValidationException
+import blobstore.Store.{StoreDelegator, UniversalStore}
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
 import cats.instances.option._
@@ -26,7 +25,7 @@ final class SftpStore[F[_]](
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
 )(implicit F: ConcurrentEffect[F], CS: ContextShift[F])
-  extends HierarchicalStore[F, SftpFsElement] {
+  extends FileStore[F, SftpFsElement] {
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   private val openChannel: F[ChannelSftp] = {
@@ -130,7 +129,7 @@ final class SftpStore[F[_]](
     }
   }
 
-  override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
+  override def putRotate(computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
       for {
         p       <- Resource.liftF(computePath)
@@ -181,7 +180,7 @@ final class SftpStore[F[_]](
     Resource.make(put(channel))(close)
   }
 
-  override val liftToWeak: NewStore[F] = new StoreDelegator[F, SftpFsElement](SftpFsElement.toGeneral, Right(this))
+  override val liftToUniversal: UniversalStore[F] = new StoreDelegator[F, SftpFsElement](SftpFsElement.toGeneral, Right(this))
 }
 
 object SftpStore {

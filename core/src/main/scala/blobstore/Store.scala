@@ -15,9 +15,19 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
+import blobstore.url.Authority.{Bucket, Standard}
+import blobstore.url.{Authority, Path, Url}
 import fs2.{Pipe, Stream}
+import blobstore.url.exception.MultipleUrlValidationException
+import blobstore.url.general.UniversalFileSystemObject
+import blobstore.Store.UniversalStore
+import cats.{ApplicativeError, MonadError}
+import cats.syntax.all._
+import cats.instances.try_._
 
-trait Store[F[_]] {
+import scala.util.{Failure, Success, Try}
+
+trait Store[F[_], A <: Authority, BlobType] {
 
   /**
     * List paths. See [[StoreOps.ListOps]] for convenient listAll method.
@@ -37,7 +47,7 @@ trait Store[F[_]] {
     *          list(folder, recursive = true)  -> [a, b, c, d, e]
     *          list(folder, recursive = false) -> [a, b, c, sub-folder]
     */
-  def list(path: Path, recursive: Boolean = false): Stream[F, Path]
+  def list(path: Url[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
 
   /**
     * Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.
@@ -45,7 +55,7 @@ trait Store[F[_]] {
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  def get(path: Path, chunkSize: Int): Stream[F, Byte]
+  def get(path: Url[A], chunkSize: Int): Stream[F, Byte]
 
   /**
     * Provides a Sink that writes bytes into the provided path. See [[StoreOps.PutOps]] for convenient put String
@@ -59,7 +69,7 @@ trait Store[F[_]] {
     * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
-  def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit]
+  def put(path: Url[A], overwrite: Boolean = true): Pipe[F, Byte, Unit]
 
   /**
     * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
@@ -67,7 +77,7 @@ trait Store[F[_]] {
     * @param dst path
     * @return F[Unit]
     */
-  def move(src: Path, dst: Path): F[Unit]
+  def move(src: Url[A], dst: Url[A]): F[Unit]
 
   /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -75,14 +85,14 @@ trait Store[F[_]] {
     * @param dst path
     * @return F[Unit]
     */
-  def copy(src: Path, dst: Path): F[Unit]
+  def copy(src: Url[A], dst: Url[A]): F[Unit]
 
   /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
-    * @param path to remove
+    * @param url to remove
     * @return F[Unit]
     */
-  def remove(path: Path): F[Unit]
+  def remove(url: Url[A]): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -99,6 +109,99 @@ trait Store[F[_]] {
     * @param limit maximum size in bytes for each file.
     * @return sink of bytes
     */
-  def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit]
+  def putRotate(computePath: F[Url[A]], limit: Long): Pipe[F, Byte, Unit]
 
+  def liftToUniversal: UniversalStore[F]
+}
+
+object Store {
+
+  type BlobStore[F[_], B] = Store[F, Authority.Bucket, B]
+  type UniversalStore[F[_]] = Store[F, Authority.Standard, UniversalFileSystemObject]
+
+  /**
+   * Validates input URLs before delegating to underlying store
+   */
+  class StoreDelegator[F[_]: MonadError[*[_], Throwable], Blob](
+    liftBlob: Blob => UniversalFileSystemObject,
+    underlying: Either[BlobStore[F, Blob], FileStore[F, Blob]]
+  ) extends Store[F, Authority.Standard, UniversalFileSystemObject] {
+
+    override def list(url: Url[Standard], recursive: Boolean): Stream[F, Path.GeneralObject] =
+      biFlatMapLift[Stream[F, *], Path.GeneralObject](url)(
+        _.list(_, recursive).map(_.map(liftBlob)),
+        _.list(_, recursive).map(_.map(liftBlob))
+      )
+
+    override def get(url: Url[Standard], chunkSize: Int): Stream[F, Byte] =
+      biFlatMapLift[Stream[F, *], Byte](url)(
+        _.get(_, chunkSize),
+        _.get(_, chunkSize)
+      )
+
+    override def put(url: Url[Standard], overwrite: Boolean): Pipe[F, Byte, Unit] = s => {
+      val t = biFlatMapLift[Try, Pipe[F, Byte, Unit]](url)(
+        _.put(_, overwrite).pure[Try] ,
+        _.put(_, overwrite).pure[Try]
+      )
+
+      t match {
+        case Success(value) => s.through(value)
+        case Failure(exception) => s.flatMap(_ => Stream.raiseError[F](exception))
+      }
+    }
+
+    override def move(src: Url[Standard], dst: Url[Standard]): F[Unit] =
+      underlying match {
+        case Left(flat) => (validateForFlat[F](src), validateForFlat[F](dst)).tupled.flatMap {
+          case (s, d) => flat.move(s, d)
+        }
+        case Right(hier) => (validateForHierarchical[F](src, hier), validateForHierarchical[F](dst, hier)).tupled.flatMap {
+          case (s, d) => hier.move(s, d)
+        }
+      }
+
+    override def copy(src: Url[Standard], dst: Url[Standard]): F[Unit] =
+      underlying match {
+        case Left(flat) => (validateForFlat[F](src), validateForFlat[F](dst)).tupled.flatMap {
+          case (s, d) => flat.copy(s, d)
+        }
+        case Right(hier) => (validateForHierarchical[F](src, hier), validateForHierarchical[F](dst, hier)).tupled.flatMap {
+          case (s, d) => hier.copy(s, d)
+        }
+      }
+
+    override def remove(path: Url[Standard]): F[Unit] =
+      biFlatMapLift[F, Unit](path)(
+        _.remove(_),
+        _.remove(_)
+      )
+
+    override def putRotate(computePath: F[Url[Standard]], limit: Long): Pipe[F, Byte, Unit] = ??? // TODO
+
+    override def liftToUniversal: Store[F, Standard, UniversalFileSystemObject] = this
+
+    private def validateForFlat[G[_]: ApplicativeError[*[_], Throwable]](url: Url.Plain): G[Url[Bucket]] =
+      Url.forBucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]
+
+    private def validateForHierarchical[G[_]: ApplicativeError[*[_], Throwable]](
+      url: Url.Plain,
+      hierarchicalStore: FileStore[F, Blob]
+    ): G[Path.Plain] =
+      if (url.authority.equalsIgnoreUserInfo(hierarchicalStore.authority)) url.path.pure[G]
+      else
+        new Exception(
+          show"Expected authorities to match, but got ${url.authority} for ${hierarchicalStore.authority}"
+        ).raiseError[G, Path.Plain]
+
+    private def biFlatMapLift[G[_]: MonadError[*[_], Throwable], A](url: Url.Plain)(
+      f: (BlobStore[F, Blob], Url[Bucket]) => G[A],
+      g: (FileStore[F, Blob], Path.Plain) => G[A]
+    ): G[A] =
+      underlying match {
+        case Left(flatStore)          => validateForFlat[G](url).flatMap(f(flatStore, _))
+        case Right(hierarchicalStore) => validateForHierarchical[G](url, hierarchicalStore).flatMap(g(hierarchicalStore, _))
+      }
+
+  }
 }

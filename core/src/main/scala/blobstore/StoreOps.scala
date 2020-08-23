@@ -15,173 +15,173 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-import java.nio.charset.Charset
-
-import cats.effect.{Blocker, ContextShift, Sync}
-import fs2.{Pipe, Stream}
-import cats.implicits._
+//import java.nio.charset.Charset
+//
+//import cats.effect.{Blocker, ContextShift, Sync}
+//import fs2.{Pipe, Stream}
+//import cats.implicits._
 
 trait StoreOps {
-
-  implicit class PutOps[F[_]](store: Store[F]) {
-
-    /**
-      * Write contents String into path.
-      * @param contents String
-      * @param path Path to write to
-      * @return F[Unit]
-      */
-    def put(contents: String, path: Path)(implicit F: Sync[F]): F[Unit] =
-      for {
-        buf <- F.delay(contents.getBytes(Charset.forName("utf-8")))
-        _ <- Stream
-          .emits(buf)
-          .covary[F]
-          .through(store.put(path.withSize(Option(buf.size.toLong), reset = false)))
-          .compile
-          .drain
-      } yield ()
-
-    /**
-      * Write contents of src file into dst Path
-      * @param src java.nio.file.Path
-      * @param dst Path to write to
-      * @return F[Unit]
-      */
-    def put(src: java.nio.file.Path, dst: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): F[Unit] =
-      fs2.io.file
-        .readAll(src, blocker, 4096)
-        .through(store.put(dst.withSize(Option(src.toFile.length), reset = false)))
-        .compile
-        .drain
-
-    /**
-      * Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
-      * to store. Useful when uploading data to stores that require content size like S3Store.
-      *
-      * @param path Path to write to
-      * @return Sink[F, Byte] buffered sink
-      */
-    def bufferedPut(path: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): Pipe[F, Byte, Unit] =
-      _.through(bufferToDisk(4096, blocker)).flatMap {
-        case (n, s) =>
-          s.through(store.put(path.withSize(Some(n), reset = false)))
-      }
-  }
-
-  implicit class GetOps[F[_]](store: Store[F]) {
-
-    /**
-      * get with default buffer size of 4kb
-      * @param path Path to get
-      * @return Stream of Byte
-      */
-    def get(path: Path): Stream[F, Byte] = store.get(path, 4096)
-
-    /**
-      * get src path and write to local file system
-      * @param src Path to get
-      * @param dst local file to write contents to
-      * @return F[Unit]
-      */
-    def get(src: Path, dst: java.nio.file.Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): F[Unit] =
-      store.get(src, 4096).through(fs2.io.file.writeAll(dst, blocker)).compile.drain
-
-    /**
-      * getContents with default UTF8 decoder
-      * @param path Path to get
-      * @return F[String] with file contents
-      */
-    def getContents(path: Path)(implicit F: Sync[F]): F[String] = getContents(path, fs2.text.utf8Decode)
-
-    /**
-      * Decode get bytes from path into a string using decoder and return concatenated string.
-      *
-      * USE WITH CARE, this loads all file contents into memory.
-      *
-      * @param path Path to get
-      * @param decoder Pipe[F, Byte, String]
-      * @return F[String] with file contents
-      */
-    def getContents(path: Path, decoder: Pipe[F, Byte, String])(implicit F: Sync[F]): F[String] = {
-      get(path).through(decoder).compile.toList.map(_.mkString)
-    }
-
-  }
-
-  implicit class ListOps[F[_]](store: Store[F]) {
-
-    /**
-      * Collect all list results in the same order as the original list Stream
-      * @param path Path to list
-      * @return F\[List\[Path\]\] with all items in the result
-      */
-    def listAll(path: Path)(implicit F: Sync[F]): F[List[Path]] = {
-      store.list(path).compile.toList
-    }
-  }
-
-  implicit class TransferOps[F[_]](store: Store[F]) {
-
-    /**
-      * Copy value of the given path in this store to the destination store.
-      *
-      * This is especially useful when transferring content into S3Store that requires to know content
-      * size before starting content upload.
-      *
-      * This method will list items from srcPath, get the file size and put into dstStore with the given size. If
-      * listing contents result in nested directories it will copy files inside dirs recursively.
-      *
-      * @param dstStore destination store
-      * @param srcPath path to transfer from (can be a path to a file or dir)
-      * @param dstPath path to transfer to (can be a path to a file or dir, if you are transferring multiple files,
-      *                make sure that dstPath.isDir == true, otherwise all files will override destination.
-      * @return Stream[F, Int] number of files transfered
-      */
-    def transferTo(dstStore: Store[F], srcPath: Path, dstPath: Path)(implicit F: Sync[F]): F[Int] = {
-      import implicits._
-      store
-        .list(srcPath)
-        .evalMap(p =>
-          if (p.isDir.getOrElse(false)) {
-            transferTo(dstStore, p, (dstPath / p.lastSegment).withIsDir(Some(true), reset = false))
-          } else {
-            val dp =
-              if (dstPath.isDir.getOrElse(false)) (dstPath / p.lastSegment).withIsDir(Some(false), reset = false)
-              else dstPath
-            store
-              .get(p, 4096)
-              .through(dstStore.put(dp.withSize(p.size, reset = false)))
-              .compile
-              .drain
-              .as(1)
-          }
-        )
-        .compile
-        .fold(0)(_ + _)
-    }
-  }
-
-  implicit class RemoveOps[F[_]](store: Store[F]) {
-
-    /**
-      * Remove all files from a store recursively, given a path
-      */
-    def removeAll(dstPath: Path)(implicit F: Sync[F]): F[Int] = {
-      import implicits._
-      store
-        .list(dstPath)
-        .evalMap(p =>
-          if (p.isDir.getOrElse(false)) {
-            removeAll(dstPath / p.lastSegment)
-          } else {
-            val dp = if (dstPath.isDir.getOrElse(false)) dstPath / p.lastSegment else dstPath
-            Stream.eval(store.remove(dp)).compile.drain.as(1)
-          }
-        )
-        .compile
-        .fold(0)(_ + _)
-    }
-  }
+//
+//  implicit class PutOps[F[_]](store: Store[F]) {
+//
+//    /**
+//      * Write contents String into path.
+//      * @param contents String
+//      * @param path Path to write to
+//      * @return F[Unit]
+//      */
+//    def put(contents: String, path: Path)(implicit F: Sync[F]): F[Unit] =
+//      for {
+//        buf <- F.delay(contents.getBytes(Charset.forName("utf-8")))
+//        _ <- Stream
+//          .emits(buf)
+//          .covary[F]
+//          .through(store.put(path.withSize(Option(buf.size.toLong), reset = false)))
+//          .compile
+//          .drain
+//      } yield ()
+//
+//    /**
+//      * Write contents of src file into dst Path
+//      * @param src java.nio.file.Path
+//      * @param dst Path to write to
+//      * @return F[Unit]
+//      */
+//    def put(src: java.nio.file.Path, dst: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): F[Unit] =
+//      fs2.io.file
+//        .readAll(src, blocker, 4096)
+//        .through(store.put(dst.withSize(Option(src.toFile.length), reset = false)))
+//        .compile
+//        .drain
+//
+//    /**
+//      * Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
+//      * to store. Useful when uploading data to stores that require content size like S3Store.
+//      *
+//      * @param path Path to write to
+//      * @return Sink[F, Byte] buffered sink
+//      */
+//    def bufferedPut(path: Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): Pipe[F, Byte, Unit] =
+//      _.through(bufferToDisk(4096, blocker)).flatMap {
+//        case (n, s) =>
+//          s.through(store.put(path.withSize(Some(n), reset = false)))
+//      }
+//  }
+//
+//  implicit class GetOps[F[_]](store: Store[F]) {
+//
+//    /**
+//      * get with default buffer size of 4kb
+//      * @param path Path to get
+//      * @return Stream of Byte
+//      */
+//    def get(path: Path): Stream[F, Byte] = store.get(path, 4096)
+//
+//    /**
+//      * get src path and write to local file system
+//      * @param src Path to get
+//      * @param dst local file to write contents to
+//      * @return F[Unit]
+//      */
+//    def get(src: Path, dst: java.nio.file.Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): F[Unit] =
+//      store.get(src, 4096).through(fs2.io.file.writeAll(dst, blocker)).compile.drain
+//
+//    /**
+//      * getContents with default UTF8 decoder
+//      * @param path Path to get
+//      * @return F[String] with file contents
+//      */
+//    def getContents(path: Path)(implicit F: Sync[F]): F[String] = getContents(path, fs2.text.utf8Decode)
+//
+//    /**
+//      * Decode get bytes from path into a string using decoder and return concatenated string.
+//      *
+//      * USE WITH CARE, this loads all file contents into memory.
+//      *
+//      * @param path Path to get
+//      * @param decoder Pipe[F, Byte, String]
+//      * @return F[String] with file contents
+//      */
+//    def getContents(path: Path, decoder: Pipe[F, Byte, String])(implicit F: Sync[F]): F[String] = {
+//      get(path).through(decoder).compile.toList.map(_.mkString)
+//    }
+//
+//  }
+//
+//  implicit class ListOps[F[_]](store: Store[F]) {
+//
+//    /**
+//      * Collect all list results in the same order as the original list Stream
+//      * @param path Path to list
+//      * @return F\[List\[Path\]\] with all items in the result
+//      */
+//    def listAll(path: Path)(implicit F: Sync[F]): F[List[Path]] = {
+//      store.list(path).compile.toList
+//    }
+//  }
+//
+//  implicit class TransferOps[F[_]](store: Store[F]) {
+//
+//    /**
+//      * Copy value of the given path in this store to the destination store.
+//      *
+//      * This is especially useful when transferring content into S3Store that requires to know content
+//      * size before starting content upload.
+//      *
+//      * This method will list items from srcPath, get the file size and put into dstStore with the given size. If
+//      * listing contents result in nested directories it will copy files inside dirs recursively.
+//      *
+//      * @param dstStore destination store
+//      * @param srcPath path to transfer from (can be a path to a file or dir)
+//      * @param dstPath path to transfer to (can be a path to a file or dir, if you are transferring multiple files,
+//      *                make sure that dstPath.isDir == true, otherwise all files will override destination.
+//      * @return Stream[F, Int] number of files transfered
+//      */
+//    def transferTo(dstStore: Store[F], srcPath: Path, dstPath: Path)(implicit F: Sync[F]): F[Int] = {
+//      import implicits._
+//      store
+//        .list(srcPath)
+//        .evalMap(p =>
+//          if (p.isDir.getOrElse(false)) {
+//            transferTo(dstStore, p, (dstPath / p.lastSegment).withIsDir(Some(true), reset = false))
+//          } else {
+//            val dp =
+//              if (dstPath.isDir.getOrElse(false)) (dstPath / p.lastSegment).withIsDir(Some(false), reset = false)
+//              else dstPath
+//            store
+//              .get(p, 4096)
+//              .through(dstStore.put(dp.withSize(p.size, reset = false)))
+//              .compile
+//              .drain
+//              .as(1)
+//          }
+//        )
+//        .compile
+//        .fold(0)(_ + _)
+//    }
+//  }
+//
+//  implicit class RemoveOps[F[_]](store: Store[F]) {
+//
+//    /**
+//      * Remove all files from a store recursively, given a path
+//      */
+//    def removeAll(dstPath: Path)(implicit F: Sync[F]): F[Int] = {
+//      import implicits._
+//      store
+//        .list(dstPath)
+//        .evalMap(p =>
+//          if (p.isDir.getOrElse(false)) {
+//            removeAll(dstPath / p.lastSegment)
+//          } else {
+//            val dp = if (dstPath.isDir.getOrElse(false)) dstPath / p.lastSegment else dstPath
+//            Stream.eval(store.remove(dp)).compile.drain.as(1)
+//          }
+//        )
+//        .compile
+//        .fold(0)(_ + _)
+//    }
+//  }
 
 }

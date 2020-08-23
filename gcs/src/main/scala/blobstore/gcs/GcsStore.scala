@@ -6,13 +6,12 @@ import java.nio.channels.Channels
 import _root_.cats.data.Chain
 import _root_.cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Sync}
 import _root_.cats.instances.list._
-import _root_.cats.instances.string._
 import _root_.cats.syntax.all._
-import blobstore.{putRotateBase, FlatStore, NewStore}
+import blobstore.{putRotateBase, Store}
+import blobstore.url.{Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.url.Path.AbsolutePath
-import blobstore.url.Path
-import blobstore.NewStore.StoreDelegator
+import blobstore.Store.{BlobStore, UniversalStore}
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
@@ -27,37 +26,37 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   defaultTrailingSlashFiles: Boolean = false,
   defaultDirectDownload: Boolean = false,
   defaultMaxChunksInFlight: Option[Int] = None
-) extends FlatStore[F, GcsBlob] {
+) extends BlobStore[F, GcsBlob] {
 
-  override def list[A](bucketName: Bucket, path: Path[A], recursive: Boolean = false): Stream[F, Path[GcsBlob]] =
-    listWithOptions(bucketName, path, recursive)
+  override def list(url: Url[Bucket], recursive: Boolean = false): Stream[F, Path[GcsBlob]] =
+    listWithOptions(url, recursive)
 
-  def listWithOptions[A](bucketName: Bucket, path: Path[A], recursive: Boolean, options: BlobListOption*): Stream[F, Path[GcsBlob]] =
-    listUnderlying(bucketName, path, defaultTrailingSlashFiles, recursive, options: _*)
+  def listWithOptions(url: Url[Bucket], recursive: Boolean, options: BlobListOption*): Stream[F, Path[GcsBlob]] =
+    listUnderlying(url, defaultTrailingSlashFiles, recursive, options: _*)
 
-  override def get[A](bucketName: Bucket, path: Path[A], chunkSize: Int): Stream[F, Byte] =
-    getBlob(bucketName, path, chunkSize)
+  override def get(url: Url[Bucket], chunkSize: Int): Stream[F, Byte] =
+    getBlob(url, chunkSize)
 
-  def getBlob[A](bucketName: Bucket, path: Path[A], chunkSize: Int, options: BlobGetOption*): Stream[F, Byte] = {
-    getUnderlying(bucketName, path, chunkSize, defaultDirectDownload, defaultMaxChunksInFlight, options: _*)
+  def getBlob(url: Url[Bucket], chunkSize: Int, options: BlobGetOption*): Stream[F, Byte] = {
+    getUnderlying(url, chunkSize, defaultDirectDownload, defaultMaxChunksInFlight, options: _*)
   }
 
-  def put[A](bucketName: Bucket, path: Path[A], overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit] =
-    fs2.io.writeOutputStream(newOutputStream(bucketName, path, overwrite), blocker, closeAfterUse = true)
+  override def put(url: Url[Bucket], overwrite: Boolean = true): Pipe[F, Byte, Unit] =
+    fs2.io.writeOutputStream(newOutputStream(url, overwrite), blocker, closeAfterUse = true)
 
-  override def remove[A](bucketName: Bucket, path: Path[A]): F[Unit] =
-    blocker.delay(storage.delete(GcsStore.toBlobId(bucketName, path))).void
+  override def remove(url: Url[Bucket]): F[Unit] =
+    blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
 
-  override def putRotate[A](bucketName: Bucket, computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit] = {
+  override def putRotate(computePath: F[Url[Bucket]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
-      Resource.make(computePath.flatMap(p => newOutputStream(bucketName, p)))(os => blocker.delay(os.close()))
+      Resource.make(computePath.flatMap(newOutputStream(_)))(os => blocker.delay(os.close()))
 
     putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
   }
 
-  def getUnderlying[A](bucketName: Bucket, path: Path[A], chunkSize: Int, direct: Boolean, maxChunksInFlight: Option[Int], options: BlobGetOption*): Stream[F, Byte] =
-    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(bucketName, path), options: _*)))).flatMap {
-      case None => Stream.raiseError[F](new StorageException(404, show"Object not found, gs://$bucketName/${path.show.stripPrefix("/")}"))
+  def getUnderlying[A](url: Url[Bucket], chunkSize: Int, direct: Boolean, maxChunksInFlight: Option[Int], options: BlobGetOption*): Stream[F, Byte] =
+    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(url), options: _*)))).flatMap {
+      case None => Stream.raiseError[F](new StorageException(404, show"Object not found, ${url.copy(scheme = "gs")}"))
       case Some(blob) =>
         if (direct)
           getDirect(blob, chunkSize, maxChunksInFlight)
@@ -84,8 +83,8 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
       )
     }
 
-  def listUnderlying[A](bucketName: Bucket, path: Path[A], expectTrailingSlashFiles: Boolean, recursive: Boolean, inputOptions: BlobListOption*): Stream[F, Path[GcsBlob]] = {
-    val blobId = GcsStore.toBlobId(bucketName, path)
+  def listUnderlying[A](url: Url[Bucket], expectTrailingSlashFiles: Boolean, recursive: Boolean, inputOptions: BlobListOption*): Stream[F, Path[GcsBlob]] = {
+    val blobId = GcsStore.toBlobId(url)
 
     val options = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ inputOptions
     val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
@@ -113,8 +112,8 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     }
   }.map(_.map(GcsBlob.apply))
 
-  private def newOutputStream[A](bucket: Bucket, path: Path[A], overwrite: Boolean = true): F[OutputStream] = {
-    val blobId = GcsStore.toBlobId(bucket, path)
+  private def newOutputStream[A](url: Url[Bucket], overwrite: Boolean = true): F[OutputStream] = {
+    val blobId = GcsStore.toBlobId(url)
     val builder = BlobInfo.newBuilder(blobId)
     val blobInfo = (if (acls.nonEmpty) builder.setAcl(acls.asJava) else builder).build()
 
@@ -129,8 +128,8 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    * @param dst path
    * @return F[Unit]
    */
-  override def move[A](src: (Bucket, Path[A]), dst: (Bucket, Path[A])): F[Unit] =
-    copy(src, dst) >> remove[A](src._1, src._2)
+  override def move(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
+    copy(src, dst) >> remove(src)
   /**
    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
    *
@@ -138,14 +137,10 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    * @param dst path
    * @return F[Unit]
    */
-  def copy[A](src: (Bucket, Path[A]), dst: (Bucket, Path[A])): F[Unit] = {
-    val toBlobId = (GcsStore.toBlobId[A] _ ).tupled
-    blocker.delay(storage.copy(CopyRequest.of(toBlobId(src), toBlobId(dst))).getResult).void
-  }
+  override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
+    blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
-  override val liftToWeak: NewStore[F]  = {
-    new StoreDelegator[F, GcsBlob](GcsBlob.toGeneral, Left(this))
-  }
+  override def liftToUniversal: UniversalStore[F] = new Store.StoreDelegator[F, GcsBlob](GcsBlob.toUniversal, Left(this))
 }
 
 object GcsStore {
@@ -168,6 +163,6 @@ object GcsStore {
 
   private val minimalReaderChunkSize = 2 * 1024 * 1024 // BlobReadChannel.DEFAULT_CHUNK_SIZE
 
-  private def toBlobId[A](bucketName: Bucket, path: Path[A]): BlobId =
-    BlobId.of(bucketName.name.show, path.show)
+  private def toBlobId[A](url: Url[Bucket]): BlobId =
+    BlobId.of(url.authority.show, url.path.show)
 }
