@@ -121,9 +121,6 @@ object Path {
 
   implicit def order[A: Order]: Order[Path[A]]          = compare
   implicit def ordering[A: Ordering]: Ordering[Path[A]] = order[A](Order.fromOrdering[A]).toOrdering
-
-  implicit def eq[A]: Eq[Path[A]] = compare[A](_, _) === 0
-
   implicit def show[A]: Show[Path[A]] = {
     case a: AbsolutePath[A] => a.show
     case r: RootlessPath[A] => r.show
