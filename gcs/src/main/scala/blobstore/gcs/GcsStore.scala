@@ -140,7 +140,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
-  override def liftToUniversal: UniversalStore[F] = new Store.StoreDelegator[F, GcsBlob](GcsBlob.toUniversal, Left(this))
+  override def liftToUniversal: UniversalStore[F] = new Store.DelegatingStore[F, GcsBlob](GcsBlob.toUniversal, Left(this))
 }
 
 object GcsStore {

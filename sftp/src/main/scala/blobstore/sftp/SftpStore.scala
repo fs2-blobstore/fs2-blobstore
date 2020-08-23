@@ -6,7 +6,7 @@ import blobstore.{_writeAllToOutputStream1, putRotateBase, FileStore}
 import blobstore.url.{Authority, Path}
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
-import blobstore.Store.{StoreDelegator, UniversalStore}
+import blobstore.Store.{DelegatingStore, UniversalStore}
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
 import cats.instances.option._
@@ -180,7 +180,7 @@ final class SftpStore[F[_]](
     Resource.make(put(channel))(close)
   }
 
-  override val liftToUniversal: UniversalStore[F] = new StoreDelegator[F, SftpFsElement](SftpFsElement.toGeneral, Right(this))
+  override val liftToUniversal: UniversalStore[F] = new DelegatingStore[F, SftpFsElement](SftpFsElement.toGeneral, Right(this))
 }
 
 object SftpStore {
