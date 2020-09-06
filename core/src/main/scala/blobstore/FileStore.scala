@@ -49,7 +49,7 @@ abstract class FileStore[F[_], BlobType] {
    * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
    * @return sink of bytes
    */
-  def put[A](path: Path[A], overwrite: Boolean = true): Pipe[F, Byte, Unit]
+  def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
 
   /**
    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.

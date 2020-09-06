@@ -29,20 +29,26 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
 ) extends BlobStore[F, GcsBlob] {
 
   override def list(url: Url[Bucket], recursive: Boolean = false): Stream[F, Path[GcsBlob]] =
-    listWithOptions(url, recursive)
+    list(url, recursive, List.empty)
 
-  def listWithOptions(url: Url[Bucket], recursive: Boolean, options: BlobListOption*): Stream[F, Path[GcsBlob]] =
+  def list(url: Url[Bucket], recursive: Boolean, options: List[BlobListOption]): Stream[F, Path[GcsBlob]] =
     listUnderlying(url, defaultTrailingSlashFiles, recursive, options: _*)
 
   override def get(url: Url[Bucket], chunkSize: Int): Stream[F, Byte] =
-    getBlob(url, chunkSize)
+    get(url, chunkSize, List.empty)
 
-  def getBlob(url: Url[Bucket], chunkSize: Int, options: BlobGetOption*): Stream[F, Byte] = {
+  def get(url: Url[Bucket], chunkSize: Int, options: List[BlobGetOption]): Stream[F, Byte] = {
     getUnderlying(url, chunkSize, defaultDirectDownload, defaultMaxChunksInFlight, options: _*)
   }
 
-  override def put(url: Url[Bucket], overwrite: Boolean = true): Pipe[F, Byte, Unit] =
-    fs2.io.writeOutputStream(newOutputStream(url, overwrite), blocker, closeAfterUse = true)
+  override def put(url: Url[Bucket], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
+    fs2.io.writeOutputStream(newOutputStream(url, overwrite, List.empty), blocker, closeAfterUse = true)
+
+  def put(url: Url[Bucket], overwrite: Boolean, options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
+    fs2.io.writeOutputStream(newOutputStream(url, overwrite, options), blocker, closeAfterUse = true)
+
+  def put(path: Path[GcsBlob], options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
+    fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
   override def remove(url: Url[Bucket]): F[Unit] =
     blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
@@ -104,7 +110,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
             }
             .map { paths =>
               (
-                Chunk.seq(paths.map(blob => AbsolutePath(blob, Chain(blob.getName.split("/").toIndexedSeq: _ *)))),
+                Chunk.seq(paths.map(blob => AbsolutePath.createFrom(blob.getName).as(blob))),
                 () => if (page.hasNextPage) Some(page.getNextPage) else None
                 ).some
             }
@@ -112,14 +118,18 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     }
   }.map(_.map(GcsBlob.apply))
 
-  private def newOutputStream[A](url: Url[Bucket], overwrite: Boolean = true): F[OutputStream] = {
+  private def newOutputStream[A](url: Url[Bucket], overwrite: Boolean = true, options: List[BlobWriteOption] = List.empty): F[OutputStream] = {
     val blobId = GcsStore.toBlobId(url)
     val builder = BlobInfo.newBuilder(blobId)
     val blobInfo = (if (acls.nonEmpty) builder.setAcl(acls.asJava) else builder).build()
 
-    val options = if (overwrite) Nil else List(BlobWriteOption.doesNotExist())
-    Sync[F].delay(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
+    val opts = if (overwrite) options else options ++ List(BlobWriteOption.doesNotExist())
+
+    newOutputStream(blobInfo, opts)
   }
+
+  private def newOutputStream[A](blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
+    Sync[F].delay(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
 
   /**
    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
@@ -164,5 +174,5 @@ object GcsStore {
   private val minimalReaderChunkSize = 2 * 1024 * 1024 // BlobReadChannel.DEFAULT_CHUNK_SIZE
 
   private def toBlobId[A](url: Url[Bucket]): BlobId =
-    BlobId.of(url.authority.show, url.path.show)
+    BlobId.of(url.authority.show, url.path.show.stripPrefix("/"))
 }

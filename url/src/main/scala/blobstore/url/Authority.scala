@@ -26,7 +26,7 @@ object Authority {
     * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.2 Authority
     */
   case class Standard(host: Host, userInfo: Option[UserInfo], port: Option[Port]) extends Authority {
-    val toBucket: ValidatedNec[BucketParseError, Bucket] = Bucket.parse(Show[Standard].show(this))
+    lazy val toBucket: ValidatedNec[BucketParseError, Bucket] = Bucket.parse(Show[Standard].show(this))
 
     def equalsIgnoreUserInfo(a: Authority): Boolean = a match {
       case Standard(host, _, port) => this.host === host && this.port === port

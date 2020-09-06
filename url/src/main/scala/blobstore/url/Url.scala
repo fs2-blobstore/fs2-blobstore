@@ -1,7 +1,7 @@
 package blobstore.url
 
 import blobstore.url.exception.{MultipleUrlValidationException, UrlParseError}
-import blobstore.url.Authority.{Bucket, Standard}
+import blobstore.url.Authority.Standard
 import blobstore.url.Path.AbsolutePath
 import cats.{ApplicativeError, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
@@ -9,15 +9,21 @@ import cats.data.ValidatedNec
 import cats.instances.string._
 import cats.syntax.all._
 
-case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain)
+case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) {
+  def /(segment: String): Url[A] = copy(path = path./(segment))
+
+  /**
+   * Ensure that path always is suffixed with '/'
+   */
+  def `//`(segment: String): Url[A] = copy(path = path.`//`(segment))
+}
 
 object Url {
 
   type Plain = Url[Standard]
+  type Bucket = Url[Authority.Bucket]
 
-  def apply(s: String): ValidatedNec[UrlParseError, Url[Standard]] = parse[Authority.Standard](s)
-
-  def forBucket(s: String): ValidatedNec[UrlParseError, Url[Bucket]] = parse[Authority.Bucket](s)
+  def forBucket(url: String): ValidatedNec[UrlParseError, Url[Authority.Bucket]] = parse[Authority.Bucket](url)
 
   def parse[A <: Authority: UrlParser](s: String): ValidatedNec[UrlParseError, Url[A]] = UrlParser[A].parse(s)
 
@@ -33,7 +39,7 @@ object Url {
   implicit def order[A <: Authority]: Order[Url[A]] = Order.fromOrdering
   implicit def show[S <: String, A <: Authority]: Show[Url[A]] = u => {
     val pathString = u.path match {
-      case a@AbsolutePath(_, _) => a.show.stripSuffix("/")
+      case a@AbsolutePath(_, _) => a.show.stripPrefix("/")
       case a => a.show
     }
     show"${u.scheme}://${u.authority}/$pathString"

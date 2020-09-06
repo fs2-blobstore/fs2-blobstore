@@ -15,6 +15,8 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
+import java.nio.charset.StandardCharsets
+
 import blobstore.url.Authority.{Bucket, Standard}
 import blobstore.url.{Authority, Path, Url}
 import fs2.{Pipe, Stream}
@@ -69,7 +71,15 @@ trait Store[F[_], A <: Authority, BlobType] {
     * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
-  def put(path: Url[A], overwrite: Boolean = true): Pipe[F, Byte, Unit]
+  def put(path: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit]
+
+  def put(contents: String, url: Url[A]): Stream[F, Unit] = {
+    val bytes = contents.getBytes(StandardCharsets.UTF_8)
+    Stream
+      .emits(bytes)
+      .covary[F]
+      .through(put(url, size = Some(bytes.length.toLong)))
+  }
 
   /**
     * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
@@ -139,10 +149,10 @@ object Store {
         _.get(_, chunkSize)
       )
 
-    override def put(url: Url[Standard], overwrite: Boolean): Pipe[F, Byte, Unit] = s => {
+    override def put(url: Url[Standard], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = s => {
       val t = biFlatMap[Try, Pipe[F, Byte, Unit]](url)(
-        _.put(_, overwrite).pure[Try],
-        _.put(_, overwrite).pure[Try]
+        _.put(_, overwrite, size).pure[Try],
+        _.put(_, overwrite, size).pure[Try]
       )
 
       t match {
@@ -156,7 +166,8 @@ object Store {
         case Left(blobstore) => (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled.flatMap {
             case (s, d) => blobstore.move(s, d)
           }
-        case Right(filestore) => (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
+        case Right(filestore) =>
+          (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
             case (s, d) => filestore.move(s, d)
           }
       }
@@ -166,7 +177,8 @@ object Store {
         case Left(blobstore) => (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled.flatMap {
             case (s, d) => blobstore.copy(s, d)
           }
-        case Right(filestore) => (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
+        case Right(filestore) =>
+          (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
             case (s, d) => filestore.copy(s, d)
           }
       }

@@ -2,6 +2,7 @@ package blobstore.url
 
 import blobstore.url.exception.{HostParseError, MultipleUrlValidationException}
 import blobstore.url.Hostname.Label
+import blobstore.url.exception.HostParseError.label
 import cats.{ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
@@ -17,6 +18,7 @@ import shapeless.HList._
 import shapeless.PolyDefns.~>
 
 import scala.util.Try
+import scala.util.matching.Regex
 /**
   * A Host is any device or computer on a computer network. It can be an IP address or any string that can appear in a
   * A, AAAA or CNAME DNS record.
@@ -87,27 +89,30 @@ object IpV4Address {
 }
 
 case class Hostname private (labels: NonEmptyChain[Label]) extends Host {
-  override def toString: String = labels.mkString_(".")
+  val value: String = labels.mkString_(".")
+  override def toString: String = value
 }
 
 object Hostname {
 
   /**
-    * Label component of a hostname.
-    *
-    * Rules
-    * - 1 to 63 characters
-    * - Only consists of characters a-z, A-Z, 0-9 or a hyphen
-    *
-    * RFC1123, section 2.1 "Host Names and Numbers"
-    *
-    * @see http://www.ietf.org/rfc/rfc1123.txt
-    */
+   * Label component of a hostname.
+   *
+   * Rules
+   * - 1 to 63 characters
+   * - Only consists of characters a-z, A-Z, 0-9 or a hyphen
+   *
+   * RFC1123, section 2.1 "Host Names and Numbers"
+   *
+   * @see http://www.ietf.org/rfc/rfc1123.txt
+   */
   case class Label private[Hostname] (value: String) {
     override def toString: String          = value
   }
 
   object Label {
+    val Regex: Regex = "[-_a-zA-Z0-9]+".r
+
     implicit val show: Show[Label] = _.value
     implicit val order: Order[Label] = _.value compare _.value
     implicit val ordering: Ordering[Label] = order.toOrdering
@@ -115,8 +120,9 @@ object Hostname {
 
   def parse(value: String): ValidatedNec[HostParseError, Hostname] = {
     val labels: ValidatedNec[HostParseError, List[Label]] = value.split('.').toList.traverse { el =>
-      val lengthOk: ValidatedNec[HostParseError, Unit] = Validated.cond(el.length >= 1 && el.length <= 63, (), HostParseError.label.LabelLengthOutOfRange(el)).toValidatedNec
-      val charactersOk = Validated.cond(el.matches("[-a-zA-Z0-9]"), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
+      val lengthOk: ValidatedNec[HostParseError, Unit] = Validated.cond(el.length >= 3 && el.length <= 63, (), HostParseError.label.LabelLengthOutOfRange(el)).toValidatedNec
+      val charactersOk: ValidatedNec[HostParseError, Unit] = Validated.cond(Label.Regex.matches(el), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
+
       (lengthOk, charactersOk).tupled.as(Label(el))
     }
 

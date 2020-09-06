@@ -15,4 +15,4 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-object implicits extends StoreOps with PathOps
+//object implicits extends StoreOps with PathOps
