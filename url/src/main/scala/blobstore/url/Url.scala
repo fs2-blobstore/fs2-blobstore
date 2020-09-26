@@ -3,7 +3,7 @@ package blobstore.url
 import blobstore.url.exception.{MultipleUrlValidationException, UrlParseError}
 import blobstore.url.Authority.Standard
 import blobstore.url.Path.AbsolutePath
-import cats.{ApplicativeError, Order, Show}
+import cats.{ApplicativeError, Functor, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
 import cats.data.ValidatedNec
 import cats.instances.string._
@@ -11,11 +11,22 @@ import cats.syntax.all._
 
 case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) {
   def /(segment: String): Url[A] = copy(path = path./(segment))
+  def /(segment: Option[String]): Url[A] = segment match {
+    case Some(s) => /(s)
+    case None => this
+  }
 
   /**
    * Ensure that path always is suffixed with '/'
    */
   def `//`(segment: String): Url[A] = copy(path = path.`//`(segment))
+  def `//`(segment: Option[String]): Url[A] = segment match {
+    case Some(s) => `//`(s)
+    case None => this
+  }
+
+
+  def map[B <: Authority](f: A => B): Url[B] = copy(authority = f(authority))
 }
 
 object Url {

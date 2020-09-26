@@ -9,6 +9,7 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
 
   it should "create correct paths" in {
     val absolutePaths = List(
+      "/",
       "/foo",
       "/foo/bar",
       "/foo/bar/",
@@ -17,6 +18,7 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     )
 
     val rootlessPaths = List(
+      "",
       "foo",
       "./foo",
       "../foo/bar",

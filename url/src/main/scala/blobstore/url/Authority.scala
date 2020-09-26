@@ -56,6 +56,8 @@ object Authority {
       case Invalid(e) => throw MultipleUrlValidationException(e)
     }
 
+    def localhost: Standard = unsafe("localhost")
+
     def parseF[F[_]: ApplicativeError[*[_], Throwable]](host: String): F[Standard] =
       parse(host).toEither.leftMap(MultipleUrlValidationException).liftTo[F]
 
@@ -92,6 +94,8 @@ object Authority {
     override val host: Host = name
 
     def withRegion(region: String): Bucket = new Bucket(name, Some(region))
+
+    def toStandardAuthority: Standard = Standard(name, None, None)
   }
 
   object Bucket {

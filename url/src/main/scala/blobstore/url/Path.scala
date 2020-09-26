@@ -7,6 +7,7 @@ import blobstore.url.general.UniversalFileSystemObject
 import cats.{Eq, Functor, Show}
 import cats.data.Chain
 import cats.instances.string._
+import cats.instances.list._
 import cats.kernel.Order
 import cats.syntax.all._
 
@@ -92,16 +93,22 @@ sealed trait Path[A] {
     }
   override def hashCode(): Int = representation.hashCode()
 
-  def fullName(implicit B: FileSystemObject[A]): String              = FileSystemObject[A].name(representation)
-  def size(implicit B: FileSystemObject[A]): Option[Long]            = FileSystemObject[A].size(representation)
-  def isDir(implicit B: FileSystemObject[A]): Boolean                = FileSystemObject[A].isDir(representation)
-  def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
-  def fileName(implicit B: FileSystemObject[A]): Option[String] = if (isDir) None else {
+  def isEmpty: Boolean = segments.isEmpty
+
+  def lastSegment: Option[String] = if(isEmpty) None else {
     val slashSuffix = segments.reverse.takeWhile(_.isEmpty).map(_ => "/").toList.mkString
     val lastNonEmpty = segments.reverse.dropWhile(_.isEmpty).headOption
 
     lastNonEmpty.map(_ + slashSuffix)
   }
+
+  def fullName(implicit B: FileSystemObject[A]): String              = FileSystemObject[A].name(representation)
+  def size(implicit B: FileSystemObject[A]): Option[Long]            = FileSystemObject[A].size(representation)
+  def isDir(implicit B: FileSystemObject[A]): Boolean                = FileSystemObject[A].isDir(representation)
+  def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
+  def fileName(implicit B: FileSystemObject[A]): Option[String] = if (isDir) None else lastSegment
+  def dirName(implicit B: FileSystemObject[A]): Option[String] = if (!isDir) None else lastSegment
+
 }
 
 object Path {
@@ -195,13 +202,16 @@ object Path {
 
   def plain(path: String): Path.Plain = apply(path)
 
-  def apply(s: String): Path.Plain =
+  def apply(s: String): Path.Plain = {
+    if (s == "/") AbsolutePath("/", Chain.empty) // Take Path("/") to mean root. If you really want an object name '/' at the root, use AbsolutePath.parse("/")
+    else
     AbsolutePath.parse(s).orElse(RootlessPath.parse(s)).getOrElse(
       RootlessPath(
         s,
         Chain(s.split("/").toList: _*)
       ) // Paths either have a root or they don't, this block is never executed
     )
+  }
 
   def of[B](path: String, b: B): Path[B] = Path(path).as(b)
 

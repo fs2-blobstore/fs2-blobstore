@@ -18,11 +18,11 @@ package blobstore
 import java.nio.charset.StandardCharsets
 
 import blobstore.url.Authority.{Bucket, Standard}
-import blobstore.url.{Authority, Path, Url}
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import fs2.{Pipe, Stream}
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.url.general.UniversalFileSystemObject
-import blobstore.Store.UniversalStore
+import blobstore.Store.{BlobStore, UniversalStore}
 import cats.{ApplicativeError, MonadError}
 import cats.syntax.all._
 import cats.instances.try_._
@@ -121,7 +121,25 @@ trait Store[F[_], A <: Authority, BlobType] {
     */
   def putRotate(computePath: F[Url[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  def liftToUniversal: UniversalStore[F]
+  def liftToUniversal(
+    implicit fso: FileSystemObject[BlobType],
+    ev: this.type <:< BlobStore[F, BlobType],
+    ME: MonadError[F, Throwable]
+  ): UniversalStore[F] =
+    new Store.DelegatingStore[F, BlobType, UniversalFileSystemObject](fso.universal, Left(ev(this)))
+
+  def transferTo[C](dstStore: Store[F, A, C], srcPath: Url[A], dstPath: Url[A])(implicit
+  fos: FileSystemObject[BlobType]): Stream[F, Int] =
+    list(srcPath, recursive = true)
+      .flatMap(p =>
+        get(srcPath.copy(path = p.plain), 4096)
+          .through(dstStore.put(dstPath.copy(path = p.plain)))
+          .last
+          .map(_.fold(0)(_ => 1))
+      )
+      .fold(0)(_ + _)
+
+  def getContents(path: Url[A], chunkSize: Int = 4096): Stream[F, String] = get(path, chunkSize).through(fs2.text.utf8Decode)
 }
 
 object Store {
@@ -132,34 +150,35 @@ object Store {
   /**
     * Validates input URLs before delegating to underlying store
     */
-  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob](
-    liftBlob: Blob => UniversalFileSystemObject,
+  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob, BB](
+    liftBlob: Blob => BB,
     underlying: Either[BlobStore[F, Blob], FileStore[F, Blob]]
-  ) extends UniversalStore[F] {
+  ) extends Store[F, Authority.Standard, BB] {
 
-    override def list(url: Url[Standard], recursive: Boolean): Stream[F, Path.GeneralObject] =
-      biFlatMap[Stream[F, *], Path.GeneralObject](url)(
+    override def list(url: Url[Standard], recursive: Boolean): Stream[F, Path[BB]] =
+      validateAndInvoke[Stream[F, *], Path[BB]](url)(
         _.list(_, recursive).map(_.map(liftBlob)),
         _.list(_, recursive).map(_.map(liftBlob))
       )
 
     override def get(url: Url[Standard], chunkSize: Int): Stream[F, Byte] =
-      biFlatMap[Stream[F, *], Byte](url)(
+      validateAndInvoke[Stream[F, *], Byte](url)(
         _.get(_, chunkSize),
         _.get(_, chunkSize)
       )
 
-    override def put(url: Url[Standard], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = s => {
-      val t = biFlatMap[Try, Pipe[F, Byte, Unit]](url)(
-        _.put(_, overwrite, size).pure[Try],
-        _.put(_, overwrite, size).pure[Try]
-      )
+    override def put(url: Url[Standard], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
+      s => {
+        val t = validateAndInvoke[Try, Pipe[F, Byte, Unit]](url)(
+          _.put(_, overwrite, size).pure[Try],
+          _.put(_, overwrite, size).pure[Try]
+        )
 
-      t match {
-        case Success(value)     => s.through(value)
-        case Failure(exception) => s.flatMap(_ => Stream.raiseError[F](exception))
+        t match {
+          case Success(value)     => s.through(value)
+          case Failure(exception) => s.flatMap(_ => Stream.raiseError[F](exception))
+        }
       }
-    }
 
     override def move(src: Url[Standard], dst: Url[Standard]): F[Unit] =
       underlying match {
@@ -184,14 +203,12 @@ object Store {
       }
 
     override def remove(path: Url[Standard]): F[Unit] =
-      biFlatMap[F, Unit](path)(
+      validateAndInvoke[F, Unit](path)(
         _.remove(_),
         _.remove(_)
       )
 
     override def putRotate(computePath: F[Url[Standard]], limit: Long): Pipe[F, Byte, Unit] = ??? // TODO
-
-    override def liftToUniversal: Store[F, Standard, UniversalFileSystemObject] = this
 
     private def validateForBlobStore[G[_]: ApplicativeError[*[_], Throwable]](url: Url.Plain): G[Url[Bucket]] =
       Url.forBucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]
@@ -206,7 +223,7 @@ object Store {
           show"Expected authorities to match, but got ${url.authority} for ${fileStore.authority}"
         ).raiseError[G, Path.Plain]
 
-    private def biFlatMap[G[_]: MonadError[*[_], Throwable], A](url: Url.Plain)(
+    private def validateAndInvoke[G[_]: MonadError[*[_], Throwable], A](url: Url.Plain)(
       f: (BlobStore[F, Blob], Url[Bucket]) => G[A],
       g: (FileStore[F, Blob], Path.Plain) => G[A]
     ): G[A] =

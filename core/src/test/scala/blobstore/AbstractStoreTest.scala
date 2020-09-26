@@ -19,9 +19,9 @@ import java.util.UUID
 import java.nio.file.{Paths, Path => NioPath}
 import java.util.concurrent.Executors
 
-import blobstore.Store.BlobStore
+import blobstore.fs.LocalStore
 import blobstore.url.Authority.Bucket
-import blobstore.url.{Path, Url}
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.BeforeAndAfterAll
 import cats.effect.{Blocker, ContextShift, IO}
@@ -34,24 +34,26 @@ import fs2.Stream
 import scala.concurrent.ExecutionContext
 import scala.util.Random
 
-trait AbstractStoreTest[B] extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances {
+abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
 //  val transferStoreRootDir: NioPath = Paths.get("tmp/transfer-store-root/")
-//  val transferStore: BlobStore[IO, B]      = new LocalStore[IO](transferStoreRootDir, blocker)
+  val transferStore: LocalStore[IO]      = new LocalStore[IO](blocker)
 
-  val store: BlobStore[IO, B]
+  val store: Store[IO, A, B]
   val scheme: String
-  val root: Bucket
+  val authority: A
+
+  val root = Path("/")
 
   val testRun: UUID            = java.util.UUID.randomUUID()
   lazy val testRunRoot: Path.Plain = Path(s"/test-$testRun")
 
   behavior of "all stores"
   it should "put, list, get, remove keys" in {
-    val dir: Url.Bucket = dirPath("all")
+    val dir: Url[A] = dirPath("all")
 
     // put a random file
     val filename = s"test-${System.currentTimeMillis}.txt"
@@ -70,88 +72,90 @@ trait AbstractStoreTest[B] extends AnyFlatSpec with Matchers with BeforeAndAfter
     val notFound = store.list(url).compile.toList.unsafeRunSync()
     notFound.isEmpty must be(true)
   }
-//
-//  it should "move keys" in {
-//    val dir: Path = dirPath("move-keys")
-//    val src       = writeFile(store, dir)(s"src/${System.currentTimeMillis}.txt")
-//    val dst       = dir / s"dst/${System.currentTimeMillis}.txt"
-//
-//    val test = for {
-//      l1 <- store.listAll(src)
-//      l2 <- store.listAll(dst)
-//      _  <- store.move(src, dst)
-//      l3 <- store.listAll(src)
-//      l4 <- store.listAll(dst)
-//      _  <- store.remove(dst)
-//    } yield {
-//      l1.isEmpty must be(false)
-//      l2.isEmpty must be(true)
-//      l3.isEmpty must be(true)
-//      l4.isEmpty must be(false)
-//    }
-//
-//    test.unsafeRunSync()
-//
-//  }
-//
-//  it should "list multiple keys" in {
-//    import cats.implicits._
-//
-//    val dir: Path = dirPath("list-many")
-//
-//    val paths = (1 to 10).toList
-//      .map(i => s"filename-$i.txt")
-//      .map(writeFile(store, dir))
-//
-//    val exp = paths.map(_.filePath).toSet
-//
-//    store.listAll(dir).unsafeRunSync().map(_.filePath).toSet must be(exp)
-//
-//    val io: IO[List[Unit]] = paths.map(store.remove).sequence
-//    io.unsafeRunSync()
-//
-//    store.listAll(dir).unsafeRunSync().isEmpty must be(true)
-//  }
-//
-//  // We've had some bugs involving directories at the root level, since it is a bit of an edge case.
-//  // Worth noting that that most of these tests operate on files that are in nested directories, avoiding
-//  // any problems that there might be with operating on a root level file/directory.
-//  it should "listAll lists files in a root level directory" in {
-//    import cats.implicits._
-//    val rootDir = Path(root)
-//    val paths = (1 to 2).toList
-//      .map(i => s"filename-$i-$testRun.txt")
-//      .map(writeFile(store, rootDir))
-//
-//    val exp = paths.map(p => s"${p.filePath}").toSet
-//
-//    // Not doing equals comparison because this directory contains files from other tests.
-//    // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
-//    val pathsListed = store.listAll(rootDir).unsafeRunSync().map(_.filePath).toSet.toString()
-//    exp.foreach(s => pathsListed must include(s))
-//
-//    val io: IO[List[Unit]] = paths.map(store.remove).sequence
-//    io.unsafeRunSync()
-//  }
-//
-//  it should "list files and directories correctly" in {
-//    val dir: Path = dirPath("list-dirs")
-//    val paths     = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
-//    val exp       = paths.map(_.filePath.replaceFirst("/file-1.txt", "")).toSet
-//
-//    val ls = store.listAll(dir).unsafeRunSync()
-//    ls.map(_.filePath).toSet must be(exp)
-//    ls.find(_.isDir.getOrElse(false)).map(_.lastSegment) must be(Some("subdir/"))
-//
-//    val io: IO[List[Unit]] = paths.map(store.remove).sequence
-//    io.unsafeRunSync()
-//  }
-//
+
+  it should "move keys" in {
+    val dir: Url[A] = dirPath("move-keys")
+    val src       = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
+    val dst       = dir / s"dst/${System.currentTimeMillis}.txt"
+
+    val test = for {
+      l1 <- store.list(src).compile.toList
+      l2 <- store.list(dst).compile.toList
+      _  <- store.move(src, dst)
+      l3 <- store.list(src).compile.toList
+      l4 <- store.list(dst).compile.toList
+      _  <- store.remove(dst)
+    } yield {
+      l1.isEmpty must be(false)
+      l2.isEmpty must be(true)
+      l3.isEmpty must be(true)
+      l4.isEmpty must be(false)
+    }
+
+    test.unsafeRunSync()
+
+  }
+
+  it should "list multiple keys" in {
+    import cats.implicits._
+
+    val dir: Url[A] = dirPath("list-many")
+
+    val paths = (1 to 10).toList
+      .map(i => s"filename-$i.txt")
+      .map(writeFile(store, dir.path))
+
+    val exp = paths.map(_.path.show).toSet
+
+    store.list(dir).map(_.show).compile.toList.unsafeRunSync().toSet must be(exp)
+
+    val io: IO[List[Unit]] = paths.traverse(store.remove)
+    io.unsafeRunSync()
+
+    store.list(dir).compile.toList.unsafeRunSync().isEmpty must be(true)
+  }
+
+  // We've had some bugs involving directories at the root level, since it is a bit of an edge case.
+  // Worth noting that that most of these tests operate on files that are in nested directories, avoiding
+  // any problems that there might be with operating on a root level file/directory.
+  it should "listAll lists files in a root level directory" in {
+    import cats.implicits._
+    val rootDir = root
+    val paths = (1 to 2).toList
+      .map(i => s"filename-$i-$testRun.txt")
+      .map(writeFile(store, rootDir))
+
+    val exp = paths.map(p => p.path.show).toSet
+
+    // Not doing equals comparison because this directory contains files from other tests.
+    // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
+    val pathsListed = store.list(Url(scheme, authority, rootDir)).map(_.show).compile.toList.unsafeRunSync().toSet.toString()
+    exp.foreach(s => pathsListed must include(s))
+
+    val io: IO[List[Unit]] = paths.map(store.remove).sequence
+    io.unsafeRunSync()
+  }
+
+  it should "list files and directories correctly" in {
+    val dir: Url[A] = dirPath("list-dirs")
+    val paths     = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
+    val exp       = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
+
+    val ls = store.list(dir).compile.toList.unsafeRunSync()
+    ls.map(_.show.stripSuffix("/")).toSet must be(exp)
+    val option = ls.find(_.isDir)
+    val maybeMaybeString = option.flatMap(_.lastSegment)
+    maybeMaybeString must be(Some("subdir/"))
+
+    val io: IO[List[Unit]] = paths.parTraverse(store.remove)
+    io.unsafeRunSync()
+  }
+
 //  it should "transfer individual file to a directory from one store to another" in {
 //    val srcPath = writeFile(transferStore, dirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
 //
 //    val dstDir  = dirPath("transfer-single-file-to-dir-dst")
-//    val dstPath = dstDir / srcPath.lastSegment
+//    val dstPath = dstDir / srcPath.path.lastSegment
 //
 //    val test = for {
 //      i <- transferStore.transferTo(store, srcPath, dstDir)
@@ -466,12 +470,12 @@ trait AbstractStoreTest[B] extends AnyFlatSpec with Matchers with BeforeAndAfter
 //    test.unsafeRunSync()
 //  }
 
-  def dirPath(name: String): Url[Bucket] = Url(scheme, root, testRunRoot `//` name)
+  def dirPath(name: String): Url[A] = Url(scheme, authority, testRunRoot `//` name)
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
-  def writeFile(store: BlobStore[IO, B], tmpDir: Path.Plain)(filename: String): Url.Bucket = {
-    val url = Url(scheme, root, tmpDir / filename)
+  def writeFile(store: Store[IO, A, B], tmpDir: Path.Plain)(filename: String): Url[A] = {
+    val url = Url(scheme, authority, tmpDir / filename)
     store.put(contents(filename), url).compile.drain.unsafeRunSync()
     url
   }

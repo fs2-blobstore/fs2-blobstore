@@ -34,7 +34,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
   override lazy val store: SftpStore[IO] =
     SftpStore[IO]("", session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
 
-  override val root: String = "sftp_tests"
+  override val authority: String = "sftp_tests"
 
   // remove dirs created by AbstractStoreTest
   override def afterAll(): Unit = {
@@ -46,7 +46,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
       case _: Throwable =>
     }
 
-    cleanup(rootDir.resolve(s"$root/test-$testRun"))
+    cleanup(rootDir.resolve(s"$authority/test-$testRun"))
 
   }
 

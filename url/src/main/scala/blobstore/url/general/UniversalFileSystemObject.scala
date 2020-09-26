@@ -26,5 +26,7 @@ object UniversalFileSystemObject {
     override def isDir(a: UniversalFileSystemObject): Boolean = a.isDir
 
     override def lastModified(a: UniversalFileSystemObject): Option[Instant] = a.lastModified
+
+    override def storageClass(a: UniversalFileSystemObject): Option[GeneralStorageClass] = a.storageClass
   }
 }

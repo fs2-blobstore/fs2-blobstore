@@ -2,6 +2,8 @@ package blobstore.url
 
 import java.time.Instant
 
+import blobstore.url.general.{GeneralStorageClass, UniversalFileSystemObject}
+
 /**
   * A FileSystemObject is an object in the underlying file system
   */
@@ -13,6 +15,16 @@ trait FileSystemObject[-A] {
   def isDir(a: A): Boolean
 
   def lastModified(a: A): Option[Instant]
+
+  def storageClass(a: A): Option[GeneralStorageClass]
+
+  def universal(a: A): UniversalFileSystemObject = UniversalFileSystemObject(
+    name(a),
+    size(a),
+    isDir(a),
+    storageClass(a),
+    lastModified(a)
+  )
 }
 
 object FileSystemObject {

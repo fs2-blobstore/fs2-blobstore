@@ -13,7 +13,7 @@ import org.scalatest.{Assertion, Inside}
 
 import scala.jdk.CollectionConverters._
 
-class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
+class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   val gcsStore: GcsStore[IO] = GcsStore[IO](
     // TODO: Change this back to LocalStorageHelper once google-cloud-nio updates and implements writeWithResponse
     FixedLocalStorageHelper.getOptions.getService,
@@ -26,7 +26,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
   override val store: GcsStore[IO] = gcsStore
 
-  override val root: Bucket = Bucket.unsafe("bucket")
+  override val authority: Bucket = Bucket.unsafe("bucket")
 
   behavior of "GcsStore"
 
@@ -69,7 +69,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   it should "set underlying metadata on write" in {
     val ct = "text/plain"
     val sc = StorageClass.NEARLINE
-    val url = Url("gs", root, Path(s"test-$testRun/set-underlying/file"))
+    val url = Url("gs", authority, Path(s"test-$testRun/set-underlying/file"))
 
     val blobInfo = BlobInfo
       .newBuilder(url.authority.show, url.path.show)

@@ -6,26 +6,10 @@ import blobstore.url.FileSystemObject
 import blobstore.url.general.{GeneralStorageClass, UniversalFileSystemObject}
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 
-// This can be a newtype, we only need it to add an instance to the default implicit search path
+// This type exists only to put the FileSystemObject instance on the default implicit search path
 case class GcsBlob(blob: BlobInfo) extends AnyVal
 object GcsBlob {
-  def toUniversal(blob: GcsBlob): UniversalFileSystemObject = {
-    val storageClass = blob.blob.getStorageClass match {
-      case StorageClass.COLDLINE | StorageClass.ARCHIVE => GeneralStorageClass.ColdStorage
-      case _                                            => GeneralStorageClass.Standard
-    }
 
-    val fso = FileSystemObject[GcsBlob]
-    UniversalFileSystemObject(
-      name = fso.name(blob),
-      size = fso.size(blob),
-      isDir = fso.isDir(blob),
-      storageClass = Option(storageClass),
-      lastModified = fso.lastModified(blob)
-    )
-  }
-  
-  
   implicit val fileSystemObject: FileSystemObject[GcsBlob] = new FileSystemObject[GcsBlob] {
     override def name(a: GcsBlob): String = a.blob.getName
 
@@ -34,5 +18,10 @@ object GcsBlob {
     override def isDir(a: GcsBlob): Boolean = a.blob.isDirectory
 
     override def lastModified(a: GcsBlob): Option[Instant] = Option(a.blob.getUpdateTime).map(Instant.ofEpochMilli(_))
+
+    override def storageClass(a: GcsBlob): Option[GeneralStorageClass] = a.blob.getStorageClass match {
+      case StorageClass.COLDLINE | StorageClass.ARCHIVE => Some(GeneralStorageClass.ColdStorage)
+      case _                                            => Some(GeneralStorageClass.Standard)
+    }
   }
 }

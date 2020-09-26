@@ -58,7 +58,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     .build()
 
   override val store: Store[IO] = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
-  override val root: String     = "blobstore-test-bucket"
+  override val authority: String     = "blobstore-test-bucket"
 
   behavior of "S3Store"
 
@@ -84,7 +84,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
-    val filePath = S3Path(root, s"test-$testRun/set-underlying/file1", Some(s3Meta))
+    val filePath = S3Path(authority, s"test-$testRun/set-underlying/file1", Some(s3Meta))
     Stream("data".getBytes.toIndexedSeq: _*).through(store.put(filePath)).compile.drain.unsafeRunSync()
     val entities = store.list(filePath).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
 
@@ -103,7 +103,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
-    val filePath = S3Path(root, s"test-$testRun/set-underlying/file2", Some(s3Meta))
+    val filePath = S3Path(authority, s"test-$testRun/set-underlying/file2", Some(s3Meta))
     Stream
       .random[IO]
       .flatMap(n => Stream.chunk(Chunk.bytes(n.toString.getBytes())))
@@ -133,7 +133,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
         .take(size)
         .compile
         .to(Array)
-      path = Path(s"$root/test-$testRun/multipart-upload/").withIsDir(Some(true), reset = false) / name
+      path = Path(s"$authority/test-$testRun/multipart-upload/").withIsDir(Some(true), reset = false) / name
       _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(path)).compile.drain
       readBytes <- store.get(path).compile.to(Array)
       _         <- store.remove(path)
@@ -211,7 +211,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
   override def beforeAll(): Unit = {
     super.beforeAll()
     try {
-      client.createBucket(CreateBucketRequest.builder().bucket(root).build()).get()
+      client.createBucket(CreateBucketRequest.builder().bucket(authority).build()).get()
     } catch {
       case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
       // noop
