@@ -23,7 +23,7 @@ import blobstore.fs.LocalStore
 import blobstore.url.Authority.Bucket
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import cats.effect.concurrent.Ref
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, Inside}
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.effect.laws.util.TestInstances
 import cats.implicits._
@@ -34,7 +34,7 @@ import fs2.Stream
 import scala.concurrent.ExecutionContext
 import scala.util.Random
 
-abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances {
+abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances with Inside {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
@@ -144,8 +144,10 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     val ls = store.list(dir).compile.toList.unsafeRunSync()
     ls.map(_.show.stripSuffix("/")).toSet must be(exp)
     val option = ls.find(_.isDir)
-    val maybeMaybeString = option.flatMap(_.lastSegment)
-    maybeMaybeString must be(Some("subdir/"))
+    val dirString = option.flatMap(_.lastSegment)
+    inside(dirString) {
+      case Some(dir) => dir must fullyMatch regex "subdir/?"
+    }
 
     val io: IO[List[Unit]] = paths.parTraverse(store.remove)
     io.unsafeRunSync()
