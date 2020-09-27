@@ -91,8 +91,8 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
   it should "expose underlying metadata" in {
     val dirP = dirPath("expose-underlying")
 
-    writeFile(store, dirP)("abc.txt")
-    val subFolderFile = writeFile(store, dirP / "subfolder")("cde.txt")
+    writeLocalFile(store, dirP)("abc.txt")
+    val subFolderFile = writeLocalFile(store, dirP / "subfolder")("cde.txt")
 
     @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
     val paths = store

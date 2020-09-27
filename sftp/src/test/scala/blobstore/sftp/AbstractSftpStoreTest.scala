@@ -69,7 +69,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
 
     val paths = (1 to 256).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, dir))
+      .map(writeLocalFile(store, dir))
 
     val exp = paths.map(_.filePath).toSet
 
@@ -86,7 +86,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
     val filename = "some-filename"
 
     val result = for {
-      file  <- IO(writeFile(store, dir)(filename))
+      file  <- IO(writeLocalFile(store, dir)(filename))
       _     <- store.remove(file)
       _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
@@ -100,7 +100,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
     val filename = "some-filename"
 
     val failedRemove = for {
-      _     <- IO(writeFile(store, dir)(filename))
+      _     <- IO(writeLocalFile(store, dir)(filename))
       _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
     } yield files

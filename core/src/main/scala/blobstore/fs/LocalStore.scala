@@ -18,13 +18,18 @@ package fs
 
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
+import blobstore.Store.BlobStore
 import blobstore.url.{Authority, Hostname, Path}
+import blobstore.url.Path.Plain
 
 import scala.jdk.CollectionConverters._
-import cats.implicits._
+import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
+import cats.Show
 import fs2.io.file.{FileHandle, WriteCursor}
 import fs2.{Hotswap, Pipe, Stream}
+
+import scala.util.Try
 
 final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
   extends FileStore[F, NioPath] {
@@ -51,25 +56,34 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
     val files = stream
       .evalMap {
         case (x, isDir) =>
-          F.delay(NioPath(x, Option(Files.size(x)), isDir, Option(Files.getLastModifiedTime(path).toInstant)))
+          F.delay(NioPath(x, Try(Files.size(x)).toOption, isDir, Try(Files.getLastModifiedTime(path)).toOption.map(_.toInstant)))
       }
 
     val file = Stream.eval {
       F.delay {
-        NioPath(path = JPath.of(path.show), size = Option(Files.size(path)), isDir = false, lastModified = Option(Files.getLastModifiedTime(path).toInstant))
+        NioPath(
+          path = Paths.get(path.show),
+          size = Try(Files.size(path)).toOption,
+          isDir = false,
+          lastModified = Try(Files.getLastModifiedTime(path)).toOption.map(_.toInstant)
+        )
       }
     }
 
     isDir.ifM(files, isFile.ifM(file, Stream.empty.covaryAll[F, NioPath])).map(p => Path.of(p.path.toString, p))
   }
 
-  override def get(path: Path.Plain, chunkSize: Int): Stream[F, Byte] = fs2.io.file.readAll[F](path, blocker, chunkSize)
+  override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] =
+    fs2.io.file.readAll[F](path.plain, blocker, chunkSize)
 
-  override def put(path: Path.Plain, overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = { in =>
-    val flags =
-      if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-      else List(StandardOpenOption.CREATE_NEW)
-    Stream.eval(createParentDir(path)) >> fs2.io.file.writeAll(path = path, blocker = blocker, flags = flags).apply(in)
+  override def put(path: Path.Plain, overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = {
+    in =>
+      val flags =
+        if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+        else List(StandardOpenOption.CREATE_NEW)
+      Stream.eval(createParentDir(path)) >> fs2.io.file.writeAll(path = path, blocker = blocker, flags = flags).apply(
+        in
+      )
   }
 
   override def move(src: Path.Plain, dst: Path.Plain): F[Unit] =
@@ -121,7 +135,20 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
     Paths.get(path.show)
 
   override def liftAuthority: Store[F, Authority.Standard, NioPath] =
-    new Store.DelegatingStore[F, NioPath, NioPath](identity, Right(this))
+    new Store.DelegatingStore[F, NioPath, Authority.Standard, NioPath](identity, Right(this))
+
+  override def stat(path: Path.Plain): Stream[F, Option[Path[NioPath]]] =
+    Stream.eval(Sync[F].delay {
+      val p = Paths.get(path.show)
+
+      if (!Files.exists(p)) None else
+        path.as(NioPath(
+          p,
+          Try(Files.size(p)).toOption,
+          Try(Files.isDirectory(p)).toOption.getOrElse(path.show.endsWith("/")),
+          Try(Files.getLastModifiedTime(path)).toOption.map(_.toInstant)
+        )).some
+    })
 }
 
 object LocalStore {

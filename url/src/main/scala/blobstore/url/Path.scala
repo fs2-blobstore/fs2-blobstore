@@ -1,5 +1,6 @@
 package blobstore.url
 
+import java.nio.file.Paths
 import java.time.Instant
 
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
@@ -46,6 +47,11 @@ sealed trait Path[A] {
       case RootlessPath(_, _) =>
         RootlessPath(newChain.mkString_("/"), newChain)
     }
+  }
+
+  def `//`(segment: Option[String])(implicit ev: String =:= A): Path[String] = segment match {
+    case Some(s) => `//`(s)
+    case None => this.map(ev.flip)
   }
 
   /**
@@ -108,6 +114,11 @@ sealed trait Path[A] {
   def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
   def fileName(implicit B: FileSystemObject[A]): Option[String] = if (isDir) None else lastSegment
   def dirName(implicit B: FileSystemObject[A]): Option[String] = if (!isDir) None else lastSegment
+
+  def javaPath: java.nio.file.Path = segments.toList match {
+    case h :: t => Paths.get(h, t: _*)
+    case Nil => Paths.get(Show[Path.Plain].show(plain))
+  }
 
 }
 

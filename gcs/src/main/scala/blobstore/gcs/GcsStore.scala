@@ -3,15 +3,15 @@ package blobstore.gcs
 import java.io.OutputStream
 import java.nio.channels.Channels
 
-import _root_.cats.data.Chain
 import _root_.cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Sync}
 import _root_.cats.instances.list._
 import _root_.cats.syntax.all._
-import blobstore.{putRotateBase, Store}
+import blobstore.putRotateBase
 import blobstore.url.{Path, Url}
 import blobstore.url.Authority.Bucket
-import blobstore.url.Path.AbsolutePath
-import blobstore.Store.{BlobStore, UniversalStore}
+import blobstore.url.Path.{AbsolutePath, Plain}
+import blobstore.Store.BlobStore
+import blobstore.gcs.GcsStore.toBlobId
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
@@ -149,6 +149,10 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    */
   override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
+
+  override def stat(path: Url[Bucket]): Stream[F, Option[Path[GcsBlob]]] =
+    Stream.eval(blocker.delay(Option(storage.get(toBlobId(path)))))
+      .map(_.map(b => AbsolutePath.createFrom(b.getName).as(GcsBlob(b))))
 }
 
 object GcsStore {

@@ -1,10 +1,14 @@
 package blobstore
 
-import blobstore.url.{Authority, FileSystemObject, Path}
+import java.nio.charset.StandardCharsets
+
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.Store.UniversalStore
 import blobstore.url.general.UniversalFileSystemObject
 import cats.MonadError
 import fs2.{Pipe, Stream}
+import blobstore.Store.BlobStore
+import cats.syntax.all._
 
 abstract class FileStore[F[_], BlobType] {
 
@@ -36,7 +40,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  def get(path: Path.Plain, chunkSize: Int): Stream[F, Byte]
+  def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte]
 
   /**
     * Provides a Sink that writes bytes into the provided path. See [[StoreOps.PutOps]] for convenient put String
@@ -51,6 +55,14 @@ abstract class FileStore[F[_], BlobType] {
     * @return sink of bytes
     */
   def put(path: Path.Plain, overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
+
+  def put[A](contents: String, path: Path[A], overwrite: Boolean): Stream[F, Unit] = {
+    val bytes = contents.getBytes(StandardCharsets.UTF_8)
+    Stream
+      .emits(bytes)
+      .covary[F]
+      .through(put(path.plain, overwrite, Option(bytes.size.toLong)))
+  }
 
   /**
     * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
@@ -93,7 +105,34 @@ abstract class FileStore[F[_], BlobType] {
   def putRotate(computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit]
 
   def liftToUniversal(implicit fso: FileSystemObject[BlobType], ME: MonadError[F, Throwable]): UniversalStore[F] =
-    new Store.DelegatingStore[F, BlobType, UniversalFileSystemObject](fso.universal, Right(this))
+    new Store.DelegatingStore[F, BlobType, Authority.Standard, UniversalFileSystemObject](fso.universal, Right(this))
 
   def liftAuthority: Store[F, Authority.Standard, BlobType]
+
+  def liftToBlobStore(implicit ME: MonadError[F, Throwable]): BlobStore[F, BlobType] =
+    new Store.DelegatingStore[F, BlobType, Authority.Bucket, BlobType](identity, Right(this))
+
+  def liftTo[AA <: Authority, BB](f: BlobType => BB)(implicit ME: MonadError[F, Throwable]): Store[F, AA, BB] =
+    new Store.DelegatingStore[F, BlobType, AA, BB](f, Right(this))
+
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])
+    (implicit fso: FileSystemObject[BlobType], fsb: FileSystemObject[B]): Stream[F, Int] = {
+    dstStore.stat(dstPath).map(_.fold(dstPath.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+      list(srcPath.plain)
+        .flatMap { p =>
+          if (p.isDir) {
+            transferTo(dstStore, p, dstPath `//` p.lastSegment)
+          } else {
+            val dp = if (dstIsDir) dstPath / p.lastSegment else dstPath
+            get(p, 4096).through(dstStore.put(dp)).last.as(1)
+          }
+        }
+        .fold(0)(_ + _)
+    }
+  }
+
+  def stat(path: Path.Plain): Stream[F, Option[Path[BlobType]]]
+
+  def getContents[A](path: Path[A], chunkSize: Int = 4096): Stream[F, String] =
+    get(path, chunkSize).through(fs2.text.utf8Decode)
 }

@@ -39,7 +39,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
-//  val transferStoreRootDir: NioPath = Paths.get("tmp/transfer-store-root/")
+  val transferStoreRootDir: Path.Plain = Path("/tmp/transfer-store-root/")
   val transferStore: LocalStore[IO]      = new LocalStore[IO](blocker)
 
   val store: Store[IO, A, B]
@@ -153,146 +153,146 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     io.unsafeRunSync()
   }
 
-//  it should "transfer individual file to a directory from one store to another" in {
-//    val srcPath = writeFile(transferStore, dirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
-//
-//    val dstDir  = dirPath("transfer-single-file-to-dir-dst")
-//    val dstPath = dstDir / srcPath.path.lastSegment
-//
-//    val test = for {
-//      i <- transferStore.transferTo(store, srcPath, dstDir)
-//      c1 <- transferStore
-//        .getContents(srcPath)
-//        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
-//      c2 <- store.getContents(dstPath).handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-//      _  <- transferStore.remove(srcPath).handleError(_ => ())
-//      _  <- store.remove(dstPath).handleError(_ => ())
-//    } yield {
-//      i must be(1)
-//      c1 must be(c2)
-//    }
-//
-//    test.unsafeRunSync()
-//  }
-//
-//  it should "transfer individual file to a file path from one store to another" in {
-//    val srcPath = writeFile(transferStore, dirPath("transfer-file-to-file-src"))("src-filename.txt")
-//
-//    val dstPath = dirPath("transfer-file-to-file-dst") / "dst-file-name.txt"
-//
-//    val test = for {
-//      i <- transferStore.transferTo(store, srcPath, dstPath)
-//      c1 <- transferStore
-//        .getContents(srcPath)
-//        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
-//      c2 <- store
-//        .getContents(dstPath)
-//        .handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-//      _ <- transferStore.remove(srcPath).handleError(_ => ())
-//      _ <- store.remove(dstPath).handleError(_ => ())
-//    } yield {
-//      i must be(1)
-//      c1 must be(c2)
-//    }
-//
-//    test.unsafeRunSync()
-//  }
-//
-//  it should "transfer directory to a directory path from one store to another" in {
-//    val srcDir = dirPath("transfer-dir-to-dir-src")
-//    val dstDir = dirPath("transfer-dir-to-dir-dst")
-//
-//    val paths = (1 to 10).toList
-//      .map(i => s"filename-$i.txt")
-//      .map(writeFile(transferStore, srcDir))
-//
-//    val test = for {
-//      i <- transferStore.transferTo(store, srcDir, dstDir)
-//      c1 <- paths.map { p =>
-//        transferStore
-//          .getContents(p)
-//          .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
-//      }.sequence
-//      c2 <- paths.map { p =>
-//        store
-//          .getContents(dstDir / p.lastSegment)
-//          .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
-//      }.sequence
-//      _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
-//      _ <- paths.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence
-//    } yield {
-//      i must be(10)
-//      c1 must be(c2)
-//    }
-//
-//    test.unsafeRunSync()
-//  }
-//
-//  it should "transfer directories recursively from one store to another" in {
-//    val srcDir = dirPath("transfer-dir-rec-src")
-//    val dstDir = dirPath("transfer-dir-rec-dst")
-//
-//    val paths1 = (1 to 5).toList
-//      .map(i => s"filename-$i.txt")
-//      .map(writeFile(transferStore, srcDir))
-//
-//    val paths2 = (6 to 10).toList
-//      .map(i => s"subdir/filename-$i.txt")
-//      .map(writeFile(transferStore, srcDir))
-//
-//    val paths = paths1 ++ paths2
-//
-//    val test = for {
-//      i <- transferStore.transferTo(store, srcDir, dstDir)
-//      c1 <- paths.map { p =>
-//        transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
-//      }.sequence
-//      c2 <- {
-//        paths1.map { p =>
-//          store
-//            .getContents(dstDir / p.lastSegment)
-//            .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
-//        } ++
-//          paths2.map { p =>
-//            store
-//              .getContents(dstDir / "subdir" / p.lastSegment)
-//              .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
-//          }
-//      }.sequence
-//      _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
-//      _ <- paths1.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence
-//      _ <- paths2.map(p => store.remove(dstDir / "subdir" / p.lastSegment).handleError(_ => ())).sequence
-//    } yield {
-//      i must be(10)
-//      c1.mkString("\n") must be(c2.mkString("\n"))
-//    }
-//
-//    test.unsafeRunSync()
-//  }
-//
-//  it should "copy files in a store from one directory to another" in {
-//    val srcDir = dirPath("copy-dir-to-dir-src")
-//    val dstDir = dirPath("copy-dir-to-dir-dst")
-//
-//    writeFile(store, srcDir)("filename.txt")
-//
-//    val test = for {
-//      _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
-//      c1 <- store
-//        .getContents(srcDir / "filename.txt")
-//        .handleError(e => s"FAILED getContents: ${e.getMessage}")
-//      c2 <- store
-//        .getContents(dstDir / "filename.txt")
-//        .handleError(e => s"FAILED getContents: ${e.getMessage}")
-//      _ <- store.remove(dstDir / "filename.txt")
-//      _ <- store.remove(srcDir / "filename.txt")
-//    } yield {
-//      c1.mkString("\n") must be(c2.mkString("\n"))
-//    }
-//
-//    test.unsafeRunSync()
-//  }
-//
+  it should "transfer individual file to a directory from one store to another" in {
+    val srcPath = writeLocalFile(transferStore,  localDirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
+
+    val dstDir  = dirPath("transfer-single-file-to-dir-dst")
+    val dstPath = dstDir / srcPath.lastSegment
+
+    val test = for {
+      i <- transferStore.transferTo(store, srcPath, dstDir)
+      c1 <- transferStore
+        .getContents(srcPath)
+        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
+      c2 <- store.getContents(dstPath).handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
+      _  <- Stream.eval(transferStore.remove(srcPath).handleError(_ => ()))
+      _  <- Stream.eval(store.remove(dstPath).handleError(_ => ()))
+    } yield {
+      i must be(1)
+      c1 must be(c2)
+    }
+
+    test.compile.drain.unsafeRunSync()
+  }
+
+  it should "transfer individual file to a file path from one store to another" in {
+    val srcPath = writeLocalFile(transferStore, localDirPath("transfer-file-to-file-src"))("src-filename.txt")
+
+    val dstPath = dirPath("transfer-file-to-file-dst") / "dst-file-name.txt"
+
+    val test = for {
+      i <- transferStore.transferTo(store, srcPath, dstPath)
+      c1 <- transferStore
+        .getContents(srcPath)
+        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
+      c2 <- store
+        .getContents(dstPath)
+        .handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
+      _ <- Stream.eval(transferStore.remove(srcPath).handleError(_ => ()))
+      _ <- Stream.eval(store.remove(dstPath).handleError(_ => ()))
+    } yield {
+      i must be(1)
+      c1 must be(c2)
+    }
+
+    test.compile.drain.unsafeRunSync()
+  }
+
+  it should "transfer directory to a directory path from one store to another" in {
+    val srcDir = localDirPath("transfer-dir-to-dir-src")
+    val dstDir = dirPath("transfer-dir-to-dir-dst")
+
+    val paths = (1 to 10).toList
+      .map(i => s"filename-$i.txt")
+      .map(writeLocalFile(transferStore, srcDir))
+
+    val test = for {
+      i <- transferStore.transferTo(store, srcDir, dstDir)
+      c1 <- paths.traverse { p =>
+        transferStore
+          .getContents(p)
+          .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
+      }
+      c2 <- paths.traverse { p =>
+        store
+          .getContents(dstDir / p.lastSegment)
+          .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
+      }
+      _ <- Stream.eval(paths.traverse(transferStore.remove(_).handleError(_ => ())))
+      _ <- Stream.eval(paths.traverse(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())))
+    } yield {
+      i must be(10)
+      c1 must be(c2)
+    }
+
+    test.compile.drain.unsafeRunSync()
+  }
+
+  it should "transfer directories recursively from one store to another" in {
+    val srcDir = localDirPath("transfer-dir-rec-src")
+    val dstDir = dirPath("transfer-dir-rec-dst")
+
+    val paths1 = (1 to 5).toList
+      .map(i => s"filename-$i.txt")
+      .map(writeLocalFile(transferStore, srcDir))
+
+    val paths2 = (6 to 10).toList
+      .map(i => s"subdir/filename-$i.txt")
+      .map(writeLocalFile(transferStore, srcDir))
+
+    val paths = paths1 ++ paths2
+
+    val test = for {
+      i <- transferStore.transferTo(store, srcDir, dstDir)
+      c1 <- paths.map { p =>
+        transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
+      }.sequence
+      c2 <- {
+        paths1.map { p =>
+          store
+            .getContents(dstDir / p.lastSegment)
+            .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
+        } ++
+          paths2.map { p =>
+            store
+              .getContents(dstDir / "subdir" / p.lastSegment)
+              .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
+          }
+      }.sequence
+      _ <- Stream.eval(paths.map(transferStore.remove(_).handleError(_ => ())).sequence)
+      _ <- Stream.eval(paths1.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence)
+      _ <- Stream.eval(paths2.map(p => store.remove(dstDir / "subdir" / p.lastSegment).handleError(_ => ())).sequence)
+    } yield {
+      i must be(10)
+      c1.mkString("\n") must be(c2.mkString("\n"))
+    }
+
+    test.compile.drain.unsafeRunSync()
+  }
+
+  it should "copy files in a store from one directory to another" in {
+    val srcDir = dirPath("copy-dir-to-dir-src")
+    val dstDir = dirPath("copy-dir-to-dir-dst")
+
+    writeFile(store, srcDir.path)("filename.txt")
+
+    val test = for {
+      _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
+      c1 <- store
+        .getContents(srcDir / "filename.txt")
+        .handleError(e => s"FAILED getContents: ${e.getMessage}").compile.lastOrError
+      c2 <- store
+        .getContents(dstDir / "filename.txt")
+        .handleError(e => s"FAILED getContents: ${e.getMessage}").compile.lastOrError
+      _ <- store.remove(dstDir / "filename.txt")
+      _ <- store.remove(srcDir / "filename.txt")
+    } yield {
+      c1.mkString("\n") must be(c2.mkString("\n"))
+    }
+
+    test.unsafeRunSync()
+  }
+
 //  // TODO this doesn't test recursive directories. Once listRecursively() is implemented we can fix this
 //  it should "remove all should remove all files in a directory" in {
 //    val srcDir = dirPath("rm-dir-to-dir-src")
@@ -305,121 +305,120 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 //
 //    store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
 //  }
-//
-//  it should "succeed on remove when path does not exist" in {
-//    val dir  = dirPath("remove-nonexistent-path")
-//    val path = dir / "no-file.txt"
-//    store.remove(path).unsafeRunSync()
-//  }
-//
-//  it should "support putting content with no size" in {
-//    val dir: Path = dirPath("put-no-size")
-//    val path      = dir / "no-size.txt"
-//    val exp       = contents("put without size")
-//    val test = for {
-//      _ <- fs2
-//        .Stream(exp)
-//        .covary[IO]
-//        .through(fs2.text.utf8Encode)
-//        .through(store.put(path))
-//        .compile
-//        .drain
-//      res <- store.getContents(path)
-//      _   <- store.remove(path)
-//    } yield res must be(exp)
-//
-//    test.unsafeRunSync()
-//  }
-//
-//  it should "return failed stream when getting non-existing file" in {
-//    val test = for {
-//      res <- store.get(dirPath("foo") / "doesnt-exists.txt").attempt.compile.lastOrError
-//    } yield res mustBe a[Left[_, _]]
-//
-//    test.unsafeRunSync()
-//  }
-//
-//  it should "overwrite existing file on put with overwrite" in {
-//    val dir: Path = dirPath("overwrite-existing")
-//    val path      = writeFile(store, dir)("existing.txt")
-//
-//    fs2
-//      .Stream("new content".getBytes().toIndexedSeq: _*)
-//      .through(store.put(path))
-//      .compile
-//      .drain
-//      .unsafeRunSync()
-//
-//    val content = store
-//      .get(path, 1024)
-//      .compile
-//      .to(Array)
-//      .map(bytes => new String(bytes))
-//      .unsafeRunSync()
-//
-//    content mustBe "new content"
-//  }
-//
-//  it should "fail on put to Path with existing file without overwrite" in {
-//    val dir: Path = dirPath("fail-no-overwrite")
-//    val path      = writeFile(store, dir)("existing.txt")
-//
-//    val result = fs2
-//      .Stream("new content".getBytes().toIndexedSeq: _*)
-//      .through(store.put(path, overwrite = false))
-//      .compile
-//      .drain
-//      .attempt
-//      .unsafeRunSync()
-//
-//    result mustBe a[Left[_, _]]
-//  }
-//
-//  it should "put to new Path without overwrite" in {
-//    val dir: Path = dirPath("no-overwrite")
-//    val path      = dir / "new.txt"
-//
-//    fs2
-//      .Stream("new content".getBytes().toIndexedSeq: _*)
-//      .through(store.put(path, overwrite = false))
-//      .compile
-//      .drain
-//      .attempt
-//      .unsafeRunSync()
-//
-//    val content = store
-//      .get(path, 1024)
-//      .compile
-//      .to(Array)
-//      .map(bytes => new String(bytes))
-//      .unsafeRunSync()
-//
-//    content mustBe "new content"
-//  }
-//
-//  it should "support paths with spaces" in {
-//    val dir: Path = dirPath("path spaces")
-//    val path      = writeFile(store, dir)("file with spaces")
-//    val result = for {
-//      list <- store
-//        .list(path)
-//        .map(_.withSize(None, reset = false).withLastModified(None, reset = false))
-//        .compile
-//        .toList
-//      get    <- store.get(path, 1024).compile.drain.attempt
-//      remove <- store.remove(path).attempt
-//    } yield {
-//      list must contain only path
-//      list.headOption.flatMap(_.fileName) must contain("file with spaces")
-//      list.headOption.flatMap(_.pathFromRoot.lastOption) must contain("path spaces")
-//      get mustBe a[Right[_, _]]
-//      remove mustBe a[Right[_, _]]
-//    }
-//    result.unsafeRunSync()
-//  }
-//
+
+  it should "succeed on remove when path does not exist" in {
+    val dir  = dirPath("remove-nonexistent-path")
+    val path = dir / "no-file.txt"
+    store.remove(path).unsafeRunSync()
+  }
+
+  it should "support putting content with no size" in {
+    val dir: Url[A] = dirPath("put-no-size")
+    val path      = dir / "no-size.txt"
+    val exp       = contents("put without size")
+    val test = for {
+      _ <- fs2
+        .Stream(exp)
+        .covary[IO]
+        .through(fs2.text.utf8Encode)
+        .through(store.put(path))
+        .compile
+        .drain
+      res <- store.getContents(path).compile.lastOrError
+      _   <- store.remove(path)
+    } yield res must be(exp)
+
+    test.unsafeRunSync()
+  }
+
+  it should "return failed stream when getting non-existing file" in {
+    val test = for {
+      res <- store.get(dirPath("foo") / "doesnt-exists.txt", 4096).attempt.compile.lastOrError
+    } yield res mustBe a[Left[_, _]]
+
+    test.unsafeRunSync()
+  }
+
+  it should "overwrite existing file on put with overwrite" in {
+    val dir = dirPath("overwrite-existing")
+    val path      = writeFile(store, dir.path)("existing.txt")
+
+    fs2
+      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .through(store.put(path))
+      .compile
+      .drain
+      .unsafeRunSync()
+
+    val content = store
+      .get(path, 1024)
+      .compile
+      .to(Array)
+      .map(bytes => new String(bytes))
+      .unsafeRunSync()
+
+    content mustBe "new content"
+  }
+
+  it should "fail on put to Path with existing file without overwrite" in {
+    val dir = dirPath("fail-no-overwrite")
+    val path      = writeFile(store, dir.path)("existing.txt")
+
+    val result = fs2
+      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .through(store.put(path, overwrite = false))
+      .compile
+      .drain
+      .attempt
+      .unsafeRunSync()
+
+    result mustBe a[Left[_, _]]
+  }
+
+  it should "put to new Path without overwrite" in {
+    val dir = dirPath("no-overwrite")
+    val path      = dir / "new.txt"
+
+    fs2
+      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .through(store.put(path, overwrite = false))
+      .compile
+      .drain
+      .attempt
+      .unsafeRunSync()
+
+    val content = store
+      .get(path, 1024)
+      .compile
+      .to(Array)
+      .map(bytes => new String(bytes))
+      .unsafeRunSync()
+
+    content mustBe "new content"
+  }
+
+  it should "support paths with spaces" in {
+    val dir = dirPath("path spaces")
+    val url      = writeFile(store, dir.path)("file with spaces")
+    val result = for {
+      list <- store
+        .list(url)
+        .compile
+        .toList
+      get    <- store.get(url, 1024).compile.drain.attempt
+      remove <- store.remove(url).attempt
+    } yield {
+      list.map(_.show) must contain only url.path.show
+      list.headOption.flatMap(_.fileName) must contain("file with spaces")
+      list.headOption.map(_.segments.toList.init.last) must contain("path spaces")
+      get mustBe a[Right[_, _]]
+      remove mustBe a[Right[_, _]]
+    }
+    result.unsafeRunSync()
+  }
+
 //  it should "be able to list recursively" in {
-//    val dir: Path = dirPath("list-recursively")
+//    val dir = dirPath("list-recursively")
 //    val files     = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
 //    val result = for {
 //      _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
@@ -439,7 +438,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 //    val fileCount      = 5L
 //    val fileLength     = 20
 //    val lastFileLength = 10
-//    val dir: Path      = dirPath("put-rotating")
+//    val dir      = dirPath("put-rotating")
 //    val bytes          = randomBA(fileLength)
 //    val lastFileBytes  = randomBA(lastFileLength)
 //    val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
@@ -454,7 +453,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 //        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
 //        .compile
 //        .drain
-//      files        <- store.listAll(dir)
+//      files        <- store.list(dir).compile.toList
 //      fileContents <- files.traverse(p => store.get(p, fileLength).compile.to(Array).map(p -> _))
 //    } yield {
 //      files must have size (fileCount + 1)
@@ -474,11 +473,19 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
   def dirPath(name: String): Url[A] = Url(scheme, authority, testRunRoot `//` name)
 
+  def localDirPath(name: String): Path.Plain = transferStoreRootDir / name
+
   def contents(filename: String): String = s"file contents to upload: $filename"
 
   def writeFile(store: Store[IO, A, B], tmpDir: Path.Plain)(filename: String): Url[A] = {
     val url = Url(scheme, authority, tmpDir / filename)
     store.put(contents(filename), url).compile.drain.unsafeRunSync()
+    url
+  }
+
+  def writeLocalFile(store: LocalStore[IO], tmpDir: Path.Plain)(filename: String): Path.Plain = {
+    val url = tmpDir / filename
+    store.put(contents(filename), url, overwrite = true).compile.drain.unsafeRunSync()
     url
   }
 

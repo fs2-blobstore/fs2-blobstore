@@ -64,7 +64,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
 
   it should "expose underlying metadata" in {
     val dir  = dirPath("expose-underlying")
-    val path = writeFile(store, dir)("abc.txt")
+    val path = writeLocalFile(store, dir)("abc.txt")
 
     val entities = store.list(path).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
 

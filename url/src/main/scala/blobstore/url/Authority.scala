@@ -12,6 +12,8 @@ import cats.syntax.all._
 
 sealed trait Authority {
   def host: Host
+
+  def equals(authority: Authority): Boolean
 }
 
 object Authority {
@@ -28,7 +30,7 @@ object Authority {
   case class Standard(host: Host, userInfo: Option[UserInfo], port: Option[Port]) extends Authority {
     lazy val toBucket: ValidatedNec[BucketParseError, Bucket] = Bucket.parse(Show[Standard].show(this))
 
-    def equalsIgnoreUserInfo(a: Authority): Boolean = a match {
+    def equals(a: Authority): Boolean = a match {
       case Standard(host, _, port) => this.host === host && this.port === port
       case Bucket(name, _) => this.host === name && port.isEmpty
     }
@@ -96,6 +98,11 @@ object Authority {
     def withRegion(region: String): Bucket = new Bucket(name, Some(region))
 
     def toStandardAuthority: Standard = Standard(name, None, None)
+
+    def equals(a: Authority): Boolean = a match {
+      case Standard(host, _, port) => this.host === host && port.isEmpty
+      case Bucket(name, _) => this.host === name
+    }
   }
 
   object Bucket {

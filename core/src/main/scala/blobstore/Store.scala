@@ -121,12 +121,14 @@ trait Store[F[_], A <: Authority, BlobType] {
     */
   def putRotate(computePath: F[Url[A]], limit: Long): Pipe[F, Byte, Unit]
 
+  def stat(path: Url[A]): Stream[F, Option[Path[BlobType]]]
+
   def liftToUniversal(
     implicit fso: FileSystemObject[BlobType],
     ev: this.type <:< BlobStore[F, BlobType],
     ME: MonadError[F, Throwable]
   ): UniversalStore[F] =
-    new Store.DelegatingStore[F, BlobType, UniversalFileSystemObject](fso.universal, Left(ev(this)))
+    new Store.DelegatingStore[F, BlobType, Authority.Standard, UniversalFileSystemObject](fso.universal, Left(ev(this)))
 
   def transferTo[C](dstStore: Store[F, A, C], srcPath: Url[A], dstPath: Url[A])(implicit
   fos: FileSystemObject[BlobType]): Stream[F, Int] =
@@ -150,24 +152,24 @@ object Store {
   /**
     * Validates input URLs before delegating to underlying store
     */
-  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob, BB](
+  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob, AA <: Authority, BB](
     liftBlob: Blob => BB,
     underlying: Either[BlobStore[F, Blob], FileStore[F, Blob]]
-  ) extends Store[F, Authority.Standard, BB] {
+  ) extends Store[F, AA, BB] {
 
-    override def list(url: Url[Standard], recursive: Boolean): Stream[F, Path[BB]] =
+    override def list(url: Url[AA], recursive: Boolean): Stream[F, Path[BB]] =
       validateAndInvoke[Stream[F, *], Path[BB]](url)(
         _.list(_, recursive).map(_.map(liftBlob)),
         _.list(_, recursive).map(_.map(liftBlob))
       )
 
-    override def get(url: Url[Standard], chunkSize: Int): Stream[F, Byte] =
+    override def get(url: Url[AA], chunkSize: Int): Stream[F, Byte] =
       validateAndInvoke[Stream[F, *], Byte](url)(
         _.get(_, chunkSize),
         _.get(_, chunkSize)
       )
 
-    override def put(url: Url[Standard], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
+    override def put(url: Url[AA], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
       s => {
         val t = validateAndInvoke[Try, Pipe[F, Byte, Unit]](url)(
           _.put(_, overwrite, size).pure[Try],
@@ -180,7 +182,7 @@ object Store {
         }
       }
 
-    override def move(src: Url[Standard], dst: Url[Standard]): F[Unit] =
+    override def move(src: Url[AA], dst: Url[AA]): F[Unit] =
       underlying match {
         case Left(blobstore) => (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled.flatMap {
             case (s, d) => blobstore.move(s, d)
@@ -191,7 +193,7 @@ object Store {
           }
       }
 
-    override def copy(src: Url[Standard], dst: Url[Standard]): F[Unit] =
+    override def copy(src: Url[AA], dst: Url[AA]): F[Unit] =
       underlying match {
         case Left(blobstore) => (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled.flatMap {
             case (s, d) => blobstore.copy(s, d)
@@ -202,28 +204,35 @@ object Store {
           }
       }
 
-    override def remove(path: Url[Standard]): F[Unit] =
+    override def remove(path: Url[AA]): F[Unit] =
       validateAndInvoke[F, Unit](path)(
         _.remove(_),
         _.remove(_)
       )
 
-    override def putRotate(computePath: F[Url[Standard]], limit: Long): Pipe[F, Byte, Unit] = ??? // TODO
+    override def stat(url: Url[AA]): Stream[F, Option[Path[BB]]] =
+      validateAndInvoke[Stream[F, *], Option[Path[BB]]](url)(
+        _.stat(_).map(_.map(_.map(liftBlob))),
+        _.stat(_).map(_.map(_.map(liftBlob)))
+      )
 
-    private def validateForBlobStore[G[_]: ApplicativeError[*[_], Throwable]](url: Url.Plain): G[Url[Bucket]] =
+
+    override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] = ??? // TODO
+
+    private def validateForBlobStore[G[_]: ApplicativeError[*[_], Throwable]](url: Url[AA]): G[Url[Bucket]] =
       Url.forBucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]
 
     private def validateForFileStore[G[_]: ApplicativeError[*[_], Throwable]](
-      url: Url.Plain,
+      url: Url[AA],
       fileStore: FileStore[F, Blob]
     ): G[Path.Plain] =
-      if (url.authority.equalsIgnoreUserInfo(fileStore.authority)) url.path.pure[G]
+      if (url.authority.equals(fileStore.authority)) url.path.pure[G]
       else
         new Exception(
           show"Expected authorities to match, but got ${url.authority} for ${fileStore.authority}"
         ).raiseError[G, Path.Plain]
 
-    private def validateAndInvoke[G[_]: MonadError[*[_], Throwable], A](url: Url.Plain)(
+    private def validateAndInvoke[G[_]: MonadError[*[_], Throwable], A](url: Url[AA])(
       f: (BlobStore[F, Blob], Url[Bucket]) => G[A],
       g: (FileStore[F, Blob], Path.Plain) => G[A]
     ): G[A] =
