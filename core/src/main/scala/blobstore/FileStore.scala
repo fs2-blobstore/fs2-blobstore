@@ -32,7 +32,7 @@ abstract class FileStore[F[_], BlobType] {
     *          list(folder, recursive = true)  -> [a, b, c, d, e]
     *          list(folder, recursive = false) -> [a, b, c, sub-folder]
     */
-  def list(path: Path.Plain, recursive: Boolean = false): Stream[F, Path[BlobType]]
+  def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
 
   /**
     * Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.
@@ -54,7 +54,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
-  def put(path: Path.Plain, overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
+  def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
 
   def put[A](contents: String, path: Path[A], overwrite: Boolean): Stream[F, Unit] = {
     val bytes = contents.getBytes(StandardCharsets.UTF_8)
@@ -70,7 +70,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param dst path
     * @return F[Unit]
     */
-  def move(src: Path.Plain, dst: Path.Plain): F[Unit]
+  def move[A, B](src: Path[A], dst: Path[B]): F[Unit]
 
   /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -78,14 +78,14 @@ abstract class FileStore[F[_], BlobType] {
     * @param dst path
     * @return F[Unit]
     */
-  def copy(src: Path.Plain, dst: Path.Plain): F[Unit]
+  def copy[A, B](src: Path[A], dst: Path[B]): F[Unit]
 
   /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param url to remove
     * @return F[Unit]
     */
-  def remove(url: Path.Plain): F[Unit]
+  def remove[A](url: Path[A]): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -102,7 +102,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param limit maximum size in bytes for each file.
     * @return sink of bytes
     */
-  def putRotate(computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit]
+  def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit]
 
   def liftToUniversal(implicit fso: FileSystemObject[BlobType], ME: MonadError[F, Throwable]): UniversalStore[F] =
     new Store.DelegatingStore[F, BlobType, Authority.Standard, UniversalFileSystemObject](fso.universal, Right(this))
@@ -131,7 +131,7 @@ abstract class FileStore[F[_], BlobType] {
     }
   }
 
-  def stat(path: Path.Plain): Stream[F, Option[Path[BlobType]]]
+  def stat[A](path: Path[A]): Stream[F, Option[Path[BlobType]]]
 
   def getContents[A](path: Path[A], chunkSize: Int = 4096): Stream[F, String] =
     get(path, chunkSize).through(fs2.text.utf8Decode)

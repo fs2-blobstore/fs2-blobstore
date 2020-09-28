@@ -217,7 +217,15 @@ object Store {
       )
 
 
-    override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] = ??? // TODO
+    override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] = 
+      underlying match {
+        case Left(blobStore)  =>
+          val u = computePath.flatMap(u => validateForBlobStore[F](u))
+          blobStore.putRotate(u, limit)
+        case Right(fileStore) =>
+          val u = computePath.flatMap(u => validateForFileStore[F](u, fileStore))
+          fileStore.putRotate(u, limit)
+      }
 
     private def validateForBlobStore[G[_]: ApplicativeError[*[_], Throwable]](url: Url[AA]): G[Url[Bucket]] =
       Url.forBucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]

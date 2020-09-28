@@ -10,6 +10,7 @@ import cats.instances.string._
 import cats.syntax.all._
 
 case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) {
+  def replacePath[AA](p: Path[AA]): Url[A] = copy(path = p.plain)
   def /[AA](path: Path[AA]): Url[A] = copy(path = this.path./(path.show))
   def /(segment: String): Url[A] = copy(path = path./(segment))
   def /(segment: Option[String]): Url[A] = segment match {

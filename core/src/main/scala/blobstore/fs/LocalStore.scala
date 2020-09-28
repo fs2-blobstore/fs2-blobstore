@@ -36,13 +36,13 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
 
   override def authority: Authority = Authority.Standard(Hostname.unsafe("localhost"), None, None)
 
-  override def list(path: Path.Plain, recursive: Boolean = false): Stream[F, Path[NioPath]] = {
-    val isDir  = Stream.eval(F.delay(Files.isDirectory(path)))
-    val isFile = Stream.eval(F.delay(Files.exists(path)))
+  override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[NioPath]] = {
+    val isDir  = Stream.eval(F.delay(Files.isDirectory(path.plain)))
+    val isFile = Stream.eval(F.delay(Files.exists(path.plain)))
 
     val stream: Stream[F, (JPath, Boolean)] =
       Stream
-        .eval(F.delay(if (recursive) Files.walk(path) else Files.list(path)))
+        .eval(F.delay(if (recursive) Files.walk(path.plain) else Files.list(path.plain)))
         .flatMap(x => Stream.fromIterator(x.iterator.asScala))
         .flatMap { x =>
           val isDir = Files.isDirectory(x)
@@ -56,16 +56,16 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
     val files = stream
       .evalMap {
         case (x, isDir) =>
-          F.delay(NioPath(x, Try(Files.size(x)).toOption, isDir, Try(Files.getLastModifiedTime(path)).toOption.map(_.toInstant)))
+          F.delay(NioPath(x, Try(Files.size(x)).toOption, isDir, Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)))
       }
 
     val file = Stream.eval {
       F.delay {
         NioPath(
           path = Paths.get(path.show),
-          size = Try(Files.size(path)).toOption,
+          size = Try(Files.size(path.plain)).toOption,
           isDir = false,
-          lastModified = Try(Files.getLastModifiedTime(path)).toOption.map(_.toInstant)
+          lastModified = Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
         )
       }
     }
@@ -76,35 +76,38 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
   override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] =
     fs2.io.file.readAll[F](path.plain, blocker, chunkSize)
 
-  override def put(path: Path.Plain, overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = {
+  override def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = {
     in =>
       val flags =
         if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
         else List(StandardOpenOption.CREATE_NEW)
-      Stream.eval(createParentDir(path)) >> fs2.io.file.writeAll(path = path, blocker = blocker, flags = flags).apply(
+      Stream.eval(createParentDir(path.plain)) >> fs2.io.file.writeAll(path = path.plain, blocker = blocker, flags = flags).apply(
         in
       )
   }
 
-  override def move(src: Path.Plain, dst: Path.Plain): F[Unit] =
-    createParentDir(dst) >> F.delay(Files.move(src, dst)).void
+  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] =
+    createParentDir(dst.plain) >> F.delay(Files.move(src.plain, dst.plain)).void
 
-  override def copy(src: Path.Plain, dst: Path.Plain): F[Unit] =
-    createParentDir(dst) >> F.delay(Files.copy(src, dst)).void
+  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
+    createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void
 
-  override def remove(path: Path.Plain): F[Unit] = F.delay {
-    Files.deleteIfExists(path)
-    ()
+  override def remove[A](path: Path[A]): F[Unit] = {
+    val s = if (isDir(path))
+      list(path).map(remove).map(Stream.eval).parJoinUnbounded ++ Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
+    else Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
+
+    s.compile.drain
   }
 
-  override def putRotate(computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit] = { in =>
+  override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
     val openNewFile: Resource[F, FileHandle[F]] =
       Resource
         .liftF(computePath)
-        .flatTap(p => Resource.liftF(createParentDir(p)))
+        .flatTap(p => Resource.liftF(createParentDir(p.plain)))
         .flatMap { p =>
           FileHandle.fromPath(
-            path = p,
+            path = p.plain,
             blocker = blocker,
             flags = StandardOpenOption.CREATE :: StandardOpenOption.WRITE :: StandardOpenOption.TRUNCATE_EXISTING :: Nil
           )
@@ -137,7 +140,7 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
   override def liftAuthority: Store[F, Authority.Standard, NioPath] =
     new Store.DelegatingStore[F, NioPath, Authority.Standard, NioPath](identity, Right(this))
 
-  override def stat(path: Path.Plain): Stream[F, Option[Path[NioPath]]] =
+  override def stat[A](path: Path[A]): Stream[F, Option[Path[NioPath]]] =
     Stream.eval(Sync[F].delay {
       val p = Paths.get(path.show)
 
@@ -145,10 +148,13 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
         path.as(NioPath(
           p,
           Try(Files.size(p)).toOption,
-          Try(Files.isDirectory(p)).toOption.getOrElse(path.show.endsWith("/")),
-          Try(Files.getLastModifiedTime(path)).toOption.map(_.toInstant)
+          Try(Files.isDirectory(p)).toOption.getOrElse(isDir(path)),
+          Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
         )).some
     })
+
+  // The local file system can't have file names ending with slash
+  private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")
 }
 
 object LocalStore {

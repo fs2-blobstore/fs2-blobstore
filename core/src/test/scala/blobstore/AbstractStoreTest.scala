@@ -16,11 +16,10 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import java.util.UUID
-import java.nio.file.{Paths, Path => NioPath}
+import java.nio.file.{Path => NioPath}
 import java.util.concurrent.Executors
 
 import blobstore.fs.LocalStore
-import blobstore.url.Authority.Bucket
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
@@ -293,18 +292,18 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     test.unsafeRunSync()
   }
 
-//  // TODO this doesn't test recursive directories. Once listRecursively() is implemented we can fix this
-//  it should "remove all should remove all files in a directory" in {
-//    val srcDir = dirPath("rm-dir-to-dir-src")
-//
-//    (1 to 10).toList
-//      .map(i => s"filename-$i.txt")
-//      .map(writeFile(store, srcDir))
-//
-//    store.removeAll(srcDir).unsafeRunSync()
-//
-//    store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
-//  }
+  // TODO this doesn't test recursive directories. Once listRecursively() is implemented we can fix this
+  it should "remove all should remove all files in a directory" in {
+    val srcDir = dirPath("rm-dir-to-dir-src")
+
+    (1 to 10).toList
+      .map(i => s"filename-$i.txt")
+      .map(writeFile(store, srcDir.path))
+
+    store.remove(srcDir).unsafeRunSync()
+
+    store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
+  }
 
   it should "succeed on remove when path does not exist" in {
     val dir  = dirPath("remove-nonexistent-path")
@@ -417,59 +416,59 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     result.unsafeRunSync()
   }
 
-//  it should "be able to list recursively" in {
-//    val dir = dirPath("list-recursively")
-//    val files     = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
-//    val result = for {
-//      _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
-//      paths <- store.list(dir, recursive = true).compile.toList
-//    } yield {
-//      paths must have size 8
-//      paths.flatMap(_.fileName) must contain theSameElementsAs List("a", "b", "c", "d", "e", "x", "y", "z")
-//      paths.foreach { p =>
-//        p.isDir must contain(false)
-//        p.size must contain(1L)
-//      }
-//    }
-//    result.unsafeRunSync()
-//  }
-//
-//  it should "put data while rotating files" in {
-//    val fileCount      = 5L
-//    val fileLength     = 20
-//    val lastFileLength = 10
-//    val dir      = dirPath("put-rotating")
-//    val bytes          = randomBA(fileLength)
-//    val lastFileBytes  = randomBA(lastFileLength)
-//    val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
-//      Stream.emits(lastFileBytes.toIndexedSeq)
-//
-//    // Check overwrite
-//    writeFile(store, dir)("3")
-//
-//    val test = for {
-//      counter <- Ref.of[IO, Int](0)
-//      _ <- data
-//        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
-//        .compile
-//        .drain
-//      files        <- store.list(dir).compile.toList
-//      fileContents <- files.traverse(p => store.get(p, fileLength).compile.to(Array).map(p -> _))
-//    } yield {
-//      files must have size (fileCount + 1)
-//      files.flatMap(_.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
-//      files.foreach { p =>
-//        p.isDir must contain(false)
-//        p.size must contain(if (p.fileName.contains(fileCount.toString)) lastFileLength else fileLength)
-//      }
-//      fileContents.foreach {
-//        case (p, content) =>
-//          content mustBe (if (p.fileName.contains(fileCount.toString)) lastFileBytes else bytes)
-//      }
-//
-//    }
-//    test.unsafeRunSync()
-//  }
+  it should "be able to list recursively" in {
+    val dir = dirPath("list-recursively")
+    val files     = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
+    val result = for {
+      _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
+      paths <- store.list(dir, recursive = true).compile.toList
+    } yield {
+      paths must have size 8
+      paths.flatMap(_.fileName) must contain theSameElementsAs List("a", "b", "c", "d", "e", "x", "y", "z")
+      paths.foreach { p =>
+        p.isDir mustBe false
+        p.size must contain(1L)
+      }
+    }
+    result.unsafeRunSync()
+  }
+
+  it should "put data while rotating files" in {
+    val fileCount      = 5L
+    val fileLength     = 20
+    val lastFileLength = 10
+    val dir      = dirPath("put-rotating")
+    val bytes          = randomBA(fileLength)
+    val lastFileBytes  = randomBA(lastFileLength)
+    val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
+      Stream.emits(lastFileBytes.toIndexedSeq)
+
+    // Check overwrite
+    writeFile(store, dir.path)("3")
+
+    val test = for {
+      counter <- Ref.of[IO, Int](0)
+      _ <- data
+        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
+        .compile
+        .drain
+      files        <- store.list(dir).compile.toList
+      fileContents <- files.traverse(p => store.get(dir.replacePath(p), fileLength).compile.to(Array).map(p -> _))
+    } yield {
+      files must have size (fileCount + 1)
+      files.flatMap(_.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
+      files.foreach { p =>
+        p.isDir mustBe false
+        p.size must contain(if (p.fileName.contains(fileCount.toString)) lastFileLength else fileLength)
+      }
+      fileContents.foreach {
+        case (p, content) =>
+          content mustBe (if (p.fileName.contains(fileCount.toString)) lastFileBytes else bytes)
+      }
+
+    }
+    test.unsafeRunSync()
+  }
 
   def dirPath(name: String): Url[A] = Url(scheme, authority, testRunRoot `//` name)
 
