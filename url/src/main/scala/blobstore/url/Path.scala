@@ -6,7 +6,7 @@ import java.time.Instant
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import blobstore.url.general.UniversalFileSystemObject
 import cats.{Eq, Functor, Show}
-import cats.data.Chain
+import cats.data.{Chain, NonEmptyChain}
 import cats.instances.string._
 import cats.instances.list._
 import cats.kernel.Order
@@ -31,8 +31,18 @@ sealed trait Path[A] {
     case RootlessPath(_, segments) => RootlessPath(segments.mkString_(""), segments)
   }
 
+  def absolute: AbsolutePath[String] = plain match {
+    case p@AbsolutePath(_, _) => p
+    case RootlessPath(a, segments) => AbsolutePath("/" + a, segments)
+  }
+
+  def relative: RootlessPath[String] = plain match {
+    case AbsolutePath(a, segments) => RootlessPath(a.stripPrefix("/"), segments)
+    case p@RootlessPath(a, segments) => p
+  }
+
   def /(segment: String)(implicit ev: String =:= A): Path[String] = {
-    val nonEmpty = Chain(segment.split("/").toList: _*)
+    val nonEmpty = Chain(segment.stripPrefix("/").split("/").toList: _*)
     val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList: _*)
 
     val stripSuffix = segments.initLast match {
@@ -57,24 +67,8 @@ sealed trait Path[A] {
   /**
    * Ensure that path always is suffixed with '/'
    */
-  def `//`(segment: String)(implicit ev: String =:= A): Path[String] = {
-    val nonEmpty = Chain(segment.split("/").toList: _*)
-    val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList: _*)
-    val atLeastOneEmpty = if (emptyElements.isEmpty) Chain("") else emptyElements
-
-    val stripSuffix = segments.initLast match {
-      case Some((init, "")) => init
-      case _ => segments
-    }
-    val newChain = stripSuffix ++ nonEmpty ++ atLeastOneEmpty
-
-    this match {
-      case AbsolutePath(_, _) =>
-        AbsolutePath("/" + ev(newChain.mkString_("/")), newChain)
-      case RootlessPath(_, _) =>
-        RootlessPath(newChain.mkString_("/"), newChain)
-    }
-  }
+  def `//`(segment: String)(implicit ev: String =:= A): Path[String] =
+    this / (if (segment.endsWith("/")) segment else segment + "/")
 
   def as[B](b: B): Path[B] = this match {
     case AbsolutePath(_, segments) => AbsolutePath(b, segments)
@@ -86,10 +80,8 @@ sealed trait Path[A] {
     *
     * If you're just working with String paths, see [[/]]
     */
-  def addSegment[B](segment: String, representation: B): Path[B] = this match {
-    case AbsolutePath(_, _) => AbsolutePath(representation, segments :+ segment)
-    case RootlessPath(_, _) => RootlessPath(representation, segments :+ segment)
-  }
+  def addSegment[B](segment: String, representation: B): Path[B] =
+    (plain / segment).as(representation)
 
   override def toString: String = Show[Path[A]].show(this)
   override def equals(obj: Any): Boolean =
@@ -142,7 +134,7 @@ object Path {
 
   object AbsolutePath {
     def createFrom(s: String): AbsolutePath[String] = {
-      if (s.isEmpty) AbsolutePath("/", Chain.empty)
+      if (s.isEmpty || s === "/") AbsolutePath("/", Chain.empty)
       else {
         val nonEmpty = s.stripPrefix("/").split("/").toList
         val empty = s.reverse.takeWhile(_ == '/').map(_ => "").toList
@@ -151,13 +143,15 @@ object Path {
         AbsolutePath("/" + chain.mkString_("/"), chain)
       }
     }
-    def parse(s: String): Option[AbsolutePath[String]] =
-      if (s.startsWith("/")) {
-        val nonEmptyComponent = s.stripPrefix("/").split("/").toList
-        val emptyComponents = s.reverse.takeWhile(_ == '/').map(_ => "").toList
-        Some(AbsolutePath(s, Chain(nonEmptyComponent ++ emptyComponents: _*)))
+    def parse(s: String): Option[AbsolutePath[String]] = {
+      if (s === "/") AbsolutePath("/", Chain.empty).some
+      else if (s.startsWith("/")) {
+        val nonEmpty = s.stripPrefix("/").split("/").toList
+        val empty = s.reverse.takeWhile(_ == '/').map(_ => "").toList
+        Some(AbsolutePath(s, Chain(nonEmpty ++ empty: _*)))
       }
       else None
+    }
 
     val root: AbsolutePath[String] = AbsolutePath("/", Chain.empty)
 
@@ -213,16 +207,13 @@ object Path {
 
   def plain(path: String): Path.Plain = apply(path)
 
-  def apply(s: String): Path.Plain = {
-    if (s == "/") AbsolutePath("/", Chain.empty) // Take Path("/") to mean root. If you really want an object name '/' at the root, use AbsolutePath.parse("/")
-    else
+  def apply(s: String): Path.Plain =
     AbsolutePath.parse(s).orElse(RootlessPath.parse(s)).getOrElse(
       RootlessPath(
         s,
         Chain(s.split("/").toList: _*)
       ) // Paths either have a root or they don't, this block is never executed
     )
-  }
 
   def of[B](path: String, b: B): Path[B] = Path(path).as(b)
 

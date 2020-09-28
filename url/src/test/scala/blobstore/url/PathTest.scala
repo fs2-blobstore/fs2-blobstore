@@ -1,6 +1,8 @@
 package blobstore.url
 
+import cats.syntax.all._
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
+import cats.data.NonEmptyChain
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.Inside
@@ -41,17 +43,20 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
   it should "compose paths" in {
     Path("/foo") / "bar" mustBe Path("/foo/bar")
     Path("/foo/") / "bar" mustBe Path("/foo/bar")
-    Path("/foo") / "/bar" mustBe Path("/foo//bar")
+    Path("/foo") / "/bar" mustBe Path("/foo/bar")
+    Path("/foo") / "//bar" mustBe Path("/foo//bar")
     Path("/foo") / "bar/" mustBe Path("/foo/bar/")
     Path("/foo") / "bar//" mustBe Path("/foo/bar//")
     Path("/foo") `//` "bar" mustBe Path("/foo/bar/")
     Path("/foo/") `//` "bar" mustBe Path("/foo/bar/")
     Path("/foo//") `//` "bar" mustBe Path("/foo//bar/")
-    Path("/foo//") `//` "/bar" mustBe Path("/foo///bar/")
+    Path("/foo//") `//` "/bar" mustBe Path("/foo//bar/")
+    Path("/foo//") `//` "//bar" mustBe Path("/foo///bar/")
   }
 
   it should "create absolute paths" in {
     val validPaths = List(
+      "/",
       "/foo",
       "//foo",
       "/foo/bar",
@@ -77,5 +82,49 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     invalidPaths.map(AbsolutePath.createFrom).zipWithIndex.foreach {
       case (p, i) => p.value mustBe "/" + invalidPaths(i)
     }
+  }
+
+  it should "add segments" in {
+    val p1 = Path("/foo/bar/")
+    val p2 = Path("/foo/bar")
+
+    val noSlash1 = p1.addSegment("baz", ())
+    val noSlash2 = p2.addSegment("baz", ())
+
+    val slashPrefix1 = p1.addSegment("/baz", ())
+    val slashPrefix2 = p2.addSegment("/baz", ())
+    val slashPrefix3 = p2.addSegment("//baz", ())
+
+    val slashSuffix1 = p1.addSegment("baz/", ())
+    val slashSuffix2 = p2.addSegment("baz/", ())
+    val slashSuffix3 = p2.addSegment("baz//", ())
+
+    val multiple1 = p1.addSegment("/baz/bam/", ())
+    val multiple2 = p1.addSegment("//baz//bam//", ())
+
+    noSlash1.show mustBe "/foo/bar/baz"
+    noSlash1.segments mustBe NonEmptyChain("foo", "bar", "baz")
+    noSlash2.show mustBe "/foo/bar/baz"
+    noSlash2.segments mustBe NonEmptyChain("foo", "bar", "baz")
+
+    slashPrefix1.show mustBe "/foo/bar/baz"
+    slashPrefix1.segments mustBe NonEmptyChain("foo", "bar", "baz")
+    slashPrefix2.show mustBe "/foo/bar/baz"
+    slashPrefix2.segments mustBe NonEmptyChain("foo", "bar", "baz")
+    slashPrefix3.show mustBe "/foo/bar//baz"
+    slashPrefix3.segments mustBe NonEmptyChain("foo", "bar","", "baz")
+
+    slashSuffix1.show mustBe "/foo/bar/baz/"
+    slashSuffix1.segments mustBe NonEmptyChain("foo", "bar", "baz", "")
+    slashSuffix2.show mustBe "/foo/bar/baz/"
+    slashSuffix2.segments mustBe NonEmptyChain("foo", "bar", "baz", "")
+    slashSuffix3.show mustBe "/foo/bar/baz//"
+    slashSuffix3.segments mustBe NonEmptyChain("foo", "bar", "baz","", "")
+
+    multiple1.show mustBe "/foo/bar/baz/bam/"
+    multiple1.segments mustBe NonEmptyChain("foo", "bar", "baz", "bam", "")
+
+    multiple2.show mustBe "/foo/bar//baz//bam//"
+    multiple2.segments mustBe NonEmptyChain("foo", "bar", "", "baz", "", "bam", "", "")
   }
 }
