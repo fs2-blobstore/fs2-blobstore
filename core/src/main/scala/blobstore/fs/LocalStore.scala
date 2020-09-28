@@ -92,12 +92,13 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
   override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
     createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void
 
-  override def remove[A](path: Path[A]): F[Unit] = {
-    val s = if (isDir(path))
-      list(path).map(remove).map(Stream.eval).parJoinUnbounded ++ Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
+  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] = {
+    val recursiveRemove = if (isDir(path))
+      list(path).map(remove(_, recursive)).map(Stream.eval).parJoinUnbounded ++ Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
     else Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
 
-    s.compile.drain
+    if (recursive) recursiveRemove.compile.drain
+    else F.delay(Files.deleteIfExists(path.nioPath))
   }
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
@@ -136,9 +137,6 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
 
   implicit private def _toJPath(path: Path.Plain): JPath =
     Paths.get(path.show)
-
-  override def liftAuthority: Store[F, Authority.Standard, NioPath] =
-    new Store.DelegatingStore[F, NioPath, Authority.Standard, NioPath](identity, Right(this))
 
   override def stat[A](path: Path[A]): Stream[F, Option[Path[NioPath]]] =
     Stream.eval(Sync[F].delay {

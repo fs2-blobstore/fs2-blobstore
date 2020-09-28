@@ -89,7 +89,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
   behavior of "BoxStore"
 
   it should "expose underlying metadata" in {
-    val dirP = dirPath("expose-underlying")
+    val dirP = dirUrl("expose-underlying")
 
     writeLocalFile(store, dirP)("abc.txt")
     val subFolderFile = writeLocalFile(store, dirP / "subfolder")("cde.txt")

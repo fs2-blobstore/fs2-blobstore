@@ -33,7 +33,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   // Keys with trailing slashes are perfectly legal in GCS.
   // https://cloud.google.com/storage/docs/naming
   it should "handle files with trailing / in name" in {
-    val dir: Url[Bucket] = dirPath("trailing-slash")
+    val dir: Url[Bucket] = dirUrl("trailing-slash")
     val filePath  = dir / "file-with-slash/"
 
     store.put("test", filePath).compile.drain.unsafeRunSync()
@@ -49,13 +49,13 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
     store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
 
-    store.remove(filePath).unsafeRunSync()
+    store.remove(filePath, recursive = false).unsafeRunSync()
 
     store.list(dir).compile.toList.unsafeRunSync() mustBe empty
   }
 
   it should "expose underlying metadata" in {
-    val dir  = dirPath("expose-underlying")
+    val dir  = dirUrl("expose-underlying")
     val path = writeFile(store, dir.path)("abc.txt")
 
     val entities = store.list(path).compile.toList.unsafeRunSync()
@@ -90,7 +90,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   }
 
   it should "support direct download" in {
-    val dir: Url[Bucket] = dirPath("direct-download")
+    val dir: Url[Bucket] = dirUrl("direct-download")
     val filename  = s"test-${System.currentTimeMillis}.txt"
     val path      = writeFile(store, dir.path)(filename)
 

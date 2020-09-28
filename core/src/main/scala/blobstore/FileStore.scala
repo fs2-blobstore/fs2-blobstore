@@ -54,7 +54,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
-  def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long]): Pipe[F, Byte, Unit]
+  def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit]
 
   def put[A](contents: String, path: Path[A], overwrite: Boolean): Stream[F, Unit] = {
     val bytes = contents.getBytes(StandardCharsets.UTF_8)
@@ -85,7 +85,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param url to remove
     * @return F[Unit]
     */
-  def remove[A](url: Path[A]): F[Unit]
+  def remove[A](url: Path[A], recursive: Boolean): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -104,16 +104,27 @@ abstract class FileStore[F[_], BlobType] {
     */
   def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  def liftToUniversal(implicit fso: FileSystemObject[BlobType], ME: MonadError[F, Throwable]): UniversalStore[F] =
-    new Store.DelegatingStore[F, BlobType, Authority.Standard, UniversalFileSystemObject](fso.universal, Right(this))
+  /**
+   * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+   * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+   *
+   * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
+   * to this store.
+   */
+  def liftTo[A <: Authority, B](f: BlobType => B, g: Path.Plain => Path.Plain = identity)(implicit ME: MonadError[F, Throwable]): Store[F, A, B] =
+    new Store.DelegatingStore[F, BlobType, A, B](f, Right(this), g)
 
-  def liftAuthority: Store[F, Authority.Standard, BlobType]
+  def liftToUniversal(implicit fso: FileSystemObject[BlobType], ME: MonadError[F, Throwable]): UniversalStore[F] =
+    liftTo[Authority.Standard, UniversalFileSystemObject](fso.universal)
 
   def liftToBlobStore(implicit ME: MonadError[F, Throwable]): BlobStore[F, BlobType] =
-    new Store.DelegatingStore[F, BlobType, Authority.Bucket, BlobType](identity, Right(this))
+    liftTo[Authority.Bucket, BlobType](identity)
 
-  def liftTo[AA <: Authority, BB](f: BlobType => BB)(implicit ME: MonadError[F, Throwable]): Store[F, AA, BB] =
-    new Store.DelegatingStore[F, BlobType, AA, BB](f, Right(this))
+  def liftTo[AA <: Authority](implicit ME: MonadError[F, Throwable]): Store[F, AA, BlobType] =
+    liftTo[AA, BlobType](identity)
+
+  def liftToStandard(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, BlobType] =
+    liftTo[Authority.Standard, BlobType](identity)
 
   def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])
     (implicit fso: FileSystemObject[BlobType], fsb: FileSystemObject[B]): Stream[F, Int] = {

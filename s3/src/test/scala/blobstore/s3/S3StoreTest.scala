@@ -63,7 +63,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
   behavior of "S3Store"
 
   it should "expose underlying metadata" in {
-    val dir  = dirPath("expose-underlying")
+    val dir  = dirUrl("expose-underlying")
     val path = writeLocalFile(store, dir)("abc.txt")
 
     val entities = store.list(path).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
@@ -187,7 +187,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
   }
 
   it should "put rotating with file-limit > bufferSize" in {
-    val dir: Path = dirPath("put-rotating-s3")
+    val dir: Path = dirUrl("put-rotating-s3")
     val content   = randomBA(7 * 1024 * 1024)
     val data      = Stream.emits(content)
 

@@ -1,5 +1,6 @@
 package blobstore.url
 
+import java.net.URI
 import java.nio.file.Paths
 import java.time.Instant
 
@@ -41,6 +42,15 @@ sealed trait Path[A] {
     case p@RootlessPath(a, segments) => p
   }
 
+  def nioPath: java.nio.file.Path = Paths.get(toString)
+  /**
+   * Compose with string to form a new Path
+   *
+   * The underlying representation must be String in order for the representation and the path to be kept in sync.
+   * Use {@link addSegment()} to modify paths backed by non-String types
+   *
+   * @see addSegment
+   */
   def /(segment: String)(implicit ev: String =:= A): Path[String] = {
     val nonEmpty = Chain(segment.stripPrefix("/").split("/").toList: _*)
     val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList: _*)
@@ -107,10 +117,6 @@ sealed trait Path[A] {
   def fileName(implicit B: FileSystemObject[A]): Option[String] = if (isDir) None else lastSegment
   def dirName(implicit B: FileSystemObject[A]): Option[String] = if (!isDir) None else lastSegment
 
-  def javaPath: java.nio.file.Path = segments.toList match {
-    case h :: t => Paths.get(h, t: _*)
-    case Nil => Paths.get(Show[Path.Plain].show(plain))
-  }
 
 }
 
@@ -122,6 +128,8 @@ object Path {
     * See .apply for creating these
     */
   type Plain = Path[String]
+  type AbsolutePlain = AbsolutePath[String]
+  type RootlessPlain = RootlessPath[String]
 
   /**
     * A file system object represented with a "general" structure

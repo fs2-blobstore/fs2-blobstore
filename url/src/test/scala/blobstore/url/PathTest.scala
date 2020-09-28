@@ -1,5 +1,7 @@
 package blobstore.url
 
+import java.nio.file.Paths
+
 import cats.syntax.all._
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import cats.data.NonEmptyChain
@@ -126,5 +128,17 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
 
     multiple2.show mustBe "/foo/bar//baz//bam//"
     multiple2.segments mustBe NonEmptyChain("foo", "bar", "", "baz", "", "bam", "", "")
+  }
+
+  it should "convert to nio path" in {
+    val absolute = Path("/foo/bar").nioPath
+    val relative = Path("foo/bar").nioPath
+
+    absolute mustBe Paths.get("/foo", "bar")
+    absolute.toString mustBe "/foo/bar"
+    absolute.getNameCount mustBe 2
+    relative mustBe Paths.get("foo", "bar")
+    relative.toString mustBe "foo/bar"
+    relative.getNameCount mustBe 2
   }
 }

@@ -102,7 +102,7 @@ trait Store[F[_], A <: Authority, BlobType] {
     * @param url to remove
     * @return F[Unit]
     */
-  def remove(url: Url[A]): F[Unit]
+  def remove(url: Url[A], recursive: Boolean): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -146,15 +146,33 @@ trait Store[F[_], A <: Authority, BlobType] {
 
 object Store {
 
+  /**
+   * Blobstores operates on buckets and returns store specific blob types
+   *
+   * For example, S3 is a BlobStore[F, S3MetaInfo]
+   */
   type BlobStore[F[_], B]   = Store[F, Authority.Bucket, B]
+
+  /**
+   * UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
+   * denominator" type [[UniversalFileSystemObject]]. This is useful if you want a common interface for all stores.
+   *
+   * @see [[Store.liftToUniversal]]
+   * @see [[FileStore.liftToUniversal]]
+   */
   type UniversalStore[F[_]] = Store[F, Authority.Standard, UniversalFileSystemObject]
 
   /**
-    * Validates input URLs before delegating to underlying store
-    */
+   * Validates input URLs before delegating to underlying store. This allows different stores to be exposed
+   * under a the same, and wider, interface. For instance, we can expose FileStore's with Path input as a
+   * BlobStore with bucket input and which validates that the bucket equals the FileStore's authority.
+   *
+   * Use `transformPath` to control how URL absolute paths are converted to paths for FileStores
+   */
   private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob, AA <: Authority, BB](
     liftBlob: Blob => BB,
-    underlying: Either[BlobStore[F, Blob], FileStore[F, Blob]]
+    underlying: Either[BlobStore[F, Blob], FileStore[F, Blob]],
+    transformPath: Path.Plain => Path.Plain = identity
   ) extends Store[F, AA, BB] {
 
     override def list(url: Url[AA], recursive: Boolean): Stream[F, Path[BB]] =
@@ -204,10 +222,10 @@ object Store {
           }
       }
 
-    override def remove(path: Url[AA]): F[Unit] =
+    override def remove(path: Url[AA], recursive: Boolean): F[Unit] =
       validateAndInvoke[F, Unit](path)(
-        _.remove(_),
-        _.remove(_)
+        _.remove(_, recursive),
+        _.remove(_, recursive)
       )
 
     override def stat(url: Url[AA]): Stream[F, Option[Path[BB]]] =
@@ -217,7 +235,7 @@ object Store {
       )
 
 
-    override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] = 
+    override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] =
       underlying match {
         case Left(blobStore)  =>
           val u = computePath.flatMap(u => validateForBlobStore[F](u))
@@ -234,7 +252,7 @@ object Store {
       url: Url[AA],
       fileStore: FileStore[F, Blob]
     ): G[Path.Plain] =
-      if (url.authority.equals(fileStore.authority)) url.path.pure[G]
+      if (url.authority.equals(fileStore.authority)) transformPath(url.path).pure[G]
       else
         new Exception(
           show"Expected authorities to match, but got ${url.authority} for ${fileStore.authority}"

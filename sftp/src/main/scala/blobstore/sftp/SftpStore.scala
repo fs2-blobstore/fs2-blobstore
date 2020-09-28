@@ -2,15 +2,17 @@ package blobstore.sftp
 
 import java.io.OutputStream
 
-import blobstore.{_writeAllToOutputStream1, putRotateBase, FileStore}
-import blobstore.url.{Authority, Path}
+import blobstore.{_writeAllToOutputStream1, putRotateBase, FileStore, Store}
+import blobstore.url.{Authority, FileSystemObject, Path}
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
-import blobstore.Store.{DelegatingStore, UniversalStore}
+import blobstore.Store.{BlobStore, UniversalStore}
+import blobstore.url.general.UniversalFileSystemObject
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
 import cats.instances.option._
 import cats.syntax.all._
+import cats.MonadError
 import com.jcraft.jsch._
 import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
@@ -25,7 +27,7 @@ final class SftpStore[F[_]](
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
 )(implicit F: ConcurrentEffect[F], CS: ContextShift[F])
-  extends FileStore[F, SftpFsElement] {
+  extends FileStore[F, SftpFile] {
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   private val openChannel: F[ChannelSftp] = {
@@ -47,7 +49,7 @@ final class SftpStore[F[_]](
     case ch                => mVar.tryPut(ch).ifM(().pure[F], SftpStore.closeChannel(semaphore, blocker)(ch))
   }
 
-  override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[SftpFsElement]] = {
+  override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[SftpFile]] = {
 
     def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
       cb(entry)
@@ -67,9 +69,9 @@ final class SftpStore[F[_]](
         )
     } yield {
       val isDir   = Option(entry.getAttrs.isDir)
-      val element = SftpFsElement(entry.getLongname, entry.getAttrs)
+      val element = SftpFile(entry.getLongname, entry.getAttrs)
 
-      if (path.fileName.contains(entry.getFilename)) path.as(element)
+      if (path.lastSegment.contains(entry.getFilename)) path.as(element)
       else path.addSegment(entry.getFilename ++ (if (isDir.contains(true)) "/" else ""), element)
     }
     if (recursive) {
@@ -90,7 +92,7 @@ final class SftpStore[F[_]](
       )
     }
 
-  override def put[A](path: Path[A], overwrite: Boolean = true): Pipe[F, Byte, Unit] = { in =>
+  override def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = { in =>
     def pull(channel: ChannelSftp): Stream[F, Unit] =
       Stream
         .resource(outputStreamResource(channel, path, overwrite))
@@ -99,37 +101,42 @@ final class SftpStore[F[_]](
     Stream.resource(channelResource).flatMap(channel => pull(channel))
   }
 
-  override def move[A](src: Path[A], dst: Path[A]): F[Unit] = channelResource.use { channel =>
+  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] = channelResource.use { channel =>
     mkdirs(dst, channel) >> blocker.delay(
       channel.rename(src.show, dst.show)
     )
   }
 
-  override def copy[A](src: Path[A], dst: Path[A]): F[Unit] = {
+  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] = {
     val s = for {
       channel <- Stream.resource(channelResource)
       _       <- Stream.eval(mkdirs(dst, channel))
-
-      // TODO: Implement this without flushing to disk
-      //      _       <- get(src, 4096).through(this.bufferedPut(dst, blocker))
+      _       <- get(src, 4096).through(put(dst))
     } yield ()
 
     s.compile.drain
   }
 
-  override def remove[A](path: Path[A]): F[Unit] = channelResource.use { channel =>
-    blocker.delay(channel.stat(path.show)).flatMap { stat =>
-    {
-      val rm = if (stat.isDir) blocker.delay(channel.rmdir(path.show)) else blocker.delay(channel.rm(path.show))
-      rm.handleErrorWith {
-        case e: SftpException if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE => ().pure[F]
-        case e                                                           => e.raiseError[F, Unit]
-      }
+  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] = channelResource.use { channel =>
+    def recursiveRemove(path: Path[SftpFile]): F[Unit] = {
+      //TODO: Parallelize this with multiple channels
+      val s = if (path.isDir) list(path).evalMap(recursiveRemove) ++ Stream.eval(blocker.delay(channel.rmdir(path.show)))
+      else Stream.eval(blocker.delay(channel.rm(path.show)))
+
+      s.compile.drain
     }
+
+    _stat(path, channel).flatMap {
+      case Some(p) =>
+        if (recursive) recursiveRemove(p)
+        else {
+          if (p.isDir) blocker.delay(channel.rmdir(p.show)) else blocker.delay(channel.rm(p.show))
+        }
+      case None => ().pure[F]
     }
   }
 
-  override def putRotate(computePath: F[Path.Plain], limit: Long): Pipe[F, Byte, Unit] = {
+  override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
       for {
         p       <- Resource.liftF(computePath)
@@ -180,7 +187,29 @@ final class SftpStore[F[_]](
     Resource.make(put(channel))(close)
   }
 
-  override val liftToUniversal: UniversalStore[F] = new DelegatingStore[F, SftpFsElement](SftpFsElement.toGeneral, Right(this))
+  override def stat[A](path: Path[A]): Stream[F, Option[Path[SftpFile]]] =
+    Stream.resource(channelResource).flatMap { channel =>
+      Stream.eval(_stat(path, channel))
+    }
+
+  def _stat[A](path: Path[A], channel: ChannelSftp): F[Option[Path[SftpFile]]] =
+    blocker.delay(channel.stat(path.show))
+      .map(a => path.as(SftpFile(path.show, a)).some).handleErrorWith {
+      case e: SftpException if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE => none[Path[SftpFile]].pure[F]
+      case e                                                           => e.raiseError[F, Option[Path[SftpFile]]]
+    }
+
+  override def liftToUniversal(implicit fso: FileSystemObject[SftpFile], ME: MonadError[F, Throwable]): UniversalStore[F] =
+    liftTo[Authority.Standard, UniversalFileSystemObject](fso.universal, _.relative)
+
+  override def liftToBlobStore(implicit ME: MonadError[F, Throwable]): BlobStore[F, SftpFile] =
+    liftTo[Authority.Bucket, SftpFile](identity, _.relative)
+
+  override def liftTo[AA <: Authority](implicit ME: MonadError[F, Throwable]): Store[F, AA, SftpFile] =
+    liftTo[AA, SftpFile](identity, _.relative)
+
+  override def liftToStandard(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, SftpFile] =
+    liftTo[Authority.Standard, SftpFile](identity, _.relative)
 }
 
 object SftpStore {
