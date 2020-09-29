@@ -27,6 +27,8 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
     case None => this
   }
 
+  def bucket(implicit ev: A <:< Authority.Bucket): A = authority
+
 
   def map[B <: Authority](f: A => B): Url[B] = copy(authority = f(authority))
 }

@@ -53,11 +53,11 @@ trait Store[F[_], A <: Authority, BlobType] {
 
   /**
     * Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.
-    * @param path to get
+    * @param url to get
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
-  def get(path: Url[A], chunkSize: Int): Stream[F, Byte]
+  def get(url: Url[A], chunkSize: Int): Stream[F, Byte]
 
   /**
     * Provides a Sink that writes bytes into the provided path. See [[StoreOps.PutOps]] for convenient put String
