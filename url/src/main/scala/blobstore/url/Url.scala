@@ -31,6 +31,8 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
 
 
   def map[B <: Authority](f: A => B): Url[B] = copy(authority = f(authority))
+
+  override val toString: String = show"${scheme.stripSuffix("://")}://$authority/${path.show.stripPrefix("/")}"
 }
 
 object Url {

@@ -18,14 +18,11 @@ package fs
 
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
-import blobstore.Store.BlobStore
 import blobstore.url.{Authority, Hostname, Path}
-import blobstore.url.Path.Plain
 
 import scala.jdk.CollectionConverters._
 import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
-import cats.Show
 import fs2.io.file.{FileHandle, WriteCursor}
 import fs2.{Hotswap, Pipe, Stream}
 
@@ -86,19 +83,19 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
       )
   }
 
-  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] =
-    createParentDir(dst.plain) >> F.delay(Files.move(src.plain, dst.plain)).void
+  override def move[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] =
+    Stream.eval(createParentDir(dst.plain) >> F.delay(Files.move(src.plain, dst.plain)).void)
 
-  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
-    createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void
+  override def copy[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] =
+    Stream.eval(createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void)
 
-  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] = {
+  override def remove[A](path: Path[A], recursive: Boolean): Stream[F, Unit] = {
     val recursiveRemove = if (isDir(path))
-      list(path).map(remove(_, recursive)).map(Stream.eval).parJoinUnbounded ++ Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
-    else Stream.eval(F.delay(Files.deleteIfExists(path.plain)))
+      list(path).map(remove(_, recursive)).parJoinUnbounded ++ Stream.eval(F.delay(Files.deleteIfExists(path.plain)).void)
+    else Stream.eval(F.delay(Files.deleteIfExists(path.plain)).void)
 
-    if (recursive) recursiveRemove.compile.drain
-    else F.delay(Files.deleteIfExists(path.nioPath))
+    if (recursive) recursiveRemove
+    else Stream.eval(F.delay(Files.deleteIfExists(path.nioPath)).void)
   }
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
@@ -138,8 +135,8 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
   implicit private def _toJPath(path: Path.Plain): JPath =
     Paths.get(path.show)
 
-  override def stat[A](path: Path[A]): Stream[F, Option[Path[NioPath]]] =
-    Stream.eval(Sync[F].delay {
+  override def stat[A](path: Path[A]): F[Option[Path[NioPath]]] =
+    Sync[F].delay {
       val p = Paths.get(path.show)
 
       if (!Files.exists(p)) None else
@@ -149,7 +146,7 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
           Try(Files.isDirectory(p)).toOption.getOrElse(isDir(path)),
           Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
         )).some
-    })
+    }
 
   // The local file system can't have file names ending with slash
   private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")

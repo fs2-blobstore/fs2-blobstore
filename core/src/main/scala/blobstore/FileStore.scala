@@ -70,7 +70,7 @@ abstract class FileStore[F[_], BlobType] {
     * @param dst path
     * @return F[Unit]
     */
-  def move[A, B](src: Path[A], dst: Path[B]): F[Unit]
+  def move[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit]
 
   /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -78,14 +78,14 @@ abstract class FileStore[F[_], BlobType] {
     * @param dst path
     * @return F[Unit]
     */
-  def copy[A, B](src: Path[A], dst: Path[B]): F[Unit]
+  def copy[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit]
 
   /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param url to remove
     * @return F[Unit]
     */
-  def remove[A](url: Path[A], recursive: Boolean): F[Unit]
+  def remove[A](url: Path[A], recursive: Boolean): Stream[F, Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -128,7 +128,7 @@ abstract class FileStore[F[_], BlobType] {
 
   def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])
     (implicit fso: FileSystemObject[BlobType], fsb: FileSystemObject[B]): Stream[F, Int] = {
-    dstStore.stat(dstPath).map(_.fold(dstPath.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+    Stream.eval(dstStore.stat(dstPath)).map(_.fold(dstPath.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
       list(srcPath.plain)
         .flatMap { p =>
           if (p.isDir) {
@@ -142,7 +142,7 @@ abstract class FileStore[F[_], BlobType] {
     }
   }
 
-  def stat[A](path: Path[A]): Stream[F, Option[Path[BlobType]]]
+  def stat[A](path: Path[A]): F[Option[Path[BlobType]]]
 
   def getContents[A](path: Path[A], chunkSize: Int = 4096): Stream[F, String] =
     get(path, chunkSize).through(fs2.text.utf8Decode)

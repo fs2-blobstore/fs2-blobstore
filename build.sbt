@@ -27,7 +27,7 @@ lazy val fs2blobstore = project
     moduleName := "root",
     skip in publish := true
   )
-  .aggregate(url, core, s3, sftp, box, gcs, azure)
+  .aggregate(url, core, s3, sftp, gcs)//, box, azure)
 
 lazy val url = project
 

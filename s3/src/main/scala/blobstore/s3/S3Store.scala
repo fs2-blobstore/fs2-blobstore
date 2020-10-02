@@ -24,6 +24,7 @@ import cats.effect.{ConcurrentEffect, ExitCase, Resource, Sync}
 import cats.syntax.all._
 import cats.instances.string._
 import cats.instances.list._
+import cats.instances.option._
 import fs2.{Chunk, Hotswap, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
@@ -65,9 +66,9 @@ final class S3Store[F[_]](
   override def list(path: Url[Authority.Bucket], recursive: Boolean = false): Stream[F, Path[S3Blob]] =
     listUnderlying(path, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
-  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[F, Byte] = get(url, chunkSize, None)
+  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[F, Byte] = get(url, None)
 
-  def get(url: Url[Authority.Bucket], chunkSize: Int, meta: Option[S3MetaInfo]): Stream[F, Byte] = {
+  def get(url: Url[Authority.Bucket], meta: Option[S3MetaInfo]): Stream[F, Byte] = {
     val bucket = url.bucket.show
     val key = url.path.show
 
@@ -90,10 +91,11 @@ final class S3Store[F[_]](
     Stream.eval(liftJavaFuture(F.delay(s3.getObject[Stream[F, Byte]](request, transformer)))).flatten
   }
 
-  override def put(path: Url[Authority.Bucket], overwrite: Boolean = true): Pipe[F, Byte, Unit] = put(path, overwrite, None)
+  def put(url: Url[Authority.Bucket], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
+    put(url, overwrite, size, None)
 
 
-  def put(url: Url[Authority.Bucket], overwrite: Boolean, meta: Option[S3MetaInfo]): Pipe[F, Byte, Unit] =
+  def put(url: Url[Authority.Bucket], overwrite: Boolean, size: Option[Long], meta: Option[S3MetaInfo]): Pipe[F, Byte, Unit] =
     in =>
        {
           val bucket = url.bucket.show
@@ -110,26 +112,23 @@ final class S3Store[F[_]](
           } else F.unit
 
           Stream.eval(checkOverwrite) ++
-            url.size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
+            size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
       }
 
-  override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
-    copy(src, dst) >> remove(src)
+  override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): Stream[F, Unit] =
+    copy(src, dst) >> remove(src, recursive = false)
 
-  override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
-    for {
-      (srcBucket, srcKey, _) <- S3Store
-        .bucketKeyMetaFromPath(src)
-        .fold[F[(String, String, Option[S3MetaInfo])]](S3Store.missingRootError(s"Wrong src '$src'").raiseError)(
-          _.pure[F]
-        )
-      (dstBucket, dstKey, dstMeta) <- S3Store
-        .bucketKeyMetaFromPath(dst)
-        .fold[F[(String, String, Option[S3MetaInfo])]](S3Store.missingRootError(s"Wrong dst '$dst'").raiseError)(
-          _.pure[F]
-        )
-      _ <- {
+  override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): Stream[F, Unit] = {
+    Stream.eval(stat(dst)).flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
+  }
+
+  def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): Stream[F, Unit] = {
         val request = {
+          val srcBucket = src.bucket.show
+          val srcKey = src.path.show
+          val dstBucket = dst.bucket.show
+          val dstKey = dst.path.show
+
           val builder = CopyObjectRequest.builder()
           val withAcl = objectAcl.fold(builder)(builder.acl)
           val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
@@ -140,15 +139,15 @@ final class S3Store[F[_]](
             .destinationKey(dstKey)
             .build()
         }
-        liftJavaFuture(F.delay(s3.copyObject(request))).void
+        Stream.eval(liftJavaFuture(F.delay(s3.copyObject(request))).void)
       }
-    } yield ()
 
-  override def remove(path: Url[Authority.Bucket]): F[Unit] = S3Store.bucketKeyMetaFromPath(path) match {
-    case None => S3Store.missingRootError(s"Unable to remove '$path'").raiseError[F, Unit]
-    case Some((bucket, key, _)) =>
+  // TODO: Implement recursive
+  override def remove(path: Url[Authority.Bucket], recursive: Boolean): Stream[F, Unit] = {
+      val bucket = path.bucket.show
+      val key = path.path.show
       val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
-      liftJavaFuture(F.delay(s3.deleteObject(req))).void
+      Stream.eval(liftJavaFuture(F.delay(s3.deleteObject(req))).void)
   }
 
   override def putRotate(computePath: F[Url[Authority.Bucket]], limit: Long): Pipe[F, Byte, Unit] =
@@ -333,6 +332,16 @@ final class S3Store[F[_]](
           }
       }
       .stream
+
+  override def stat(url: Url[Authority.Bucket]): F[Option[Path[S3Blob]]] =
+    liftJavaFuture(
+      F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.bucket.show).key(url.path.show).build()))
+    ).map { resp => Path.of(url.path.show , S3Blob(url.bucket.show, url.path.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)).some }
+      .recover {
+        case _: NoSuchKeyException =>
+          val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ => defaultTrailingSlashFiles)
+          Path.of(url.path.show, S3Blob(url.bucket.show, url.path.show, meta)).some
+      }
 }
 
 object S3Store {
@@ -351,22 +360,6 @@ object S3Store {
       new S3Store(s3, objectAcl, sseAlgorithm, defaultFullMetadata, defaultTrailingSlashFiles, bufferSize, queueSize)
         .pure[F]
     }
-
-//  private def bucketKeyMetaFromPath(path: Path): Option[(String, String, Option[S3MetaInfo])] =
-//    S3Path.narrow(path) match {
-//      case None =>
-//        path.root.map { bucket =>
-//          (
-//            bucket,
-//            path.pathFromRoot
-//              .mkString_("/") ++ path.fileName.fold("/")((if (path.pathFromRoot.isEmpty) "" else "/") ++ _),
-//            None
-//          )
-//        }
-//      case Some(s3Path) => Some((s3Path.bucket, s3Path.key, s3Path.meta))
-//    }
-  private def missingRootError(msg: String) =
-    new IllegalArgumentException(s"$msg - root (bucket) is required to reference blobs in S3")
 
   private def putObjectRequest(
     sseAlgorithm: Option[String],

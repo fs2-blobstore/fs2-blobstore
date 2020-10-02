@@ -16,11 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import java.nio.file.{Paths, Path => JPath}
-
-import blobstore.url.Authority
-import blobstore.url.Path
-import blobstore.url.general.UniversalFileSystemObject
+import blobstore.url.{Authority, Path}
 import cats.effect.IO
 
 class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {

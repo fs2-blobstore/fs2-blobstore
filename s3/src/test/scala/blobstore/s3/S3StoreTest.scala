@@ -18,25 +18,26 @@ package s3
 
 import java.net.URI
 
+import blobstore.url.{Authority, Path}
+import blobstore.url.Authority.Bucket
 import cats.effect.IO
 import cats.effect.concurrent.Ref
 import cats.instances.list._
-import cats.syntax.traverse._
-import org.scalatest.{Assertion, Inside}
+import cats.syntax.all._
+import fs2.{Chunk, Stream}
+import org.scalatest.Inside
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.auth.signer.AwsS3V4Signer
 import software.amazon.awssdk.core.client.config.{ClientOverrideConfiguration, SdkAdvancedClientOption}
-import software.amazon.awssdk.services.s3.model.{BucketAlreadyOwnedByYouException, CreateBucketRequest, StorageClass}
-import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Configuration}
-import fs2.{Chunk, Stream}
 import software.amazon.awssdk.regions.Region
-import implicits._
+import software.amazon.awssdk.services.s3.{S3AsyncClient, S3Configuration}
+import software.amazon.awssdk.services.s3.model.{BucketAlreadyOwnedByYouException, CreateBucketRequest, StorageClass}
 
 import scala.concurrent.ExecutionException
 
-class S3StoreTest extends AbstractStoreTest with Inside {
+class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Inside {
   val credentials       = AwsBasicCredentials.create("my_access_key", "my_secret_key")
-  val minioHost: String = Option(System.getenv("BLOBSTORE_MINIO_HOST")).getOrElse("minio-container")
+  val minioHost: String = Option(System.getenv("BLOBSTORE_MINIO_HOST")).getOrElse("localhost")
   val minioPort: String = Option(System.getenv("BLOBSTORE_MINIO_PORT")).getOrElse("9000")
   private val client = S3AsyncClient
     .builder()
@@ -57,19 +58,21 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     )
     .build()
 
-  override val store: Store[IO] = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
-  override val authority: String     = "blobstore-test-bucket"
+  override val store = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
+  override val authority: Authority.Bucket     = Bucket.unsafe("blobstore-test-bucket")
+  override val scheme: String = "s3"
+  override val fileSystemRoot: Path.Plain = Path("")
 
   behavior of "S3Store"
 
   it should "expose underlying metadata" in {
     val dir  = dirUrl("expose-underlying")
-    val path = writeLocalFile(store, dir)("abc.txt")
+    val path = writeFile(store, dir.path)("abc.txt")
 
-    val entities = store.list(path).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
+    val entities = store.list(path).compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
-      inside(s3Path.meta) {
+      inside(s3Path.representation.meta) {
         case Some(metaInfo) =>
           // Note: defaultFullMetadata = true in S3Store constructor.
           metaInfo.contentType mustBe defined
@@ -84,12 +87,12 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
-    val filePath = S3Path(authority, s"test-$testRun/set-underlying/file1", Some(s3Meta))
-    Stream("data".getBytes.toIndexedSeq: _*).through(store.put(filePath)).compile.drain.unsafeRunSync()
-    val entities = store.list(filePath).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
+    val filePath = Path(s"test-$testRun/set-underlying/file1")
+    Stream("data".getBytes.toIndexedSeq: _*).through(store.put(authority.s3 / filePath, true, None, Some(s3Meta))).compile.drain.unsafeRunSync()
+    val entities = store.list(authority.s3 / filePath).compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
-      inside(s3Path.meta) {
+      inside(s3Path.representation.meta) {
         case Some(meta) =>
           meta.storageClass must contain(sc)
           meta.contentType must contain(ct)
@@ -103,20 +106,20 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
-    val filePath = S3Path(authority, s"test-$testRun/set-underlying/file2", Some(s3Meta))
+    val filePath = Path(s"test-$testRun/set-underlying/file2")
     Stream
       .random[IO]
       .flatMap(n => Stream.chunk(Chunk.bytes(n.toString.getBytes())))
       .take(6 * 1024 * 1024)
-      .through(store.put(filePath))
+      .through(store.put(authority.s3 / filePath, overwrite = true, size = None, meta = Some(s3Meta)))
       .compile
       .drain
       .unsafeRunSync()
 
-    val entities = store.list(filePath).map(S3Path.narrow).unNone.compile.toList.unsafeRunSync()
+    val entities = store.list(authority.s3 / filePath).compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
-      inside(s3Path.meta) {
+      inside(s3Path.representation.meta) {
         case Some(meta) =>
           meta.storageClass must contain(sc)
           meta.contentType must contain(ct)
@@ -133,10 +136,11 @@ class S3StoreTest extends AbstractStoreTest with Inside {
         .take(size)
         .compile
         .to(Array)
-      path = Path(s"$authority/test-$testRun/multipart-upload/").withIsDir(Some(true), reset = false) / name
-      _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(path)).compile.drain
-      readBytes <- store.get(path).compile.to(Array)
-      _         <- store.remove(path)
+      path = Path(s"$authority/test-$testRun/multipart-upload/") / name
+      url = authority.s3 / path
+      _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(url, true, None)).compile.drain
+      readBytes <- store.get(url, 4096).compile.to(Array)
+      _         <- store.remove(url, false).compile.drain
     } yield readBytes mustBe bytes
 
   it should "put content with no size when aligned with multi-upload boundaries 5mb" in {
@@ -155,39 +159,8 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     testUploadNoSize(12 * 1024 * 1024, "12mb").unsafeRunSync()
   }
 
-  it should "fail trying to reference path with no root" in {
-    val path = Path("s3://bucket/folder/file")
-    inside[Option[Path], Assertion](Path.fromString("/folder/file.txt", forceRoot = false)) {
-      case Some(pathNoRoot) =>
-        the[IllegalArgumentException] thrownBy store
-          .get(pathNoRoot, 10)
-          .compile
-          .drain
-          .unsafeRunSync() must have message s"Unable to read '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
-        the[IllegalArgumentException] thrownBy Stream.empty
-          .through(store.put(pathNoRoot))
-          .compile
-          .drain
-          .unsafeRunSync() must have message s"Unable to write to '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
-        the[IllegalArgumentException] thrownBy store
-          .list(pathNoRoot)
-          .compile
-          .drain
-          .unsafeRunSync() must have message s"Unable to list '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
-        the[IllegalArgumentException] thrownBy store
-          .remove(pathNoRoot)
-          .unsafeRunSync() must have message s"Unable to remove '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
-        the[IllegalArgumentException] thrownBy store
-          .copy(pathNoRoot, path)
-          .unsafeRunSync() must have message s"Wrong src '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
-        the[IllegalArgumentException] thrownBy store
-          .copy(path, pathNoRoot)
-          .unsafeRunSync() must have message s"Wrong dst '$pathNoRoot' - root (bucket) is required to reference blobs in S3"
-    }
-  }
-
   it should "put rotating with file-limit > bufferSize" in {
-    val dir: Path = dirUrl("put-rotating-s3")
+    val dir = dirUrl("put-rotating-s3")
     val content   = randomBA(7 * 1024 * 1024)
     val data      = Stream.emits(content)
 
@@ -197,8 +170,8 @@ class S3StoreTest extends AbstractStoreTest with Inside {
         .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), 6 * 1024 * 1024))
         .compile
         .drain
-      files        <- store.listAll(dir)
-      fileContents <- files.traverse(p => store.get(p, 1024).compile.to(Array))
+      files        <- store.list(dir, recursive = true).compile.toList
+      fileContents <- files.traverse(p => store.get(authority.s3 / p, 1024).compile.to(Array))
     } yield {
       files must have size 2
       files.flatMap(_.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)
@@ -211,7 +184,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
   override def beforeAll(): Unit = {
     super.beforeAll()
     try {
-      client.createBucket(CreateBucketRequest.builder().bucket(authority).build()).get()
+      client.createBucket(CreateBucketRequest.builder().bucket(authority.show).build()).get()
     } catch {
       case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
       // noop

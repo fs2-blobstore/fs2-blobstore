@@ -10,6 +10,9 @@ services:
 
     command: "blob:password:::sftp_tests"
 
+    ports:
+      - "2222:22"
+
   sftp-no-chroot:
     image: atmoz/sftp
 
@@ -19,8 +22,11 @@ services:
 
     command: "blob:password:::sftp_tests"
 
+    ports:
+      - "2223:22"
+
   minio:
-    image: minio/minio
+    image: minio/minio:latest
 
     environment:
       - MINIO_ACCESS_KEY=my_access_key
@@ -31,34 +37,37 @@ services:
 
     command: "server --compat /data"
 
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
+    ports:
+      - "9000:9000"
 
-    volumes:
-      - ./tmp/azure-store-root:/data
-
-    command: "azurite-blob --blobHost 0.0.0.0 --loose"
-
-  sbt:
-    image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
-
-    entrypoint: /usr/bin/sbt
-    working_dir: /opt/app
-
-    volumes:
-    - ~/.sbt:/root/.sbt
-    - ~/.ivy2:/root/.ivy2
-    - ~/.coursier:/root/.coursier
-    - .:/opt/app
-
-    links:
-      - sftp:sftp-container
-      - sftp-no-chroot:sftp-no-chroot
-      - minio:minio-container
-      - azurite:azurite-container
-
-    environment:
-      - S3_TEST_BUCKET=${S3_TEST_BUCKET}
-      - S3_TEST_ACCESS_KEY=${S3_TEST_ACCESS_KEY}
-      - S3_TEST_SECRET_KEY=${S3_TEST_SECRET_KEY}
-      - AWS_REGION=us-east-2
+#  azurite:
+#    image: mcr.microsoft.com/azure-storage/azurite
+#
+#    volumes:
+#      - ./tmp/azure-store-root:/data
+#
+#    command: "azurite-blob --blobHost 0.0.0.0 --loose"
+#
+#  sbt:
+#    image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
+#
+#    entrypoint: /usr/bin/sbt
+#    working_dir: /opt/app
+#
+#    volumes:
+#    - ~/.sbt:/root/.sbt
+#    - ~/.ivy2:/root/.ivy2
+#    - ~/.coursier:/root/.coursier
+#    - .:/opt/app
+#
+#    links:
+#      - sftp:sftp-container
+#      - sftp-no-chroot:sftp-no-chroot
+#      - minio:minio-container
+#      - azurite:azurite-container
+#
+#    environment:
+#      - S3_TEST_BUCKET=${S3_TEST_BUCKET}
+#      - S3_TEST_ACCESS_KEY=${S3_TEST_ACCESS_KEY}
+#      - S3_TEST_SECRET_KEY=${S3_TEST_SECRET_KEY}
+#      - AWS_REGION=us-east-2

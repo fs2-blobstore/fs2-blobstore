@@ -1,15 +1,15 @@
 package blobstore
 package gcs
 
-import blobstore.Store.BlobStore
 import cats.syntax.all._
 import blobstore.url.Authority.Bucket
 import blobstore.url.{Path, Url}
+import blobstore.url.Path.Plain
 import cats.effect.IO
 import fs2.Stream
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 import com.google.cloud.storage.contrib.nio.testing.FixedLocalStorageHelper
-import org.scalatest.{Assertion, Inside}
+import org.scalatest.Inside
 
 import scala.jdk.CollectionConverters._
 
@@ -27,6 +27,8 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   override val store: GcsStore[IO] = gcsStore
 
   override val authority: Bucket = Bucket.unsafe("bucket")
+
+  override val fileSystemRoot: Plain = Path("")
 
   behavior of "GcsStore"
 
@@ -49,7 +51,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
     store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
 
-    store.remove(filePath, recursive = false).unsafeRunSync()
+    store.remove(filePath, recursive = false).compile.drain.unsafeRunSync()
 
     store.list(dir).compile.toList.unsafeRunSync() mustBe empty
   }

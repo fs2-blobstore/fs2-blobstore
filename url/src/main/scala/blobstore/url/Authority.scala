@@ -14,6 +14,8 @@ sealed trait Authority {
   def host: Host
 
   def equals(authority: Authority): Boolean
+
+  override val toString: String = Show[Authority].show(this)
 }
 
 object Authority {
@@ -103,6 +105,11 @@ object Authority {
       case Standard(host, _, port) => this.host === host && port.isEmpty
       case Bucket(name, _) => this.host === name
     }
+
+    def s3: Url[Bucket] = Url("s3", this, Path.empty)
+    def gcs: Url[Bucket] = Url("gcs", this, Path.empty)
+    def sftp: Url[Bucket] = Url("sftp", this, Path.empty)
+    def https: Url[Bucket] = Url("https", this, Path.empty)
   }
 
   object Bucket {

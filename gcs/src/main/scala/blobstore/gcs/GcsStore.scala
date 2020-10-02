@@ -9,7 +9,6 @@ import _root_.cats.syntax.all._
 import blobstore.putRotateBase
 import blobstore.url.{Path, Url}
 import blobstore.url.Authority.Bucket
-import blobstore.url.Path.{AbsolutePath, Plain}
 import blobstore.Store.BlobStore
 import blobstore.gcs.GcsStore.toBlobId
 import com.google.api.gax.paging.Page
@@ -51,8 +50,8 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
   //TODO: implement recursive delete
-  override def remove(url: Url[Bucket], recursive: Boolean): F[Unit] =
-    blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
+  override def remove(url: Url[Bucket], recursive: Boolean): Stream[F, Unit] =
+    Stream.eval(blocker.delay(storage.delete(GcsStore.toBlobId(url))).void)
 
   override def putRotate(computePath: F[Url[Bucket]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
@@ -111,7 +110,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
             }
             .map { paths =>
               (
-                Chunk.seq(paths.map(blob => AbsolutePath.createFrom(blob.getName).as(blob))),
+                Chunk.seq(paths.map(blob => Path(blob.getName).as(blob))),
                 () => if (page.hasNextPage) Some(page.getNextPage) else None
                 ).some
             }
@@ -139,7 +138,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    * @param dst path
    * @return F[Unit]
    */
-  override def move(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
+  override def move(src: Url[Bucket], dst: Url[Bucket]): Stream[F, Unit] =
     copy(src, dst) >> remove(src, recursive = true)
   /**
    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -148,12 +147,12 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    * @param dst path
    * @return F[Unit]
    */
-  override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
-    blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
+  override def copy(src: Url[Bucket], dst: Url[Bucket]): Stream[F, Unit] =
+    Stream.eval(blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void)
 
-  override def stat(path: Url[Bucket]): Stream[F, Option[Path[GcsBlob]]] =
-    Stream.eval(blocker.delay(Option(storage.get(toBlobId(path)))))
-      .map(_.map(b => AbsolutePath.createFrom(b.getName).as(GcsBlob(b))))
+  override def stat(path: Url[Bucket]): F[Option[Path[GcsBlob]]] =
+    blocker.delay(Option(storage.get(toBlobId(path))))
+      .map(b => b.map(b => Path.of(b.getName, GcsBlob(b))))
 }
 
 object GcsStore {

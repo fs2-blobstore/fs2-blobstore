@@ -101,32 +101,31 @@ final class SftpStore[F[_]](
     Stream.resource(channelResource).flatMap(channel => pull(channel))
   }
 
-  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] = channelResource.use { channel =>
-    mkdirs(dst, channel) >> blocker.delay(
+  override def move[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] = Stream.resource(channelResource).flatMap { channel =>
+    val m = mkdirs(dst, channel) >> blocker.delay(
       channel.rename(src.show, dst.show)
     )
+    Stream.eval(m)
   }
 
-  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] = {
-    val s = for {
+  override def copy[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] =
+    for {
       channel <- Stream.resource(channelResource)
       _       <- Stream.eval(mkdirs(dst, channel))
       _       <- get(src, 4096).through(put(dst))
     } yield ()
 
-    s.compile.drain
-  }
-
-  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] = channelResource.use { channel =>
+  override def remove[A](path: Path[A], recursive: Boolean): Stream[F, Unit] = Stream.resource(channelResource).flatMap { channel =>
     def recursiveRemove(path: Path[SftpFile]): F[Unit] = {
       //TODO: Parallelize this with multiple channels
-      val s = if (path.isDir) list(path).evalMap(recursiveRemove) ++ Stream.eval(blocker.delay(channel.rmdir(path.show)))
+      val r = if (path.isDir) {
+        list(path).evalMap(recursiveRemove) ++ Stream.eval(blocker.delay(channel.rmdir(path.show)))
+      }
       else Stream.eval(blocker.delay(channel.rm(path.show)))
-
-      s.compile.drain
+      r.compile.drain
     }
 
-    _stat(path, channel).flatMap {
+    val r = _stat(path, channel).flatMap {
       case Some(p) =>
         if (recursive) recursiveRemove(p)
         else {
@@ -134,6 +133,7 @@ final class SftpStore[F[_]](
         }
       case None => ().pure[F]
     }
+    Stream.eval(r).covary[F]
   }
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
@@ -187,9 +187,9 @@ final class SftpStore[F[_]](
     Resource.make(put(channel))(close)
   }
 
-  override def stat[A](path: Path[A]): Stream[F, Option[Path[SftpFile]]] =
-    Stream.resource(channelResource).flatMap { channel =>
-      Stream.eval(_stat(path, channel))
+  override def stat[A](path: Path[A]): F[Option[Path[SftpFile]]] =
+    channelResource.use { channel =>
+      _stat(path, channel)
     }
 
   def _stat[A](path: Path[A], channel: ChannelSftp): F[Option[Path[SftpFile]]] =

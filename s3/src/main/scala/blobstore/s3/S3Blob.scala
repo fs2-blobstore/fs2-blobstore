@@ -1,13 +1,13 @@
 package blobstore.s3
 
-import cats.syntax.all._
 import java.time.Instant
 
 import blobstore.url.FileSystemObject
 import blobstore.url.general.GeneralStorageClass
-import software.amazon.awssdk.services.s3.model.{ObjectStorageClass, S3Object, StorageClass}
+import software.amazon.awssdk.services.s3.model.StorageClass
 
 case class S3Blob(bucket: String, key: String, meta: Option[S3MetaInfo])
+
 object S3Blob {
   implicit val fileSystemObject: FileSystemObject[S3Blob] = new FileSystemObject[S3Blob] {
     override def name(a: S3Blob): String = a.key
