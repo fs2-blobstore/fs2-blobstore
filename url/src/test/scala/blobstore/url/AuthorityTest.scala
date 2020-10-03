@@ -22,7 +22,7 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
       "foo..bar",
       "foo.bar.",
       "192.168.0.1",
-      "a".repeat(64),
+      (1 until 64).toList.as("a").mkString,
       "a",
       "aa"
     ).traverse(Bucket.parse)
