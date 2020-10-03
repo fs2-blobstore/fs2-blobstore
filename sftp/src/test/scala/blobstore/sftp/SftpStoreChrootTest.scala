@@ -12,7 +12,7 @@ class SftpStoreChrootTest extends AbstractSftpStoreTest {
   override val session = IO {
     val jsch = new JSch()
 
-    val session = jsch.getSession("blob", "localhost", 2222)
+    val session = jsch.getSession("blob", "sftp-container", 22)
     session.setTimeout(10000)
     session.setPassword("password")
 

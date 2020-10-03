@@ -37,7 +37,7 @@ import scala.concurrent.ExecutionException
 
 class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Inside {
   val credentials       = AwsBasicCredentials.create("my_access_key", "my_secret_key")
-  val minioHost: String = Option(System.getenv("BLOBSTORE_MINIO_HOST")).getOrElse("localhost")
+  val minioHost: String = Option(System.getenv("BLOBSTORE_MINIO_HOST")).getOrElse("minio-container")
   val minioPort: String = Option(System.getenv("BLOBSTORE_MINIO_PORT")).getOrElse("9000")
   private val client = S3AsyncClient
     .builder()

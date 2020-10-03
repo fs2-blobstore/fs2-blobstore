@@ -40,34 +40,34 @@ services:
     ports:
       - "9000:9000"
 
-#  azurite:
-#    image: mcr.microsoft.com/azure-storage/azurite
-#
-#    volumes:
-#      - ./tmp/azure-store-root:/data
-#
-#    command: "azurite-blob --blobHost 0.0.0.0 --loose"
-#
-#  sbt:
-#    image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
-#
-#    entrypoint: /usr/bin/sbt
-#    working_dir: /opt/app
-#
-#    volumes:
-#    - ~/.sbt:/root/.sbt
-#    - ~/.ivy2:/root/.ivy2
-#    - ~/.coursier:/root/.coursier
-#    - .:/opt/app
-#
-#    links:
-#      - sftp:sftp-container
-#      - sftp-no-chroot:sftp-no-chroot
-#      - minio:minio-container
-#      - azurite:azurite-container
-#
-#    environment:
-#      - S3_TEST_BUCKET=${S3_TEST_BUCKET}
-#      - S3_TEST_ACCESS_KEY=${S3_TEST_ACCESS_KEY}
-#      - S3_TEST_SECRET_KEY=${S3_TEST_SECRET_KEY}
-#      - AWS_REGION=us-east-2
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+
+    volumes:
+      - ./tmp/azure-store-root:/data
+
+    command: "azurite-blob --blobHost 0.0.0.0 --loose"
+
+  sbt:
+    image: hseeberger/scala-sbt:8u171_2.12.6_1.2.1
+
+    entrypoint: /usr/bin/sbt
+    working_dir: /opt/app
+
+    volumes:
+    - ~/.sbt:/root/.sbt
+    - ~/.ivy2:/root/.ivy2
+    - ~/.coursier:/root/.coursier
+    - .:/opt/app
+
+    links:
+      - sftp:sftp-container
+      - sftp-no-chroot:sftp-no-chroot
+      - minio:minio-container
+      - azurite:azurite-container
+
+    environment:
+      - S3_TEST_BUCKET=${S3_TEST_BUCKET}
+      - S3_TEST_ACCESS_KEY=${S3_TEST_ACCESS_KEY}
+      - S3_TEST_SECRET_KEY=${S3_TEST_SECRET_KEY}
+      - AWS_REGION=us-east-2
