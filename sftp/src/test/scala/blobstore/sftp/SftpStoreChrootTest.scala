@@ -13,7 +13,7 @@ class SftpStoreChrootTest extends AbstractSftpStoreTest {
     val jsch = new JSch()
 
     val sftpHost: String = Option(System.getenv("SFTP_HOST")).getOrElse("sftp-container")
-    val sftpPort: String = Option(System.getenv("SFTP_PORT")).getOrElse("22")
+    val sftpPort: String = Option(System.getenv("SFTP_CHROOT_PORT")).getOrElse("22")
 
     val session = jsch.getSession("blob", sftpHost, sftpPort.toInt)
 
