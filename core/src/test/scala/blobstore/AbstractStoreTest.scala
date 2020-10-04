@@ -69,16 +69,16 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     val url      = writeFile(store, dir)(filename)
 
     // list to make sure file is present
-    val found = store.list(url).compile.toList.unsafeRunSync()
+    val found = store.listAll(url).unsafeRunSync()
     found.size must be(1)
     found.head.toString mustBe url.path.toString
 
     // check contents of file
-    store.get(url, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() must be(contents(filename))
+    store.getContents(url).unsafeRunSync() must be(contents(filename))
 
     // check remove works
     store.remove(url, recursive = false).unsafeRunSync()
-    val notFound = store.list(url).compile.toList.unsafeRunSync()
+    val notFound = store.listAll(url).unsafeRunSync()
     notFound mustBe empty
   }
 
@@ -88,11 +88,11 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     val dst         = dir / s"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
-      l1 <- store.list(src).compile.toList
-      l2 <- store.list(dst).compile.toList
+      l1 <- store.listAll(src)
+      l2 <- store.listAll(dst)
       _  <- store.move(src, dst)
-      l3 <- store.list(src).compile.toList
-      l4 <- store.list(dst).compile.toList
+      l3 <- store.listAll(src)
+      l4 <- store.listAll(dst)
       _  <- store.remove(dst, recursive = false)
     } yield {
       l1.isEmpty must be(false)
@@ -116,12 +116,12 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
 
     val exp = paths.map(_.path.show).toSet
 
-    store.list(dir).map(_.show).compile.toList.unsafeRunSync().toSet must be(exp)
+    store.listAll(dir).unsafeRunSync().map(_.show).toSet must be(exp)
 
     val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
     io.unsafeRunSync()
 
-    store.list(dir).compile.toList.unsafeRunSync() mustBe empty
+    store.listAll(dir).unsafeRunSync() mustBe empty
   }
 
   // We've had some bugs involving directories at the root level, since it is a bit of an edge case.
@@ -139,7 +139,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
     val pathsListed =
-      store.list(Url(scheme, authority, rootDir)).map(_.show).compile.toList.unsafeRunSync().toSet.toString()
+      store.listAll(Url(scheme, authority, rootDir)).unsafeRunSync().map(_.show).toSet.toString()
     exp.foreach(s => pathsListed must include(s))
 
     val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
@@ -151,7 +151,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     val paths       = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
     val exp         = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
 
-    val ls = store.list(dir).compile.toList.unsafeRunSync()
+    val ls = store.listAll(dir).unsafeRunSync()
     ls.map(_.show.stripSuffix("/")).toSet must be(exp)
     val option    = ls.find(_.isDir)
     val dirString = option.flatMap(_.lastSegment)

@@ -136,13 +136,13 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   }
 
   private def createParentDir(p: Path.Plain): F[Unit] =
-    F.delay(Files.createDirectories(p.nioPath).getParent)
+    F.delay(Files.createDirectories(p.nioPath.getParent))
       .handleErrorWith { e => F.raiseError(new Exception(s"failed to create dir: $p", e)) }
       .void
 
   override def stat[A](path: Path[A]): F[Option[Path[NioPath]]] =
     Sync[F].delay {
-      val p = Paths.get(path.show)
+      val p = path.nioPath
 
       if (!Files.exists(p)) None
       else
