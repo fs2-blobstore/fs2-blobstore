@@ -33,13 +33,13 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
 
     absolutePaths.map(Path.apply).zipWithIndex.foreach {
       case (p, i) =>
-        p mustBe a[AbsolutePath[String]]
+        p mustBe a[AbsolutePath[_]]
         p.value mustBe absolutePaths(i)
     }
 
     rootlessPaths.map(Path.apply).zipWithIndex.foreach {
       case (p, i) =>
-        p mustBe a[RootlessPath[String]]
+        p mustBe a[RootlessPath[_]]
         p.value mustBe rootlessPaths(i)
     }
   }

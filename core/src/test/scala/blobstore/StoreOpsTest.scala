@@ -1,6 +1,6 @@
 package blobstore
 
-import java.nio.charset.{Charset, StandardCharsets}
+import java.nio.charset.Charset
 import java.nio.file.Files
 import java.time.Instant
 import java.util.concurrent.Executors
@@ -12,13 +12,11 @@ import blobstore.url.general.GeneralStorageClass
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.effect.laws.util.TestInstances
 import fs2.{Pipe, Stream}
-import org.scalatest.Assertion
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.ExecutionContext
-import cats.syntax.all._
 
 class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
 
