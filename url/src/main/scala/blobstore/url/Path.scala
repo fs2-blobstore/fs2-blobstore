@@ -33,31 +33,32 @@ sealed trait Path[A] {
   }
 
   def absolute: AbsolutePath[String] = plain match {
-    case p@AbsolutePath(_, _) => p
+    case p @ AbsolutePath(_, _)    => p
     case RootlessPath(a, segments) => AbsolutePath("/" + a, segments)
   }
 
   def relative: RootlessPath[String] = plain match {
-    case AbsolutePath(a, segments) => RootlessPath(a.stripPrefix("/"), segments)
-    case p@RootlessPath(a, segments) => p
+    case AbsolutePath(a, segments)     => RootlessPath(a.stripPrefix("/"), segments)
+    case p @ RootlessPath(a, segments) => p
   }
 
   def nioPath: java.nio.file.Path = Paths.get(toString)
+
   /**
-   * Compose with string to form a new Path
-   *
-   * The underlying representation must be String in order for the representation and the path to be kept in sync.
-   * Use {@link addSegment()} to modify paths backed by non-String types
-   *
-   * @see addSegment
-   */
+    * Compose with string to form a new Path
+    *
+    * The underlying representation must be String in order for the representation and the path to be kept in sync.
+    * Use {@link addSegment()} to modify paths backed by non-String types
+    *
+    * @see addSegment
+    */
   def /(segment: String)(implicit ev: String =:= A): Path[String] = {
-    val nonEmpty = Chain(segment.stripPrefix("/").split("/").toList: _*)
+    val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList: _*)
     val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList: _*)
 
     val stripSuffix = segments.initLast match {
       case Some((init, "")) => init
-      case _ => segments
+      case _                => segments
     }
     val newChain = stripSuffix ++ nonEmpty ++ emptyElements
 
@@ -71,12 +72,12 @@ sealed trait Path[A] {
 
   def `//`(segment: Option[String])(implicit ev: String =:= A): Path[String] = segment match {
     case Some(s) => `//`(s)
-    case None => this.map(ev.flip)
+    case None    => this.map(ev.flip)
   }
 
   /**
-   * Ensure that path always is suffixed with '/'
-   */
+    * Ensure that path always is suffixed with '/'
+    */
   def `//`(segment: String)(implicit ev: String =:= A): Path[String] =
     this / (if (segment.endsWith("/")) segment else segment + "/")
 
@@ -97,14 +98,15 @@ sealed trait Path[A] {
   override def equals(obj: Any): Boolean =
     obj match {
       case p: Path[_] => p.plain.eqv(plain)
-      case _ => false
+      case _          => false
     }
   override def hashCode(): Int = representation.hashCode()
 
   def isEmpty: Boolean = segments.isEmpty
 
-  def lastSegment: Option[String] = if(isEmpty) None else {
-    val slashSuffix = segments.reverse.takeWhile(_.isEmpty).map(_ => "/").toList.mkString
+  def lastSegment: Option[String] = if (isEmpty) None
+  else {
+    val slashSuffix  = segments.reverse.takeWhile(_.isEmpty).map(_ => "/").toList.mkString
     val lastNonEmpty = segments.reverse.dropWhile(_.isEmpty).headOption
 
     lastNonEmpty.map(_ + slashSuffix)
@@ -114,9 +116,8 @@ sealed trait Path[A] {
   def size(implicit B: FileSystemObject[A]): Option[Long]            = FileSystemObject[A].size(representation)
   def isDir(implicit B: FileSystemObject[A]): Boolean                = FileSystemObject[A].isDir(representation)
   def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
-  def fileName(implicit B: FileSystemObject[A]): Option[String] = if (isDir) None else lastSegment
-  def dirName(implicit B: FileSystemObject[A]): Option[String] = if (!isDir) None else lastSegment
-
+  def fileName(implicit B: FileSystemObject[A]): Option[String]      = if (isDir) None else lastSegment
+  def dirName(implicit B: FileSystemObject[A]): Option[String]       = if (!isDir) None else lastSegment
 
 }
 
@@ -127,7 +128,7 @@ object Path {
     *
     * See .apply for creating these
     */
-  type Plain = Path[String]
+  type Plain         = Path[String]
   type AbsolutePlain = AbsolutePath[String]
   type RootlessPlain = RootlessPath[String]
 
@@ -145,8 +146,8 @@ object Path {
       if (s.isEmpty || s === "/") AbsolutePath("/", Chain.empty)
       else {
         val nonEmpty = s.stripPrefix("/").split("/").toList
-        val empty = s.reverse.takeWhile(_ == '/').map(_ => "").toList
-        val chain = Chain(nonEmpty ++ empty : _*)
+        val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
+        val chain    = Chain(nonEmpty ++ empty: _*)
 
         AbsolutePath("/" + chain.mkString_("/"), chain)
       }
@@ -155,10 +156,9 @@ object Path {
       if (s === "/") AbsolutePath("/", Chain.empty).some
       else if (s.startsWith("/")) {
         val nonEmpty = s.stripPrefix("/").split("/").toList
-        val empty = s.reverse.takeWhile(_ == '/').map(_ => "").toList
+        val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         Some(AbsolutePath(s, Chain(nonEmpty ++ empty: _*)))
-      }
-      else None
+      } else None
     }
 
     val root: AbsolutePath[String] = AbsolutePath("/", Chain.empty)
@@ -174,17 +174,16 @@ object Path {
     def parse(s: String): Option[RootlessPath[String]] =
       if (!s.startsWith("/")) {
         val nonEmpty = s.split("/").toList
-        val empty = s.reverse.takeWhile(_ == '/').map(_ => "").toList
+        val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         Some(RootlessPath(s, Chain(nonEmpty ++ empty: _*)))
-      }
-      else None
+      } else None
 
     def createFrom(s: String): RootlessPath[String] = {
       if (s.startsWith("/")) {
         createFrom(s.stripPrefix("/"))
       } else {
         val nonEmpty = s.split("/").toList
-        val empty = s.reverse.takeWhile(_ == '/').map(_ => "").toList
+        val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         RootlessPath(s, Chain(nonEmpty ++ empty: _*))
       }
     }

@@ -21,5 +21,4 @@ object UserInfo {
 
   implicit val show: Show[UserInfo] = Show.fromToString
 
-
 }

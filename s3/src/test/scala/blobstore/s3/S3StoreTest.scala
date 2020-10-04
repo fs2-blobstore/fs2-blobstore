@@ -58,10 +58,10 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
     )
     .build()
 
-  override val store = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
-  override val authority: Authority.Bucket     = Bucket.unsafe("blobstore-test-bucket")
-  override val scheme: String = "s3"
-  override val fileSystemRoot: Path.Plain = Path("")
+  override val store                       = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
+  override val authority: Authority.Bucket = Bucket.unsafe("blobstore-test-bucket")
+  override val scheme: String              = "s3"
+  override val fileSystemRoot: Path.Plain  = Path("")
 
   behavior of "S3Store"
 
@@ -88,7 +88,9 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
     val filePath = Path(s"test-$testRun/set-underlying/file1")
-    Stream("data".getBytes.toIndexedSeq: _*).through(store.put(authority.s3 / filePath, true, None, Some(s3Meta))).compile.drain.unsafeRunSync()
+    Stream("data".getBytes.toIndexedSeq: _*).through(
+      store.put(authority.s3 / filePath, true, None, Some(s3Meta))
+    ).compile.drain.unsafeRunSync()
     val entities = store.list(authority.s3 / filePath).compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
@@ -137,7 +139,7 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
         .compile
         .to(Array)
       path = Path(s"$authority/test-$testRun/multipart-upload/") / name
-      url = authority.s3 / path
+      url  = authority.s3 / path
       _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(url, true, None)).compile.drain
       readBytes <- store.get(url, 4096).compile.to(Array)
       _         <- store.remove(url, false)
@@ -160,9 +162,9 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
   }
 
   it should "put rotating with file-limit > bufferSize" in {
-    val dir = dirUrl("put-rotating-s3")
-    val content   = randomBA(7 * 1024 * 1024)
-    val data      = Stream.emits(content)
+    val dir     = dirUrl("put-rotating-s3")
+    val content = randomBA(7 * 1024 * 1024)
+    val data    = Stream.emits(content)
 
     val test = for {
       counter <- Ref.of[IO, Int](0)

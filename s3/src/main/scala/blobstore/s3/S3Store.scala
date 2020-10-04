@@ -72,7 +72,7 @@ final class S3Store[F[_]](
 
   def get(url: Url[Authority.Bucket], meta: Option[S3MetaInfo]): Stream[F, Byte] = {
     val bucket = url.bucket.show
-    val key = url.path.show
+    val key    = url.path.show
 
     val request: GetObjectRequest =
       meta.fold(GetObjectRequest.builder())(S3MetaInfo.getObjectRequest).bucket(bucket).key(key).build()
@@ -96,26 +96,29 @@ final class S3Store[F[_]](
   def put(url: Url[Authority.Bucket], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
     put(url, overwrite, size, None)
 
+  def put(
+    url: Url[Authority.Bucket],
+    overwrite: Boolean,
+    size: Option[Long],
+    meta: Option[S3MetaInfo]
+  ): Pipe[F, Byte, Unit] =
+    in => {
+      val bucket = url.bucket.show
+      val key    = url.path.show
 
-  def put(url: Url[Authority.Bucket], overwrite: Boolean, size: Option[Long], meta: Option[S3MetaInfo]): Pipe[F, Byte, Unit] =
-    in =>
-       {
-          val bucket = url.bucket.show
-          val key = url.path.show
+      val checkOverwrite = if (!overwrite) {
+        liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
+          .flatMap {
+            case Left(_: NoSuchKeyException) => F.unit
+            case Left(e)                     => F.raiseError[Unit](e)
+            case Right(_) =>
+              F.raiseError[Unit](new IllegalArgumentException(s"File at path '$url' already exist."))
+          }
+      } else F.unit
 
-          val checkOverwrite = if (!overwrite) {
-            liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
-              .flatMap {
-                case Left(_: NoSuchKeyException) => F.unit
-                case Left(e)                     => F.raiseError[Unit](e)
-                case Right(_) =>
-                  F.raiseError[Unit](new IllegalArgumentException(s"File at path '$url' already exist."))
-              }
-          } else F.unit
-
-          Stream.eval(checkOverwrite) ++
-            size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
-      }
+      Stream.eval(checkOverwrite) ++
+        size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
+    }
 
   override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
     copy(src, dst) >> remove(src, recursive = false)
@@ -125,29 +128,29 @@ final class S3Store[F[_]](
   }
 
   def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): F[Unit] = {
-        val request = {
-          val srcBucket = src.bucket.show
-          val srcKey = src.path.show
-          val dstBucket = dst.bucket.show
-          val dstKey = dst.path.show
+    val request = {
+      val srcBucket = src.bucket.show
+      val srcKey    = src.path.show
+      val dstBucket = dst.bucket.show
+      val dstKey    = dst.path.show
 
-          val builder = CopyObjectRequest.builder()
-          val withAcl = objectAcl.fold(builder)(builder.acl)
-          val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-          dstMeta
-            .fold(withSSE)(S3MetaInfo.copyObjectRequest(withSSE))
-            .copySource(srcBucket ++ "/" ++ srcKey)
-            .destinationBucket(dstBucket)
-            .destinationKey(dstKey)
-            .build()
-        }
-        liftJavaFuture(F.delay(s3.copyObject(request))).void
-      }
+      val builder = CopyObjectRequest.builder()
+      val withAcl = objectAcl.fold(builder)(builder.acl)
+      val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
+      dstMeta
+        .fold(withSSE)(S3MetaInfo.copyObjectRequest(withSSE))
+        .copySource(srcBucket ++ "/" ++ srcKey)
+        .destinationBucket(dstBucket)
+        .destinationKey(dstKey)
+        .build()
+    }
+    liftJavaFuture(F.delay(s3.copyObject(request))).void
+  }
 
   override def remove(url: Url[Authority.Bucket], recursive: Boolean): F[Unit] = {
-      val bucket = url.bucket.show
-      val key = url.path.show
-      val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
+    val bucket = url.bucket.show
+    val key    = url.path.show
+    val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
     if (recursive) removeAll(url).void else liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
@@ -173,47 +176,54 @@ final class S3Store[F[_]](
     fullMetadata: Boolean,
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
-  ): Stream[F, Path[S3Blob]] =
-     {
-       val bucket = path.authority.show
-       val key = path.path.show
-        val request = {
-          val b = ListObjectsV2Request
-            .builder()
-            .bucket(bucket.show)
-            .prefix(if (key == "/") "" else key)
-          val builder = if (recursive) b else b.delimiter("/")
-          builder.build()
-        }
-        s3.listObjectsV2Paginator(request).toStream().flatMap { ol =>
-          val fDirs = ol.commonPrefixes().asScala.toList.traverse[F, Path[S3Blob]] { cp =>
-            if (expectTrailingSlashFiles) {
-              liftJavaFuture(
-                F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(cp.prefix()).build()))
-              ).map { resp => Path(cp.prefix()).as(S3Blob(bucket, cp.prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)) }
-                .recover {
-                  case _: NoSuchKeyException =>
-                    Path(cp.prefix()).as(S3Blob(bucket, cp.prefix(), None))
-                }
-            } else {
-              Path(cp.prefix()).as(S3Blob(bucket, cp.prefix(), None)).pure[F]
-            }
-          }
-
-          val fFiles = ol.contents().asScala.toList.traverse[F, Path[S3Blob]] { s3Object =>
-            if (fullMetadata) {
-              liftJavaFuture(
-                F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(s3Object.key()).build()))
-              ).map { resp => Path(s3Object.key()).as(S3Blob(bucket, s3Object.key(), new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)) }
-            } else {
-              Path(s3Object.key()).as(S3Blob(bucket, s3Object.key(), new S3MetaInfo.S3ObjectMetaInfo(s3Object).some)).pure[F]
-            }
-          }
-          Stream.eval(fDirs).flatMap(dirs => Stream(dirs: _*)) ++ Stream
-            .eval(fFiles)
-            .flatMap(files => Stream(files: _*))
-        }
+  ): Stream[F, Path[S3Blob]] = {
+    val bucket = path.authority.show
+    val key    = path.path.show
+    val request = {
+      val b = ListObjectsV2Request
+        .builder()
+        .bucket(bucket.show)
+        .prefix(if (key == "/") "" else key)
+      val builder = if (recursive) b else b.delimiter("/")
+      builder.build()
     }
+    s3.listObjectsV2Paginator(request).toStream().flatMap { ol =>
+      val fDirs = ol.commonPrefixes().asScala.toList.traverse[F, Path[S3Blob]] { cp =>
+        if (expectTrailingSlashFiles) {
+          liftJavaFuture(
+            F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(cp.prefix()).build()))
+          ).map { resp =>
+            Path(cp.prefix()).as(S3Blob(bucket, cp.prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some))
+          }
+            .recover {
+              case _: NoSuchKeyException =>
+                Path(cp.prefix()).as(S3Blob(bucket, cp.prefix(), None))
+            }
+        } else {
+          Path(cp.prefix()).as(S3Blob(bucket, cp.prefix(), None)).pure[F]
+        }
+      }
+
+      val fFiles = ol.contents().asScala.toList.traverse[F, Path[S3Blob]] { s3Object =>
+        if (fullMetadata) {
+          liftJavaFuture(
+            F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(s3Object.key()).build()))
+          ).map { resp =>
+            Path(s3Object.key()).as(S3Blob(
+              bucket,
+              s3Object.key(),
+              new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some
+            ))
+          }
+        } else {
+          Path(s3Object.key()).as(S3Blob(bucket, s3Object.key(), new S3MetaInfo.S3ObjectMetaInfo(s3Object).some)).pure[F]
+        }
+      }
+      Stream.eval(fDirs).flatMap(dirs => Stream(dirs: _*)) ++ Stream
+        .eval(fFiles)
+        .flatMap(files => Stream(files: _*))
+    }
+  }
 
   private def putKnownSize(
     bucket: String,
@@ -338,15 +348,25 @@ final class S3Store[F[_]](
   override def stat(url: Url[Authority.Bucket]): F[Option[Path[S3Blob]]] =
     liftJavaFuture(
       F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.bucket.show).key(url.path.show).build()))
-    ).map { resp => Path.of(url.path.show , S3Blob(url.bucket.show, url.path.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)).some }
+    ).map { resp =>
+      Path.of(
+        url.path.show,
+        S3Blob(url.bucket.show, url.path.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
+      ).some
+    }
       .recover {
         case _: NoSuchKeyException =>
-          val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ => defaultTrailingSlashFiles)
+          val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ =>
+            defaultTrailingSlashFiles
+          )
           Path.of(url.path.show, S3Blob(url.bucket.show, url.path.show, meta)).some
       }
 
   override def liftToUniversal: UniversalStore[F] =
-    new Store.DelegatingStore[F, S3Blob, Authority.Standard, UniversalFileSystemObject](FileSystemObject[S3Blob].universal, Left(this))
+    new Store.DelegatingStore[F, S3Blob, Authority.Standard, UniversalFileSystemObject](
+      FileSystemObject[S3Blob].universal,
+      Left(this)
+    )
 }
 
 object S3Store {
@@ -362,7 +382,15 @@ object S3Store {
     if (bufferSize < S3Store.multiUploadMinimumPartSize) {
       new IllegalArgumentException(s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}").raiseError
     } else
-      new S3Store(s3, objectAcl, sseAlgorithm, defaultFullMetadata, defaultTrailingSlashFiles, bufferSize, queueSize).pure[F]
+      new S3Store(
+        s3,
+        objectAcl,
+        sseAlgorithm,
+        defaultFullMetadata,
+        defaultTrailingSlashFiles,
+        bufferSize,
+        queueSize
+      ).pure[F]
 
   private def putObjectRequest(
     sseAlgorithm: Option[String],

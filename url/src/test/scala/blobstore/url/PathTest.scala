@@ -31,14 +31,16 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       "../foo/bar//"
     )
 
-    absolutePaths.map(Path.apply).zipWithIndex.foreach { case (p,i) =>
-      p mustBe a[AbsolutePath[String]]
-      p.value mustBe absolutePaths(i)
+    absolutePaths.map(Path.apply).zipWithIndex.foreach {
+      case (p, i) =>
+        p mustBe a[AbsolutePath[String]]
+        p.value mustBe absolutePaths(i)
     }
 
-    rootlessPaths.map(Path.apply).zipWithIndex.foreach { case (p, i) =>
-      p mustBe a[RootlessPath[String]]
-      p.value mustBe rootlessPaths(i)
+    rootlessPaths.map(Path.apply).zipWithIndex.foreach {
+      case (p, i) =>
+        p mustBe a[RootlessPath[String]]
+        p.value mustBe rootlessPaths(i)
     }
   }
 
@@ -63,7 +65,7 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       "//foo",
       "/foo/bar",
       "/foo/bar/",
-      "/foo/bar//",
+      "/foo/bar//"
     )
 
     val invalidPaths = List(
@@ -71,13 +73,13 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       "foo",
       "foo/bar",
       "foo/bar/",
-      "foo/bar//",
+      "foo/bar//"
     )
 
     validPaths.map(AbsolutePath.parse).zipWithIndex.foreach {
       case (p, i) => inside(p) {
-        case Some(path) => path.value mustBe validPaths(i)
-      }
+          case Some(path) => path.value mustBe validPaths(i)
+        }
     }
 
     invalidPaths.map(AbsolutePath.parse).foreach(p => p mustBe None)
@@ -114,14 +116,14 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     slashPrefix2.show mustBe "/foo/bar/baz"
     slashPrefix2.segments mustBe NonEmptyChain("foo", "bar", "baz")
     slashPrefix3.show mustBe "/foo/bar//baz"
-    slashPrefix3.segments mustBe NonEmptyChain("foo", "bar","", "baz")
+    slashPrefix3.segments mustBe NonEmptyChain("foo", "bar", "", "baz")
 
     slashSuffix1.show mustBe "/foo/bar/baz/"
     slashSuffix1.segments mustBe NonEmptyChain("foo", "bar", "baz", "")
     slashSuffix2.show mustBe "/foo/bar/baz/"
     slashSuffix2.segments mustBe NonEmptyChain("foo", "bar", "baz", "")
     slashSuffix3.show mustBe "/foo/bar/baz//"
-    slashSuffix3.segments mustBe NonEmptyChain("foo", "bar", "baz","", "")
+    slashSuffix3.segments mustBe NonEmptyChain("foo", "bar", "baz", "", "")
 
     multiple1.show mustBe "/foo/bar/baz/bam/"
     multiple1.segments mustBe NonEmptyChain("foo", "bar", "baz", "bam", "")

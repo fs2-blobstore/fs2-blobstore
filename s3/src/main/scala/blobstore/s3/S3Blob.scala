@@ -20,7 +20,7 @@ object S3Blob {
 
     override def storageClass(a: S3Blob): Option[GeneralStorageClass] = a.meta.flatMap(_.storageClass).map {
       case StorageClass.GLACIER | StorageClass.DEEP_ARCHIVE => GeneralStorageClass.ColdStorage
-      case _ => GeneralStorageClass.Standard
+      case _                                                => GeneralStorageClass.Standard
     }
   }
 }

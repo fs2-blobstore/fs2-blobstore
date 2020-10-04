@@ -36,7 +36,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   // https://cloud.google.com/storage/docs/naming
   it should "handle files with trailing / in name" in {
     val dir: Url[Bucket] = dirUrl("trailing-slash")
-    val filePath  = dir / "file-with-slash/"
+    val filePath         = dir / "file-with-slash/"
 
     store.put("test", filePath).compile.drain.unsafeRunSync()
 
@@ -69,8 +69,8 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   }
 
   it should "set underlying metadata on write" in {
-    val ct = "text/plain"
-    val sc = StorageClass.NEARLINE
+    val ct  = "text/plain"
+    val sc  = StorageClass.NEARLINE
     val url = Url("gs", authority, Path(s"test-$testRun/set-underlying/file"))
 
     val blobInfo = BlobInfo
@@ -80,7 +80,9 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
       .setMetadata(Map("key" -> "value").asJava)
       .build()
 
-    Stream("data".getBytes.toIndexedSeq: _*).through(store.put(url.path.as(GcsBlob(blobInfo)), List.empty)).compile.drain.unsafeRunSync()
+    Stream("data".getBytes.toIndexedSeq: _*).through(
+      store.put(url.path.as(GcsBlob(blobInfo)), List.empty)
+    ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()
 
     entities.foreach { gcsPath =>
@@ -93,8 +95,8 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
   it should "support direct download" in {
     val dir: Url[Bucket] = dirUrl("direct-download")
-    val filename  = s"test-${System.currentTimeMillis}.txt"
-    val path      = writeFile(store, dir.path)(filename)
+    val filename         = s"test-${System.currentTimeMillis}.txt"
+    val path             = writeFile(store, dir.path)(filename)
 
     val content = gcsStore
       .getUnderlying(path, 4096, direct = true, maxChunksInFlight = None)

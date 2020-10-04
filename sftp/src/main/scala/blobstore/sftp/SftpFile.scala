@@ -17,7 +17,8 @@ object SftpFile {
 
     override def isDir(a: SftpFile): Boolean = a.attrs.isDir
 
-    override def lastModified(a: SftpFile): Option[Instant] = Option(a.attrs.getMTime).map(i => Instant.ofEpochSecond(i.toLong))
+    override def lastModified(a: SftpFile): Option[Instant] =
+      Option(a.attrs.getMTime).map(i => Instant.ofEpochSecond(i.toLong))
 
     override def storageClass(a: SftpFile): Option[GeneralStorageClass] = None
   }

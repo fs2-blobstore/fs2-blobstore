@@ -15,35 +15,45 @@ sealed trait UrlParseError {
 }
 
 object UrlParseError {
-  case class CouldntParseUrl(i: String) extends SchemeError {val error = show"Value is not a valid URL $i"}
+  case class CouldntParseUrl(i: String) extends SchemeError { val error = show"Value is not a valid URL $i" }
 
   case class MissingScheme(i: String, override val cause: Option[Throwable]) extends SchemeError {
     val error = show"Couldn't identify scheme in $i"
   }
   implicit val semigroup: Semigroup[UrlParseError] =
-    (x, y) => new UrlParseError {
-      override def error: String = show"${x.error}\n${y.error}"
-      override def cause: Option[Throwable] = (x.cause, y.cause).mapN(Throwables.collapsingSemigroup.combine).orElse(x.cause).orElse(y.cause)
-    }
+    (x, y) =>
+      new UrlParseError {
+        override def error: String = show"${x.error}\n${y.error}"
+        override def cause: Option[Throwable] =
+          (x.cause, y.cause).mapN(Throwables.collapsingSemigroup.combine).orElse(x.cause).orElse(y.cause)
+      }
 }
 
 sealed trait SchemeError extends UrlParseError
 
 object SchemeError {
 
-  case class IncorrectScheme(scheme: String, expected: String) extends SchemeError {val error = show"Expected scheme $expected, but got $scheme"}
+  case class IncorrectScheme(scheme: String, expected: String) extends SchemeError {
+    val error = show"Expected scheme $expected, but got $scheme"
+  }
 
-  case class InvalidScheme(scheme: String) extends SchemeError {val error = show"Invalid scheme, got $scheme"}
+  case class InvalidScheme(scheme: String) extends SchemeError { val error = show"Invalid scheme, got $scheme" }
 
 }
 
 sealed trait BucketParseError extends UrlParseError
 object BucketParseError {
-  case class InvalidAuthority(authorityParseError: NonEmptyChain[AuthorityParseError]) extends BucketParseError { val error = show"Invalid authority: ${authorityParseError.toList.mkString("\n  ", "\n  ", "")}"}
-  case class PortNotSupported(c: Port) extends BucketParseError { val error = show"Buckets may not have port numbers: $c"}
-  case class UserInfoNotSupported(u: UserInfo) extends BucketParseError { val error = show"Bucket may not have userinfo segments: $u"}
-  case class HostnameRequired(c: Host) extends BucketParseError { val error = show"Expected hostname, but got $c"}
-  case class NotValidBucketUrl(u: Url.Plain) extends BucketParseError { val error = show"Not a valid bucket url $u"}
+  case class InvalidAuthority(authorityParseError: NonEmptyChain[AuthorityParseError]) extends BucketParseError {
+    val error = show"Invalid authority: ${authorityParseError.toList.mkString("\n  ", "\n  ", "")}"
+  }
+  case class PortNotSupported(c: Port) extends BucketParseError {
+    val error = show"Buckets may not have port numbers: $c"
+  }
+  case class UserInfoNotSupported(u: UserInfo) extends BucketParseError {
+    val error = show"Bucket may not have userinfo segments: $u"
+  }
+  case class HostnameRequired(c: Host)       extends BucketParseError { val error = show"Expected hostname, but got $c" }
+  case class NotValidBucketUrl(u: Url.Plain) extends BucketParseError { val error = show"Not a valid bucket url $u"     }
 }
 
 sealed trait AuthorityParseError extends UrlParseError
@@ -61,14 +71,15 @@ object AuthorityParseError {
   }
   case class HostWasEmpty(c: String) extends AuthorityParseError { val error = show"Host was empty: $c" }
 
-
   implicit val show: Show[AuthorityParseError] = _.error
 }
 
 sealed trait PortParseError extends AuthorityParseError
 object PortParseError {
-  case class InvalidPort(s: String) extends PortParseError { val error = show"Invalid port numbers $s"}
-  case class PortNumberOutOfRange(i: Int) extends PortParseError { val error = show"Port number out of range [0,65535]: $i"}
+  case class InvalidPort(s: String) extends PortParseError { val error = show"Invalid port numbers $s" }
+  case class PortNumberOutOfRange(i: Int) extends PortParseError {
+    val error = show"Port number out of range [0,65535]: $i"
+  }
 
 }
 

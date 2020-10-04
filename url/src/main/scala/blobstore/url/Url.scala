@@ -11,24 +11,23 @@ import cats.syntax.all._
 
 case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) {
   def replacePath[AA](p: Path[AA]): Url[A] = copy(path = p.plain)
-  def /[AA](path: Path[AA]): Url[A] = copy(path = this.path./(path.show))
-  def /(segment: String): Url[A] = copy(path = path./(segment))
+  def /[AA](path: Path[AA]): Url[A]        = copy(path = this.path./(path.show))
+  def /(segment: String): Url[A]           = copy(path = path./(segment))
   def /(segment: Option[String]): Url[A] = segment match {
     case Some(s) => /(s)
-    case None => this
+    case None    => this
   }
 
   /**
-   * Ensure that path always is suffixed with '/'
-   */
+    * Ensure that path always is suffixed with '/'
+    */
   def `//`(segment: String): Url[A] = copy(path = path.`//`(segment))
   def `//`(segment: Option[String]): Url[A] = segment match {
     case Some(s) => `//`(s)
-    case None => this
+    case None    => this
   }
 
   def bucket(implicit ev: A <:< Authority.Bucket): A = authority
-
 
   def map[B <: Authority](f: A => B): Url[B] = copy(authority = f(authority))
 
@@ -37,7 +36,7 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
 
 object Url {
 
-  type Plain = Url[Standard]
+  type Plain  = Url[Standard]
   type Bucket = Url[Authority.Bucket]
 
   def forBucket(url: String): ValidatedNec[UrlParseError, Url[Authority.Bucket]] = parse[Authority.Bucket](url)
@@ -53,11 +52,11 @@ object Url {
   }
 
   implicit def ordering[A <: Authority]: Ordering[Url[A]] = _.show compare _.show
-  implicit def order[A <: Authority]: Order[Url[A]] = Order.fromOrdering
+  implicit def order[A <: Authority]: Order[Url[A]]       = Order.fromOrdering
   implicit def show[S <: String, A <: Authority]: Show[Url[A]] = u => {
     val pathString = u.path match {
-      case a@AbsolutePath(_, _) => a.show.stripPrefix("/")
-      case a => a.show
+      case a @ AbsolutePath(_, _) => a.show.stripPrefix("/")
+      case a                      => a.show
     }
     show"${u.scheme}://${u.authority}/$pathString"
   }

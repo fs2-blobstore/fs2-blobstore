@@ -124,28 +124,28 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
 object Store {
 
   /**
-   * Blobstores operates on buckets and returns store specific blob types
-   *
-   * For example, S3 is a BlobStore[F, S3MetaInfo]
-   */
-  type BlobStore[F[_], B]   = Store[F, Authority.Bucket, B]
+    * Blobstores operates on buckets and returns store specific blob types
+    *
+    * For example, S3 is a BlobStore[F, S3MetaInfo]
+    */
+  type BlobStore[F[_], B] = Store[F, Authority.Bucket, B]
 
   /**
-   * UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
-   * denominator" type [[UniversalFileSystemObject]]. This is useful if you want a common interface for all stores.
-   *
-   * @see [[Store.liftToUniversal]]
-   * @see [[PathStore.liftToUniversal]]
-   */
+    * UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
+    * denominator" type [[UniversalFileSystemObject]]. This is useful if you want a common interface for all stores.
+    *
+    * @see [[Store.liftToUniversal]]
+    * @see [[PathStore.liftToUniversal]]
+    */
   type UniversalStore[F[_]] = Store[F, Authority.Standard, UniversalFileSystemObject]
 
   /**
-   * Validates input URLs before delegating to underlying store. This allows different stores to be exposed
-   * under a the same, and wider, interface. For instance, we can expose FileStore's with Path input as a
-   * BlobStore with bucket input and which validates that the bucket equals the FileStore's authority.
-   *
-   * Use `transformPath` to control how paths retrieved from input URLs are converted to paths for FileStores
-   */
+    * Validates input URLs before delegating to underlying store. This allows different stores to be exposed
+    * under a the same, and wider, interface. For instance, we can expose FileStore's with Path input as a
+    * BlobStore with bucket input and which validates that the bucket equals the FileStore's authority.
+    *
+    * Use `transformPath` to control how paths retrieved from input URLs are converted to paths for FileStores
+    */
   //
   private[blobstore] class DelegatingStore[F[_]: Sync: ContextShift, Blob: FileSystemObject, AA <: Authority, BB](
     liftBlob: Blob => BB,
@@ -214,10 +214,9 @@ object Store {
         _.stat(_).map(_.map(_.map(liftBlob)))
       )
 
-
     override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] =
       underlying match {
-        case Left(blobStore)  =>
+        case Left(blobStore) =>
           val u = computePath.flatMap(u => validateForBlobStore[F](u))
           blobStore.putRotate(u, limit)
         case Right(fileStore) =>
@@ -249,7 +248,7 @@ object Store {
 
     override def liftToUniversal: UniversalStore[F] =
       underlying match {
-        case Left(blobStore) => blobStore.liftToUniversal
+        case Left(blobStore)  => blobStore.liftToUniversal
         case Right(pathStore) => pathStore.liftToUniversal
       }
 

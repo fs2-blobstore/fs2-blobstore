@@ -101,12 +101,12 @@ abstract class PathStore[F[_], BlobType] {
   def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit]
 
   /**
-   * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
-   * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
-   *
-   * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
-   * to this store.
-   */
+    * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+    *
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
+    * to this store.
+    */
   def liftTo[A <: Authority, B](f: BlobType => B, g: Path.Plain => Path.Plain = identity): Store[F, A, B]
 
   def liftToUniversal(implicit fso: FileSystemObject[BlobType]): UniversalStore[F] =
@@ -121,7 +121,8 @@ abstract class PathStore[F[_], BlobType] {
   def liftToStandard: Store[F, Authority.Standard, BlobType] =
     liftTo[Authority.Standard, BlobType](identity)
 
-  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit fsb: FileSystemObject[B]): F[Int]
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit
+  fsb: FileSystemObject[B]): F[Int]
 
   def stat[A](path: Path[A]): F[Option[Path[BlobType]]]
 

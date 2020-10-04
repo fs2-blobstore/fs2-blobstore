@@ -54,7 +54,12 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
     val files = stream
       .evalMap {
         case (x, isDir) =>
-          F.delay(NioPath(x, Try(Files.size(x)).toOption, isDir, Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)))
+          F.delay(NioPath(
+            x,
+            Try(Files.size(x)).toOption,
+            isDir,
+            Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
+          ))
       }
 
     val file = Stream.eval {
@@ -79,7 +84,11 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
       val flags =
         if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
         else List(StandardOpenOption.CREATE_NEW)
-      Stream.eval(createParentDir(path.plain)) >> fs2.io.file.writeAll(path = path.plain, blocker = blocker, flags = flags).apply(
+      Stream.eval(createParentDir(path.plain)) >> fs2.io.file.writeAll(
+        path = path.plain,
+        blocker = blocker,
+        flags = flags
+      ).apply(
         in
       )
   }
@@ -91,8 +100,10 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
     createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void
 
   override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
-    if(recursive)
-      fs2.io.file.directoryStream(blocker, path.nioPath).parEvalMap(maxConcurrent = 20)(p => blocker.delay(Files.deleteIfExists(p))).compile.drain
+    if (recursive)
+      fs2.io.file.directoryStream(blocker, path.nioPath).parEvalMap(maxConcurrent = 20)(p =>
+        blocker.delay(Files.deleteIfExists(p))
+      ).compile.drain
     else blocker.delay(Files.deleteIfExists(path.nioPath)).void
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
@@ -136,7 +147,8 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
     Sync[F].delay {
       val p = Paths.get(path.show)
 
-      if (!Files.exists(p)) None else
+      if (!Files.exists(p)) None
+      else
         path.as(NioPath(
           p,
           Try(Files.size(p)).toOption,
@@ -149,17 +161,17 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")
 
   /**
-   * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
-   * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
-   *
-   * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
-   * to this store.
-   */
+    * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+    *
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
+    * to this store.
+    */
   override def liftTo[A <: Authority, B](f: NioPath => B, g: Plain => Plain): Store[F, A, B] =
     new Store.DelegatingStore[F, NioPath, A, B](f, Right(this), g)
 
-  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit fsb: FileSystemObject[B]): F[Int] =
-  {
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit
+  fsb: FileSystemObject[B]): F[Int] = {
     dstStore.stat(dstPath).map(_.fold(dstPath.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
       list(srcPath.plain)
         .evalMap { p =>

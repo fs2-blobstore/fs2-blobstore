@@ -33,15 +33,20 @@ import fs2.Stream
 import scala.concurrent.ExecutionContext
 import scala.util.Random
 
-abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances with Inside {
+abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
+  extends AnyFlatSpec
+  with Matchers
+  with BeforeAndAfterAll
+  with TestInstances
+  with Inside {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
-  
-  val testRun: UUID            = java.util.UUID.randomUUID()
+
+  val testRun: UUID = java.util.UUID.randomUUID()
 
   val transferStoreRootDir: Path.Plain = Path(s"tmp/transfer-store-root/$testRun")
-  val transferStore: FileStore[IO]      = new FileStore[IO](blocker)
+  val transferStore: FileStore[IO]     = new FileStore[IO](blocker)
 
   val store: Store[IO, A, B]
   val scheme: String
@@ -54,7 +59,6 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   // All testdata goes under this path
   lazy val testRunRoot: Path.Plain = Path(s"test-$testRun")
 
-
   behavior of "all stores"
 
   it should "put, list, get, remove keys" in {
@@ -62,7 +66,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
     // put a random file
     val filename = s"test-${System.currentTimeMillis}.txt"
-    val url     = writeFile(store, dir)(filename)
+    val url      = writeFile(store, dir)(filename)
 
     // list to make sure file is present
     val found = store.list(url).compile.toList.unsafeRunSync()
@@ -80,8 +84,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
   it should "move keys" in {
     val dir: Url[A] = dirUrl("move-keys")
-    val src       = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
-    val dst       = dir / s"dst/${System.currentTimeMillis}.txt"
+    val src         = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
+    val dst         = dir / s"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
       l1 <- store.list(src).compile.toList
@@ -134,7 +138,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
-    val pathsListed = store.list(Url(scheme, authority, rootDir)).map(_.show).compile.toList.unsafeRunSync().toSet.toString()
+    val pathsListed =
+      store.list(Url(scheme, authority, rootDir)).map(_.show).compile.toList.unsafeRunSync().toSet.toString()
     exp.foreach(s => pathsListed must include(s))
 
     val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
@@ -143,12 +148,12 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
   it should "list files and directories correctly" in {
     val dir: Url[A] = dirUrl("list-dirs")
-    val paths     = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
-    val exp       = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
+    val paths       = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
+    val exp         = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
 
     val ls = store.list(dir).compile.toList.unsafeRunSync()
     ls.map(_.show.stripSuffix("/")).toSet must be(exp)
-    val option = ls.find(_.isDir)
+    val option    = ls.find(_.isDir)
     val dirString = option.flatMap(_.lastSegment)
     inside(dirString) {
       case Some(dir) => dir must fullyMatch regex "subdir/?"
@@ -159,7 +164,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   }
 
   it should "transfer individual file to a directory from one store to another" in {
-    val srcPath = writeLocalFile(transferStore,  localDirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
+    val srcPath =
+      writeLocalFile(transferStore, localDirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
 
     val dstDir  = dirUrl("transfer-single-file-to-dir-dst")
     val dstPath = dstDir / srcPath.lastSegment
@@ -319,8 +325,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
   it should "support putting content with no size" in {
     val dir: Url[A] = dirUrl("put-no-size")
-    val path      = dir / "no-size.txt"
-    val exp       = contents("put without size")
+    val path        = dir / "no-size.txt"
+    val exp         = contents("put without size")
     val test = for {
       _ <- fs2
         .Stream(exp)
@@ -344,8 +350,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   }
 
   it should "overwrite existing file on put with overwrite" in {
-    val dir = dirUrl("overwrite-existing")
-    val path      = writeFile(store, dir.path)("existing.txt")
+    val dir  = dirUrl("overwrite-existing")
+    val path = writeFile(store, dir.path)("existing.txt")
 
     fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -365,8 +371,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   }
 
   it should "fail on put to Path with existing file without overwrite" in {
-    val dir = dirUrl("fail-no-overwrite")
-    val path      = writeFile(store, dir.path)("existing.txt")
+    val dir  = dirUrl("fail-no-overwrite")
+    val path = writeFile(store, dir.path)("existing.txt")
 
     val result = fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -380,8 +386,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   }
 
   it should "put to new Path without overwrite" in {
-    val dir = dirUrl("no-overwrite")
-    val path      = dir / "new.txt"
+    val dir  = dirUrl("no-overwrite")
+    val path = dir / "new.txt"
 
     fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -403,7 +409,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
   it should "support paths with spaces" in {
     val dir = dirUrl("path spaces")
-    val url      = writeFile(store, dir.path)("file with spaces")
+    val url = writeFile(store, dir.path)("file with spaces")
     val result = for {
       list <- store
         .list(url)
@@ -422,8 +428,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   }
 
   it should "be able to list recursively" in {
-    val dir = dirUrl("list-recursively")
-    val files     = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
+    val dir   = dirUrl("list-recursively")
+    val files = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
     val result = for {
       _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
       paths <- store.list(dir, recursive = true).compile.toList
@@ -442,7 +448,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     val fileCount      = 5L
     val fileLength     = 20
     val lastFileLength = 10
-    val dir      = dirUrl("put-rotating")
+    val dir            = dirUrl("put-rotating")
     val bytes          = randomBA(fileLength)
     val lastFileBytes  = randomBA(lastFileLength)
     val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++

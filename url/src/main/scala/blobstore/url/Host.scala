@@ -19,6 +19,7 @@ import shapeless.PolyDefns.~>
 
 import scala.util.Try
 import scala.util.matching.Regex
+
 /**
   * A Host is any device or computer on a computer network. It can be an IP address or any string that can appear in a
   * A, AAAA or CNAME DNS record.
@@ -32,21 +33,21 @@ object Host {
   def parse(s: String): ValidatedNec[HostParseError, Host] = Hostname.parse(s).orElse(IpV4Address.parse(s))
 
   def unsafe(s: String): Host = parse(s) match {
-    case Valid(v) => v
+    case Valid(v)   => v
     case Invalid(e) => throw MultipleUrlValidationException(e)
   }
 
   implicit def order: Order[Host] =
     ContravariantMonoidal[Order].liftContravariant[Host, Either[IpV4Address, Hostname]] {
-      case a @ IpV4Address(_,_,_,_) => Left(a)
-      case b @ Hostname(_)    => Right(b)
+      case a @ IpV4Address(_, _, _, _) => Left(a)
+      case b @ Hostname(_)             => Right(b)
     }(Order[Either[IpV4Address, Hostname]])
 
   implicit val ordering: Ordering[Host] = order.toOrdering
 
   implicit val show: Show[Host] = {
-    case a @ IpV4Address(_,_,_,_) => a.show
-    case a @ Hostname(_)    => a.show
+    case a @ IpV4Address(_, _, _, _) => a.show
+    case a @ Hostname(_)             => a.show
   }
 
 }
@@ -72,11 +73,11 @@ object IpV4Address {
   }
 
   def unsafe(s: String): IpV4Address = parse(s) match {
-    case Valid(i) => i
+    case Valid(i)   => i
     case Invalid(e) => throw MultipleUrlValidationException(e)
   }
 
-  private object compareBytes extends (Const[(Byte, Byte)]#λ  ~> Const[Int]#λ) {
+  private object compareBytes extends (Const[(Byte, Byte)]#λ ~> Const[Int]#λ) {
     override def apply[T](f: (Byte, Byte)): Int = (f._1 & 0xff) compare (f._2 & 0xff)
   }
 
@@ -84,55 +85,64 @@ object IpV4Address {
     x.bytes.toHList.zip(y.bytes.toHList).foldMap(0)(IpV4Address.compareBytes)(_ + _)
 
   implicit val ordering: Ordering[IpV4Address] = compare
-  implicit val order: Order[IpV4Address] = Order.fromOrdering[IpV4Address]
-  implicit val show: Show[IpV4Address]   = Show.fromToString[IpV4Address]
+  implicit val order: Order[IpV4Address]       = Order.fromOrdering[IpV4Address]
+  implicit val show: Show[IpV4Address]         = Show.fromToString[IpV4Address]
 }
 
 case class Hostname private (labels: NonEmptyChain[Label]) extends Host {
-  val value: String = labels.mkString_(".")
+  val value: String             = labels.mkString_(".")
   override def toString: String = value
 }
 
 object Hostname {
 
   /**
-   * Label component of a hostname.
-   *
-   * Rules
-   * - 1 to 63 characters
-   * - Only consists of characters a-z, A-Z, 0-9 or a hyphen
-   *
-   * RFC1123, section 2.1 "Host Names and Numbers"
-   *
-   * @see http://www.ietf.org/rfc/rfc1123.txt
-   */
+    * Label component of a hostname.
+    *
+    * Rules
+    * - 1 to 63 characters
+    * - Only consists of characters a-z, A-Z, 0-9 or a hyphen
+    *
+    * RFC1123, section 2.1 "Host Names and Numbers"
+    *
+    * @see http://www.ietf.org/rfc/rfc1123.txt
+    */
   case class Label private[Hostname] (value: String) {
-    override def toString: String          = value
+    override def toString: String = value
   }
 
   object Label {
     val Regex: Regex = "[-_a-zA-Z0-9]+".r
 
-    implicit val show: Show[Label] = _.value
-    implicit val order: Order[Label] = _.value compare _.value
+    implicit val show: Show[Label]         = _.value
+    implicit val order: Order[Label]       = _.value compare _.value
     implicit val ordering: Ordering[Label] = order.toOrdering
   }
 
   def parse(value: String): ValidatedNec[HostParseError, Hostname] = {
     val labels: ValidatedNec[HostParseError, List[Label]] = value.split('.').toList.traverse { el =>
-      val lengthOk: ValidatedNec[HostParseError, Unit] = Validated.cond(el.length >= 3 && el.length <= 63, (), HostParseError.label.LabelLengthOutOfRange(el)).toValidatedNec
-      val charactersOk: ValidatedNec[HostParseError, Unit] = Validated.cond(Label.Regex.matches(el), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
+      val lengthOk: ValidatedNec[HostParseError, Unit] = Validated.cond(
+        el.length >= 3 && el.length <= 63,
+        (),
+        HostParseError.label.LabelLengthOutOfRange(el)
+      ).toValidatedNec
+      val charactersOk: ValidatedNec[HostParseError, Unit] =
+        Validated.cond(Label.Regex.matches(el), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
 
       (lengthOk, charactersOk).tupled.as(Label(el))
     }
 
     val labelsNec: ValidatedNec[HostParseError, NonEmptyChain[Label]] = labels.toEither.flatMap {
       case h :: t => NonEmptyChain(h, t: _*).asRight[NonEmptyChain[HostParseError]]
-      case Nil => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
+      case Nil    => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
     }.toValidated
 
     val length: ValidatedNec[HostParseError, Unit] =
-      Validated.cond(value.length >= 1 && value.length <= 255, (), NonEmptyChain(HostParseError.hostname.DomainNameOutOfRange(value)))
+      Validated.cond(
+        value.length >= 1 && value.length <= 255,
+        (),
+        NonEmptyChain(HostParseError.hostname.DomainNameOutOfRange(value))
+      )
 
     val firstCharacter: ValidatedNec[HostParseError, Unit] = value.headOption.map { h =>
       Validated.cond(h.isLetterOrDigit, (), HostParseError.hostname.InvalidFirstCharacter(value)).toValidatedNec
@@ -142,13 +152,13 @@ object Hostname {
   }
 
   def unsafe(value: String): Hostname = parse(value) match {
-    case Valid(h) => h
+    case Valid(h)   => h
     case Invalid(e) => throw MultipleUrlValidationException(e)
   }
 
   def compare(a: Hostname, b: Hostname): Int = a.show compare b.show
 
   implicit val ordering: Ordering[Hostname] = compare
-  implicit val order: Order[Hostname] = Order.fromOrdering[Hostname]
-  implicit val show: Show[Hostname]   = _.labels.toList.mkString(".")
+  implicit val order: Order[Hostname]       = Order.fromOrdering[Hostname]
+  implicit val show: Show[Hostname]         = _.labels.toList.mkString(".")
 }

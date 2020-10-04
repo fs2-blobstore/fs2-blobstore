@@ -92,13 +92,14 @@ final class SftpStore[F[_]](
       )
     }
 
-  override def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = { in =>
-    def pull(channel: ChannelSftp): Stream[F, Unit] =
-      Stream
-        .resource(outputStreamResource(channel, path, overwrite))
-        .flatMap(os => _writeAllToOutputStream1(in, os, blocker).stream)
+  override def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = {
+    in =>
+      def pull(channel: ChannelSftp): Stream[F, Unit] =
+        Stream
+          .resource(outputStreamResource(channel, path, overwrite))
+          .flatMap(os => _writeAllToOutputStream1(in, os, blocker).stream)
 
-    Stream.resource(channelResource).flatMap(channel => pull(channel))
+      Stream.resource(channelResource).flatMap(channel => pull(channel))
   }
 
   override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] = channelResource.use { channel =>
@@ -116,8 +117,7 @@ final class SftpStore[F[_]](
       //TODO: Parallelize this with multiple channels
       val r = if (path.isDir) {
         list(path).evalMap(recursiveRemove) ++ Stream.eval(blocker.delay(channel.rmdir(path.show)))
-      }
-      else Stream.eval(blocker.delay(channel.rm(path.show)))
+      } else Stream.eval(blocker.delay(channel.rm(path.show)))
       r.compile.drain
     }
 
@@ -190,9 +190,9 @@ final class SftpStore[F[_]](
   def _stat[A](path: Path[A], channel: ChannelSftp): F[Option[Path[SftpFile]]] =
     blocker.delay(channel.stat(path.show))
       .map(a => path.as(SftpFile(path.show, a)).some).handleErrorWith {
-      case e: SftpException if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE => none[Path[SftpFile]].pure[F]
-      case e                                                           => e.raiseError[F, Option[Path[SftpFile]]]
-    }
+        case e: SftpException if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE => none[Path[SftpFile]].pure[F]
+        case e                                                           => e.raiseError[F, Option[Path[SftpFile]]]
+      }
 
   override def liftToBlobStore: BlobStore[F, SftpFile] =
     liftTo[Authority.Bucket, SftpFile](identity, _.relative)
@@ -206,7 +206,8 @@ final class SftpStore[F[_]](
   override def liftTo[A <: Authority, B](f: SftpFile => B, g: Plain => Plain): Store[F, A, B] =
     new Store.DelegatingStore[F, SftpFile, A, B](f, Right(this), g)
 
-  override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit fsb: FileSystemObject[B]): F[Int] =
+  override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit
+  fsb: FileSystemObject[B]): F[Int] =
     list(srcPath, recursive = true)
       .flatMap(p =>
         get(p, 4096)
@@ -224,11 +225,11 @@ final class SftpStore[F[_]](
 object SftpStore {
 
   /**
-   * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
-   *
-   * @param fa F[ChannelSftp] how to connect to SFTP server
-   * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.
-   */
+    * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
+    *
+    * @param fa F[ChannelSftp] how to connect to SFTP server
+    * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.
+    */
   def apply[F[_]: ConcurrentEffect](
     fa: F[Session],
     blocker: Blocker,
@@ -247,7 +248,9 @@ object SftpStore {
           }
           Stream.bracket(attemptConnect)(session => blocker.delay(session.disconnect()))
         }
-        authority <- Stream.eval(Authority.parse(session.getHost).leftMap(MultipleUrlValidationException.apply).liftTo[F])
+        authority <- Stream.eval(
+          Authority.parse(session.getHost).leftMap(MultipleUrlValidationException.apply).liftTo[F]
+        )
         semaphore <- Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
         mVar <- Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
           mVar.tryTake.flatMap(_.fold(().pure[F])(closeChannel[F](semaphore, blocker)))

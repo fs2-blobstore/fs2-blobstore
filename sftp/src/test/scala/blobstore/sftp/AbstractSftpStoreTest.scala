@@ -27,7 +27,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
   def session: IO[Session]
   override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
-  override val fileSystemRoot = Path("sftp_tests")
+  override val fileSystemRoot               = Path("sftp_tests")
 
   private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
   protected val mVar  = MVar.empty[IO, ChannelSftp].unsafeRunSync()

@@ -34,7 +34,7 @@ object Authority {
 
     def equals(a: Authority): Boolean = a match {
       case Standard(host, _, port) => this.host === host && this.port === port
-      case Bucket(name, _) => this.host === name && port.isEmpty
+      case Bucket(name, _)         => this.host === name && port.isEmpty
     }
   }
 
@@ -56,7 +56,7 @@ object Authority {
 
     def apply(candidate: String): ValidatedNec[AuthorityParseError, Standard] = parse(candidate)
     def unsafe(candidate: String): Standard = parse(candidate) match {
-      case Valid(a) => a
+      case Valid(a)   => a
       case Invalid(e) => throw MultipleUrlValidationException(e)
     }
 
@@ -81,8 +81,8 @@ object Authority {
         (host, user.validNec, port).mapN(Standard.apply).toEither
       }.toValidated
 
-    implicit val show: Show[Standard]   = s => s.host.show + s.port.map(_.show).map(":" + _).getOrElse("")
-    implicit val order: Order[Standard] = Order.by(_.show)
+    implicit val show: Show[Standard]         = s => s.host.show + s.port.map(_.show).map(":" + _).getOrElse("")
+    implicit val order: Order[Standard]       = Order.by(_.show)
     implicit val ordering: Ordering[Standard] = order.toOrdering
   }
 
@@ -103,12 +103,12 @@ object Authority {
 
     def equals(a: Authority): Boolean = a match {
       case Standard(host, _, port) => this.host === host && port.isEmpty
-      case Bucket(name, _) => this.host === name
+      case Bucket(name, _)         => this.host === name
     }
 
-    def s3: Url[Bucket] = Url("s3", this, Path.empty)
-    def gcs: Url[Bucket] = Url("gcs", this, Path.empty)
-    def sftp: Url[Bucket] = Url("sftp", this, Path.empty)
+    def s3: Url[Bucket]    = Url("s3", this, Path.empty)
+    def gcs: Url[Bucket]   = Url("gcs", this, Path.empty)
+    def sftp: Url[Bucket]  = Url("sftp", this, Path.empty)
     def https: Url[Bucket] = Url("https", this, Path.empty)
   }
 
@@ -117,19 +117,22 @@ object Authority {
     def apply(c: String): ValidatedNec[BucketParseError, Bucket] = parse(c)
 
     def withAuthority(s: Authority): Option[Bucket] = s match {
-      case Standard(h@Hostname(_), None, None) => Some(new Bucket(h, None))
-      case b: Bucket => Some(b)
-      case _ => None
+      case Standard(h @ Hostname(_), None, None) => Some(new Bucket(h, None))
+      case b: Bucket                             => Some(b)
+      case _                                     => None
     }
 
     def parse(c: String): ValidatedNec[BucketParseError, Bucket] =
       Standard.parse(c).leftMap(nec => NonEmptyChain(BucketParseError.InvalidAuthority(nec))).toEither.flatMap { a =>
-        val validatePort = a.port.fold(().asRight[BucketParseError])(p => BucketParseError.PortNotSupported(p).asLeft).toValidatedNec
-        val validateUserinfo = a.userInfo.fold(().asRight[BucketParseError])(u => BucketParseError.UserInfoNotSupported(u).asLeft).toValidatedNec
+        val validatePort =
+          a.port.fold(().asRight[BucketParseError])(p => BucketParseError.PortNotSupported(p).asLeft).toValidatedNec
+        val validateUserinfo = a.userInfo.fold(().asRight[BucketParseError])(u =>
+          BucketParseError.UserInfoNotSupported(u).asLeft
+        ).toValidatedNec
 
         val hostname = a.host match {
           case h: Hostname => h.asRight
-          case a => BucketParseError.HostnameRequired(a).asLeft
+          case a           => BucketParseError.HostnameRequired(a).asLeft
         }
 
         (validatePort, validateUserinfo, hostname.toValidatedNec).mapN((_, _, h) => h).map(new Bucket(_, None)).toEither
@@ -140,7 +143,7 @@ object Authority {
 
     def unsafe(c: String): Bucket =
       parse(c) match {
-        case Valid(a) => a
+        case Valid(a)   => a
         case Invalid(e) => throw MultipleUrlValidationException(e)
       }
 
@@ -152,9 +155,9 @@ object Authority {
 
     def unsafeWithRegion(c: String, region: String): Bucket = unsafe(c).withRegion(region)
 
-    implicit val order: Order[Bucket] = _.name compare _.name
+    implicit val order: Order[Bucket]       = _.name compare _.name
     implicit val ordering: Ordering[Bucket] = order.toOrdering
-    implicit val show: Show[Bucket] = _.name.show
+    implicit val show: Show[Bucket]         = _.name.show
   }
 
   def parse(s: String): ValidatedNec[AuthorityParseError, Authority] = Standard.parse(s)
@@ -163,17 +166,19 @@ object Authority {
 
   private val authorityToCoproduct: Authority => AuthorityCoproduct = {
     case u: Standard => Left(u)
-    case b: Bucket => Right(b)
+    case b: Bucket   => Right(b)
   }
 
   implicit val order: Order[Authority] =
-    ContravariantMonoidal[Order].liftContravariant[Authority, AuthorityCoproduct](authorityToCoproduct)(Order[AuthorityCoproduct])
+    ContravariantMonoidal[Order].liftContravariant[Authority, AuthorityCoproduct](authorityToCoproduct)(
+      Order[AuthorityCoproduct]
+    )
 
   implicit val ordering: Ordering[Authority] = order.toOrdering
 
   implicit val show: Show[Authority] = {
     case url: Standard => url.show
-    case b: Bucket => b.show
+    case b: Bucket     => b.show
   }
 
 }
