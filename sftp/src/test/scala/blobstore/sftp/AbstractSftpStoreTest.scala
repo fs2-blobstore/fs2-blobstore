@@ -78,7 +78,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
     store.list(dir).compile.toList.unsafeRunSync().map(_.lastSegment).toSet mustBe exp
 
-    store.remove(dir, recursive = true).compile.drain.unsafeRunSync()
+    store.remove(dir, recursive = true).unsafeRunSync()
 
     store.list(dir).compile.toList.unsafeRunSync().isEmpty mustBe true
   }
@@ -89,8 +89,8 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
     val result = for {
       file  <- IO(writeFile(store, dir.path)(filename))
-      _     <- store.remove(file, recursive = false).compile.drain
-      _     <- store.remove(dir, recursive = false).compile.drain
+      _     <- store.remove(file, recursive = false)
+      _     <- store.remove(dir, recursive = false)
       files <- store.list(dir).compile.toList
     } yield files
 
@@ -103,7 +103,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
     val failedRemove = for {
       _     <- IO(writeFile(store, dir.path)(filename))
-      _     <- store.remove(dir, recursive = false).compile.drain
+      _     <- store.remove(dir, recursive = false)
       files <- store.list(dir).compile.toList
     } yield files
 

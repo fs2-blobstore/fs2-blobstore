@@ -24,7 +24,7 @@ class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
   override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
 
   override val fileSystemRoot: Path.Plain = testRunRoot
-  private val localStore: LocalStore[IO] = LocalStore[IO](blocker)
+  private val localStore: FileStore[IO] = FileStore[IO](blocker)
   override val store: Store[IO, Authority.Standard, NioPath] = localStore.liftTo[Authority.Standard, NioPath](identity)
   override val authority: Authority.Standard     = Authority.Standard.localhost
   override val scheme: String = "file"

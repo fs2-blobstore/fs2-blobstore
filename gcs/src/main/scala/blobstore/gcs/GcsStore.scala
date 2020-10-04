@@ -2,15 +2,18 @@ package blobstore.gcs
 
 import java.io.OutputStream
 import java.nio.channels.Channels
+import java.nio.file
+import java.nio.file.Files
 
 import _root_.cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Sync}
 import _root_.cats.instances.list._
 import _root_.cats.syntax.all._
-import blobstore.putRotateBase
-import blobstore.url.{Path, Url}
+import blobstore.{putRotateBase, Store, StoreOps}
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
-import blobstore.Store.BlobStore
+import blobstore.Store.{BlobStore, UniversalStore}
 import blobstore.gcs.GcsStore.toBlobId
+import blobstore.url.general.UniversalFileSystemObject
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
@@ -49,9 +52,10 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   def put(path: Path[GcsBlob], options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
-  //TODO: implement recursive delete
-  override def remove(url: Url[Bucket], recursive: Boolean): Stream[F, Unit] =
-    Stream.eval(blocker.delay(storage.delete(GcsStore.toBlobId(url))).void)
+  override def remove(url: Url[Bucket], recursive: Boolean): F[Unit] =
+    if (recursive) removeAll(url).void
+    else
+    blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
 
   override def putRotate(computePath: F[Url[Bucket]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
@@ -138,7 +142,7 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    * @param dst path
    * @return F[Unit]
    */
-  override def move(src: Url[Bucket], dst: Url[Bucket]): Stream[F, Unit] =
+  override def move(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     copy(src, dst) >> remove(src, recursive = true)
   /**
    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -147,12 +151,15 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
    * @param dst path
    * @return F[Unit]
    */
-  override def copy(src: Url[Bucket], dst: Url[Bucket]): Stream[F, Unit] =
-    Stream.eval(blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void)
+  override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
+    blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
   override def stat(path: Url[Bucket]): F[Option[Path[GcsBlob]]] =
     blocker.delay(Option(storage.get(toBlobId(path))))
       .map(b => b.map(b => Path.of(b.getName, GcsBlob(b))))
+
+  override def liftToUniversal: UniversalStore[F] =
+    new Store.DelegatingStore[F, GcsBlob, Authority.Standard, UniversalFileSystemObject](FileSystemObject[GcsBlob].universal, Left(this))
 }
 
 object GcsStore {

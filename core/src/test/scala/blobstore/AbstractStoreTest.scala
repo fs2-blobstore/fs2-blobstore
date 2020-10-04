@@ -19,7 +19,7 @@ import java.util.UUID
 import java.nio.file.{Path => NioPath}
 import java.util.concurrent.Executors
 
-import blobstore.fs.LocalStore
+import blobstore.fs.FileStore
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
@@ -41,7 +41,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   val testRun: UUID            = java.util.UUID.randomUUID()
 
   val transferStoreRootDir: Path.Plain = Path(s"tmp/transfer-store-root/$testRun")
-  val transferStore: LocalStore[IO]      = new LocalStore[IO](blocker)
+  val transferStore: FileStore[IO]      = new FileStore[IO](blocker)
 
   val store: Store[IO, A, B]
   val scheme: String
@@ -73,7 +73,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     store.get(url, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() must be(contents(filename))
 
     // check remove works
-    store.remove(url, recursive = false).compile.drain.unsafeRunSync()
+    store.remove(url, recursive = false).unsafeRunSync()
     val notFound = store.list(url).compile.toList.unsafeRunSync()
     notFound mustBe empty
   }
@@ -86,10 +86,10 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     val test = for {
       l1 <- store.list(src).compile.toList
       l2 <- store.list(dst).compile.toList
-      _  <- store.move(src, dst).compile.drain
+      _  <- store.move(src, dst)
       l3 <- store.list(src).compile.toList
       l4 <- store.list(dst).compile.toList
-      _  <- store.remove(dst, recursive = false).compile.drain
+      _  <- store.remove(dst, recursive = false)
     } yield {
       l1.isEmpty must be(false)
       l2.isEmpty must be(true)
@@ -114,7 +114,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
     store.list(dir).map(_.show).compile.toList.unsafeRunSync().toSet must be(exp)
 
-    val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false).compile.drain)
+    val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
     io.unsafeRunSync()
 
     store.list(dir).compile.toList.unsafeRunSync() mustBe empty
@@ -137,7 +137,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     val pathsListed = store.list(Url(scheme, authority, rootDir)).map(_.show).compile.toList.unsafeRunSync().toSet.toString()
     exp.foreach(s => pathsListed must include(s))
 
-    val io: IO[List[Unit]] = paths.map(store.remove(_, recursive = false).compile.drain).sequence
+    val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
     io.unsafeRunSync()
   }
 
@@ -154,7 +154,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
       case Some(dir) => dir must fullyMatch regex "subdir/?"
     }
 
-    val io: IO[List[Unit]] = paths.parTraverse(store.remove(_, recursive = false).compile.drain)
+    val io: IO[List[Unit]] = paths.parTraverse(store.remove(_, recursive = false))
     io.unsafeRunSync()
   }
 
@@ -177,7 +177,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
       c1 must be(c2)
     }
 
-    test.compile.drain.unsafeRunSync()
+    test.unsafeRunSync()
   }
 
   it should "transfer individual file to a file path from one store to another" in {
@@ -200,7 +200,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
       c1 must be(c2)
     }
 
-    test.compile.drain.unsafeRunSync()
+    test.unsafeRunSync()
   }
 
   it should "transfer directory to a directory path from one store to another" in {
@@ -212,19 +212,19 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
       .map(writeLocalFile(transferStore, srcDir))
 
     val test = for {
-      i <- transferStore.transferTo(store, srcDir, dstDir).compile.lastOrError
+      i <- transferStore.transferTo(store, srcDir, dstDir)
       c1 <- paths.traverse { p =>
         transferStore
           .getContents(p)
-          .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}").compile.lastOrError
+          .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
       }
       c2 <- paths.traverse { p =>
         store
           .getContents(dstDir / p.lastSegment)
-          .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}").compile.lastOrError
+          .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
       }
-      _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ())).compile.drain
-      _ <- paths.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ())).compile.drain
+      _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ()))
+      _ <- paths.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ()))
     } yield {
       i must be(paths.length)
       c2 must be(c1)
@@ -249,9 +249,9 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
 
     val test = for {
       i <- transferStore.transferTo(store, srcDir, dstDir)
-      c1 <- paths.map { p =>
+      c1 <- paths.traverse { p =>
         transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
-      }.sequence
+      }
       c2 <- {
         paths1.map { p =>
           store
@@ -265,14 +265,14 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
           }
       }.sequence
       _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ()))
-      _ <- paths1.map(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ())).sequence
-      _ <- paths2.map(p => store.remove(dstDir / "subdir" / p.lastSegment, recursive = false).handleError(_ => ())).sequence
+      _ <- paths1.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ()))
+      _ <- paths2.traverse(p => store.remove(dstDir / "subdir" / p.lastSegment, recursive = false).handleError(_ => ()))
     } yield {
       i must be(9)
       c1.mkString("\n") must be(c2.mkString("\n"))
     }
 
-    test.compile.drain.unsafeRunSync()
+    test.unsafeRunSync()
   }
 
   it should "copy files in a store from one directory to another" in {
@@ -282,15 +282,15 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     writeFile(store, srcDir.path)("filename.txt")
 
     val test = for {
-      _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt").compile.drain
+      _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
       c1 <- store
         .getContents(srcDir / "filename.txt")
-        .handleError(e => s"FAILED getContents: ${e.getMessage}").compile.lastOrError
+        .handleError(e => s"FAILED getContents: ${e.getMessage}")
       c2 <- store
         .getContents(dstDir / "filename.txt")
-        .handleError(e => s"FAILED getContents: ${e.getMessage}").compile.lastOrError
-      _ <- store.remove(dstDir / "filename.txt", recursive = false).compile.drain
-      _ <- store.remove(srcDir / "filename.txt", recursive = false).compile.drain
+        .handleError(e => s"FAILED getContents: ${e.getMessage}")
+      _ <- store.remove(dstDir / "filename.txt", recursive = false)
+      _ <- store.remove(srcDir / "filename.txt", recursive = false)
     } yield {
       c1 must be(c2)
     }
@@ -306,7 +306,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, srcDir.path))
 
-    store.remove(srcDir, recursive = true).compile.drain.unsafeRunSync()
+    store.remove(srcDir, recursive = true).unsafeRunSync()
 
     store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
   }
@@ -314,7 +314,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
   it should "succeed on remove when path does not exist" in {
     val dir  = dirUrl("remove-nonexistent-path")
     val path = dir / "no-file.txt"
-    store.remove(path, recursive = false).compile.drain.unsafeRunSync()
+    store.remove(path, recursive = false).unsafeRunSync()
   }
 
   it should "support putting content with no size" in {
@@ -328,8 +328,8 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
         .through(fs2.text.utf8Encode)
         .through(store.put(path))
         .compile.drain
-      res <- store.getContents(path).compile.lastOrError
-      _   <- store.remove(path, recursive = false).compile.drain
+      res <- store.getContents(path)
+      _   <- store.remove(path, recursive = false)
     } yield res must be(exp)
 
     test.unsafeRunSync()
@@ -410,7 +410,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
         .compile
         .toList
       get    <- store.get(url, 1024).compile.drain.attempt
-      remove <- store.remove(url, recursive = false).compile.drain.attempt
+      remove <- store.remove(url, recursive = false).attempt
     } yield {
       list.map(_.show) must contain only url.path.show
       list.headOption.flatMap(_.fileName) must contain("file with spaces")
@@ -489,7 +489,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject] extends An
     url
   }
 
-  def writeLocalFile(store: LocalStore[IO], tmpDir: Path.Plain)(filename: String): Path.Plain = {
+  def writeLocalFile(store: FileStore[IO], tmpDir: Path.Plain)(filename: String): Path.Plain = {
     val url = tmpDir / filename
     store.put(contents(filename), url, overwrite = true).compile.drain.unsafeRunSync()
     url

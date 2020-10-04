@@ -140,7 +140,7 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
       url = authority.s3 / path
       _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(url, true, None)).compile.drain
       readBytes <- store.get(url, 4096).compile.to(Array)
-      _         <- store.remove(url, false).compile.drain
+      _         <- store.remove(url, false)
     } yield readBytes mustBe bytes
 
   it should "put content with no size when aligned with multi-upload boundaries 5mb" in {

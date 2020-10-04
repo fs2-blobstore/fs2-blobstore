@@ -1,10 +1,10 @@
 package blobstore.fs
 
-import java.nio.file.{Files, Path => JPath}
+import java.nio.file.{Path => JPath}
 import java.time.Instant
 
 import blobstore.url.FileSystemObject
-import blobstore.url.general.{GeneralStorageClass, UniversalFileSystemObject}
+import blobstore.url.general.GeneralStorageClass
 
 // Cache lookups done on read
 case class NioPath(path: JPath, size: Option[Long], isDir: Boolean, lastModified: Option[Instant])

@@ -19,8 +19,10 @@ package s3
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 
-import blobstore.url.{Authority, Path, Url}
-import cats.effect.{ConcurrentEffect, ExitCase, Resource, Sync}
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.Store.UniversalStore
+import blobstore.url.general.UniversalFileSystemObject
+import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
 import cats.syntax.all._
 import cats.instances.string._
 import cats.instances.list._
@@ -56,7 +58,7 @@ final class S3Store[F[_]](
   defaultTrailingSlashFiles: Boolean = false,
   bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
   queueSize: Int = 32
-)(implicit F: ConcurrentEffect[F])
+)(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
   extends Store[F, Authority.Bucket, S3Blob] {
   require(
     bufferSize >= S3Store.multiUploadMinimumPartSize,
@@ -115,14 +117,14 @@ final class S3Store[F[_]](
             size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
       }
 
-  override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): Stream[F, Unit] =
+  override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
     copy(src, dst) >> remove(src, recursive = false)
 
-  override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): Stream[F, Unit] = {
-    Stream.eval(stat(dst)).flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
+  override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] = {
+    stat(dst).flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
   }
 
-  def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): Stream[F, Unit] = {
+  def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): F[Unit] = {
         val request = {
           val srcBucket = src.bucket.show
           val srcKey = src.path.show
@@ -139,15 +141,15 @@ final class S3Store[F[_]](
             .destinationKey(dstKey)
             .build()
         }
-        Stream.eval(liftJavaFuture(F.delay(s3.copyObject(request))).void)
+        liftJavaFuture(F.delay(s3.copyObject(request))).void
       }
 
-  // TODO: Implement recursive
-  override def remove(path: Url[Authority.Bucket], recursive: Boolean): Stream[F, Unit] = {
-      val bucket = path.bucket.show
-      val key = path.path.show
+  override def remove(url: Url[Authority.Bucket], recursive: Boolean): F[Unit] = {
+      val bucket = url.bucket.show
+      val key = url.path.show
       val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
-      Stream.eval(liftJavaFuture(F.delay(s3.deleteObject(req))).void)
+
+    if (recursive) removeAll(url).void else liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
 
   override def putRotate(computePath: F[Url[Authority.Bucket]], limit: Long): Pipe[F, Byte, Unit] =
@@ -342,6 +344,9 @@ final class S3Store[F[_]](
           val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ => defaultTrailingSlashFiles)
           Path.of(url.path.show, S3Blob(url.bucket.show, url.path.show, meta)).some
       }
+
+  override def liftToUniversal: UniversalStore[F] =
+    new Store.DelegatingStore[F, S3Blob, Authority.Standard, UniversalFileSystemObject](FileSystemObject[S3Blob].universal, Left(this))
 }
 
 object S3Store {
@@ -353,13 +358,11 @@ object S3Store {
     defaultTrailingSlashFiles: Boolean = false,
     bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
     queueSize: Int = 32
-  )(implicit F: ConcurrentEffect[F]): F[S3Store[F]] =
+  )(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): F[S3Store[F]] =
     if (bufferSize < S3Store.multiUploadMinimumPartSize) {
       new IllegalArgumentException(s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}").raiseError
-    } else {
-      new S3Store(s3, objectAcl, sseAlgorithm, defaultFullMetadata, defaultTrailingSlashFiles, bufferSize, queueSize)
-        .pure[F]
-    }
+    } else
+      new S3Store(s3, objectAcl, sseAlgorithm, defaultFullMetadata, defaultTrailingSlashFiles, bufferSize, queueSize).pure[F]
 
   private def putObjectRequest(
     sseAlgorithm: Option[String],

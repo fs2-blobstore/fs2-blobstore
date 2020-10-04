@@ -51,7 +51,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
     store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
 
-    store.remove(filePath, recursive = false).compile.drain.unsafeRunSync()
+    store.remove(filePath, recursive = false).unsafeRunSync()
 
     store.list(dir).compile.toList.unsafeRunSync() mustBe empty
   }

@@ -18,7 +18,8 @@ package fs
 
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
-import blobstore.url.{Authority, Hostname, Path}
+import blobstore.url.{Authority, FileSystemObject, Hostname, Path, Url}
+import blobstore.url.Path.Plain
 
 import scala.jdk.CollectionConverters._
 import cats.syntax.all._
@@ -28,8 +29,8 @@ import fs2.{Hotswap, Pipe, Stream}
 
 import scala.util.Try
 
-final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
-  extends FileStore[F, NioPath] {
+final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
+  extends PathStore[F, NioPath] {
 
   override def authority: Authority = Authority.Standard(Hostname.unsafe("localhost"), None, None)
 
@@ -83,20 +84,16 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
       )
   }
 
-  override def move[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] =
-    Stream.eval(createParentDir(dst.plain) >> F.delay(Files.move(src.plain, dst.plain)).void)
+  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] =
+    createParentDir(dst.plain) >> F.delay(Files.move(src.plain, dst.plain)).void
 
-  override def copy[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] =
-    Stream.eval(createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void)
+  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
+    createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void
 
-  override def remove[A](path: Path[A], recursive: Boolean): Stream[F, Unit] = {
-    val recursiveRemove = if (isDir(path))
-      list(path).map(remove(_, recursive)).parJoinUnbounded ++ Stream.eval(F.delay(Files.deleteIfExists(path.plain)).void)
-    else Stream.eval(F.delay(Files.deleteIfExists(path.plain)).void)
-
-    if (recursive) recursiveRemove
-    else Stream.eval(F.delay(Files.deleteIfExists(path.nioPath)).void)
-  }
+  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
+    if(recursive)
+      fs2.io.file.directoryStream(blocker, path.nioPath).parEvalMap(maxConcurrent = 20)(p => blocker.delay(Files.deleteIfExists(p))).compile.drain
+    else blocker.delay(Files.deleteIfExists(path.nioPath)).void
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
     val openNewFile: Resource[F, FileHandle[F]] =
@@ -150,9 +147,39 @@ final class LocalStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Co
 
   // The local file system can't have file names ending with slash
   private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")
+
+  /**
+   * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+   * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+   *
+   * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
+   * to this store.
+   */
+  override def liftTo[A <: Authority, B](f: NioPath => B, g: Plain => Plain): Store[F, A, B] =
+    new Store.DelegatingStore[F, NioPath, A, B](f, Right(this), g)
+
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit fsb: FileSystemObject[B]): F[Int] =
+  {
+    dstStore.stat(dstPath).map(_.fold(dstPath.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+      list(srcPath.plain)
+        .evalMap { p =>
+          if (p.isDir) {
+            transferTo(dstStore, p, dstPath `//` p.lastSegment)
+          } else {
+            val dp = if (dstIsDir) dstPath / p.lastSegment else dstPath
+            get(p, 4096).through(dstStore.put(dp)).compile.drain.as(1)
+          }
+        }
+        .fold(0)(_ + _)
+        .compile.lastOrError
+    }
+  }
+
+  override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
+    get(path, chunkSize).through(fs2.text.utf8Decode).compile.string
 }
 
-object LocalStore {
-  def apply[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): LocalStore[F] =
-    new LocalStore(blocker)
+object FileStore {
+  def apply[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]): FileStore[F] =
+    new FileStore(blocker)
 }

@@ -2,9 +2,9 @@ package blobstore.sftp
 
 import java.io.OutputStream
 
-import blobstore.{_writeAllToOutputStream1, putRotateBase, FileStore, Store}
-import blobstore.url.{Authority, FileSystemObject, Path}
-import blobstore.url.Path.{AbsolutePath, RootlessPath}
+import blobstore.{_writeAllToOutputStream1, putRotateBase, PathStore, Store}
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.Store.{BlobStore, UniversalStore}
 import blobstore.url.general.UniversalFileSystemObject
@@ -27,7 +27,7 @@ final class SftpStore[F[_]](
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
 )(implicit F: ConcurrentEffect[F], CS: ContextShift[F])
-  extends FileStore[F, SftpFile] {
+  extends PathStore[F, SftpFile] {
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   private val openChannel: F[ChannelSftp] = {
@@ -101,21 +101,17 @@ final class SftpStore[F[_]](
     Stream.resource(channelResource).flatMap(channel => pull(channel))
   }
 
-  override def move[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] = Stream.resource(channelResource).flatMap { channel =>
-    val m = mkdirs(dst, channel) >> blocker.delay(
+  override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] = channelResource.use { channel =>
+    mkdirs(dst, channel) >> blocker.delay(
       channel.rename(src.show, dst.show)
     )
-    Stream.eval(m)
   }
 
-  override def copy[A, B](src: Path[A], dst: Path[B]): Stream[F, Unit] =
-    for {
-      channel <- Stream.resource(channelResource)
-      _       <- Stream.eval(mkdirs(dst, channel))
-      _       <- get(src, 4096).through(put(dst))
-    } yield ()
+  override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] = channelResource.use { channel =>
+    mkdirs(dst, channel) >> get(src, 4096).through(put(dst)).compile.drain
+  }
 
-  override def remove[A](path: Path[A], recursive: Boolean): Stream[F, Unit] = Stream.resource(channelResource).flatMap { channel =>
+  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] = channelResource.use { channel =>
     def recursiveRemove(path: Path[SftpFile]): F[Unit] = {
       //TODO: Parallelize this with multiple channels
       val r = if (path.isDir) {
@@ -125,7 +121,7 @@ final class SftpStore[F[_]](
       r.compile.drain
     }
 
-    val r = _stat(path, channel).flatMap {
+    _stat(path, channel).flatMap {
       case Some(p) =>
         if (recursive) recursiveRemove(p)
         else {
@@ -133,7 +129,6 @@ final class SftpStore[F[_]](
         }
       case None => ().pure[F]
     }
-    Stream.eval(r).covary[F]
   }
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
@@ -199,17 +194,31 @@ final class SftpStore[F[_]](
       case e                                                           => e.raiseError[F, Option[Path[SftpFile]]]
     }
 
-  override def liftToUniversal(implicit fso: FileSystemObject[SftpFile], ME: MonadError[F, Throwable]): UniversalStore[F] =
-    liftTo[Authority.Standard, UniversalFileSystemObject](fso.universal, _.relative)
-
-  override def liftToBlobStore(implicit ME: MonadError[F, Throwable]): BlobStore[F, SftpFile] =
+  override def liftToBlobStore: BlobStore[F, SftpFile] =
     liftTo[Authority.Bucket, SftpFile](identity, _.relative)
 
-  override def liftTo[AA <: Authority](implicit ME: MonadError[F, Throwable]): Store[F, AA, SftpFile] =
+  override def liftTo[AA <: Authority]: Store[F, AA, SftpFile] =
     liftTo[AA, SftpFile](identity, _.relative)
 
-  override def liftToStandard(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, SftpFile] =
+  override def liftToStandard: Store[F, Authority.Standard, SftpFile] =
     liftTo[Authority.Standard, SftpFile](identity, _.relative)
+
+  override def liftTo[A <: Authority, B](f: SftpFile => B, g: Plain => Plain): Store[F, A, B] =
+    new Store.DelegatingStore[F, SftpFile, A, B](f, Right(this), g)
+
+  override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit fsb: FileSystemObject[B]): F[Int] =
+    list(srcPath, recursive = true)
+      .flatMap(p =>
+        get(p, 4096)
+          .through(dstStore.put(dstPath.replacePath(p)))
+          .last
+          .map(_.fold(0)(_ => 1))
+      )
+      .fold(0)(_ + _)
+      .compile.last.map(_.getOrElse(0))
+
+  override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
+    get(path, chunkSize).through(fs2.text.utf8Decode).compile.string
 }
 
 object SftpStore {

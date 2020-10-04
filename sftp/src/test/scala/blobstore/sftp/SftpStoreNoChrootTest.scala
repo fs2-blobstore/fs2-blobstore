@@ -13,7 +13,10 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
   override val session: IO[Session] = IO {
     val jsch = new JSch()
 
-    val session = jsch.getSession("blob", "sftp-no-chroot", 22)
+    val sftpHost: String = Option(System.getenv("SFTP_HOST")).getOrElse("sftp-no-chroot")
+    val sftpPort: String = Option(System.getenv("SFTP_PORT")).getOrElse("22")
+
+    val session = jsch.getSession("blob", sftpHost, sftpPort.toInt)
     session.setTimeout(10000)
     session.setPassword("password")
 

@@ -17,23 +17,22 @@ package blobstore
 
 import java.nio.charset.StandardCharsets
 
-import blobstore.url.Authority.Bucket
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
-import fs2.{Pipe, Stream}
+import blobstore.url.Authority.Bucket
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.url.general.UniversalFileSystemObject
-import blobstore.Store.{BlobStore, UniversalStore}
+import blobstore.Store.UniversalStore
 import cats.{ApplicativeError, MonadError}
-import cats.syntax.all._
+import cats.effect.{ContextShift, Sync}
 import cats.instances.try_._
+import cats.syntax.all._
+import fs2.{Pipe, Stream}
 
 import scala.util.{Failure, Success, Try}
 
-trait Store[F[_], A <: Authority, BlobType] {
+trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
 
   /**
-    * List paths. See [[StoreOps.ListOps]] for convenient listAll method.
-    *
     * @param path to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
     *                  otherwise – return files and folder at given path.
@@ -52,7 +51,6 @@ trait Store[F[_], A <: Authority, BlobType] {
   def list(path: Url[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
 
   /**
-    * Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.
     * @param url to get
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
@@ -60,9 +58,6 @@ trait Store[F[_], A <: Authority, BlobType] {
   def get(url: Url[A], chunkSize: Int): Stream[F, Byte]
 
   /**
-    * Provides a Sink that writes bytes into the provided path. See [[StoreOps.PutOps]] for convenient put String
-    * and put file methods.
-    *
     * It is highly recommended to provide [[Path.size]] when writing as it allows for optimizations in some store.
     * Specifically, S3Store will behave very poorly if no size is provided as it will load all bytes in memory before
     * writing content to S3 server.
@@ -87,7 +82,7 @@ trait Store[F[_], A <: Authority, BlobType] {
     * @param dst path
     * @return F[Unit]
     */
-  def move(src: Url[A], dst: Url[A]): Stream[F, Unit]
+  def move(src: Url[A], dst: Url[A]): F[Unit]
 
   /**
     * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
@@ -95,14 +90,14 @@ trait Store[F[_], A <: Authority, BlobType] {
     * @param dst path
     * @return F[Unit]
     */
-  def copy(src: Url[A], dst: Url[A]): Stream[F, Unit]
+  def copy(src: Url[A], dst: Url[A]): F[Unit]
 
   /**
     * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param url to remove
     * @return F[Unit]
     */
-  def remove(url: Url[A], recursive: Boolean): Stream[F, Unit]
+  def remove(url: Url[A], recursive: Boolean): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
@@ -123,25 +118,7 @@ trait Store[F[_], A <: Authority, BlobType] {
 
   def stat(url: Url[A]): F[Option[Path[BlobType]]]
 
-  def liftToUniversal(
-    implicit fso: FileSystemObject[BlobType],
-    ev: this.type <:< BlobStore[F, BlobType],
-    ME: MonadError[F, Throwable]
-  ): UniversalStore[F] =
-    new Store.DelegatingStore[F, BlobType, Authority.Standard, UniversalFileSystemObject](fso.universal, Left(ev(this)))
-
-  def transferTo[C](dstStore: Store[F, A, C], srcPath: Url[A], dstPath: Url[A]): Stream[F, Int] =
-    list(srcPath, recursive = true)
-      .flatMap(p =>
-        get(srcPath.copy(path = p.plain), 4096)
-          .through(dstStore.put(dstPath.copy(path = p.plain)))
-          .last
-          .map(_.fold(0)(_ => 1))
-      )
-      .fold(0)(_ + _)
-
-  def getContents(path: Url[A], chunkSize: Int = 4096): Stream[F, String] =
-    get(path, chunkSize).through(fs2.text.utf8Decode).through(fs2.text.lines)
+  def liftToUniversal: UniversalStore[F]
 }
 
 object Store {
@@ -158,7 +135,7 @@ object Store {
    * denominator" type [[UniversalFileSystemObject]]. This is useful if you want a common interface for all stores.
    *
    * @see [[Store.liftToUniversal]]
-   * @see [[FileStore.liftToUniversal]]
+   * @see [[PathStore.liftToUniversal]]
    */
   type UniversalStore[F[_]] = Store[F, Authority.Standard, UniversalFileSystemObject]
 
@@ -167,11 +144,12 @@ object Store {
    * under a the same, and wider, interface. For instance, we can expose FileStore's with Path input as a
    * BlobStore with bucket input and which validates that the bucket equals the FileStore's authority.
    *
-   * Use `transformPath` to control how URL absolute paths are converted to paths for FileStores
+   * Use `transformPath` to control how paths retrieved from input URLs are converted to paths for FileStores
    */
-  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob, AA <: Authority, BB](
+  //
+  private[blobstore] class DelegatingStore[F[_]: Sync: ContextShift, Blob: FileSystemObject, AA <: Authority, BB](
     liftBlob: Blob => BB,
-    underlying: Either[BlobStore[F, Blob], FileStore[F, Blob]],
+    underlying: Either[BlobStore[F, Blob], PathStore[F, Blob]],
     transformPath: Path.Plain => Path.Plain = identity
   ) extends Store[F, AA, BB] {
 
@@ -200,36 +178,32 @@ object Store {
         }
       }
 
-    override def move(src: Url[AA], dst: Url[AA]): Stream[F, Unit] =
+    override def move(src: Url[AA], dst: Url[AA]): F[Unit] =
       underlying match {
         case Left(blobstore) =>
-          val validation = (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled
-            Stream.eval(validation).flatMap {
+          (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled.flatMap {
             case (s, d) => blobstore.move(s, d)
           }
         case Right(filestore) =>
-          val validation = (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled
-            Stream.eval(validation).flatMap {
+          (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
             case (s, d) => filestore.move(s, d)
           }
       }
 
-    override def copy(src: Url[AA], dst: Url[AA]): Stream[F, Unit] =
+    override def copy(src: Url[AA], dst: Url[AA]): F[Unit] =
       underlying match {
         case Left(blobstore) =>
-          val validation = (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled
-          Stream.eval(validation).flatMap {
+          (validateForBlobStore[F](src), validateForBlobStore[F](dst)).tupled.flatMap {
             case (s, d) => blobstore.copy(s, d)
           }
         case Right(filestore) =>
-          val validation = (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled
-            Stream.eval(validation).flatMap {
+          (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
             case (s, d) => filestore.copy(s, d)
           }
       }
 
-    override def remove(path: Url[AA], recursive: Boolean): Stream[F, Unit] =
-      validateAndInvoke[Stream[F, *], Unit](path)(
+    override def remove(path: Url[AA], recursive: Boolean): F[Unit] =
+      validateAndInvoke[F, Unit](path)(
         _.remove(_, recursive),
         _.remove(_, recursive)
       )
@@ -256,7 +230,7 @@ object Store {
 
     private def validateForFileStore[G[_]: ApplicativeError[*[_], Throwable]](
       url: Url[AA],
-      fileStore: FileStore[F, Blob]
+      fileStore: PathStore[F, Blob]
     ): G[Path.Plain] =
       if (url.authority.equals(fileStore.authority)) transformPath(url.path).pure[G]
       else
@@ -266,11 +240,17 @@ object Store {
 
     private def validateAndInvoke[G[_]: MonadError[*[_], Throwable], A](url: Url[AA])(
       f: (BlobStore[F, Blob], Url[Bucket]) => G[A],
-      g: (FileStore[F, Blob], Path.Plain) => G[A]
+      g: (PathStore[F, Blob], Path.Plain) => G[A]
     ): G[A] =
       underlying match {
         case Left(blobStore)  => validateForBlobStore[G](url).flatMap(f(blobStore, _))
         case Right(fileStore) => validateForFileStore[G](url, fileStore).flatMap(g(fileStore, _))
+      }
+
+    override def liftToUniversal: UniversalStore[F] =
+      underlying match {
+        case Left(blobStore) => blobStore.liftToUniversal
+        case Right(pathStore) => pathStore.liftToUniversal
       }
 
   }
