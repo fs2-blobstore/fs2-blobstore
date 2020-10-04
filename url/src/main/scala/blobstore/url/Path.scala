@@ -7,8 +7,8 @@ import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import blobstore.url.general.UniversalFileSystemObject
 import cats.{Functor, Show}
 import cats.data.Chain
-import cats.instances.string._
 import cats.instances.option._
+import cats.instances.string._
 import cats.kernel.Order
 import cats.syntax.all._
 
@@ -228,6 +228,11 @@ object Path {
 
   def compare[A](one: Path[A], two: Path[A]): Int = {
     one.show compare two.show
+  }
+
+  def unapply[A](p: Path[A]): Option[(String, A, Chain[String])] = p match {
+    case AbsolutePath(representation, segments) => (p.show, representation, segments).some
+    case RootlessPath(representation, segments) => (p.show, representation, segments).some
   }
 
   implicit def order[A: Order]: Order[Path[A]]          = compare

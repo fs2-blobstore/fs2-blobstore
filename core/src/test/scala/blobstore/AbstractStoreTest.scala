@@ -508,7 +508,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
   }
 
   // remove dirs created by AbstractStoreTest
-//  override def afterAll(): Unit = cleanup(transferStoreRootDir.resolve(testRunRoot))
+  override def afterAll(): Unit = cleanup(transferStoreRootDir.nioPath.resolve(testRunRoot.nioPath))
 
   def cleanup(root: NioPath): Unit = {
 

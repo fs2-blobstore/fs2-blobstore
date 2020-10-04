@@ -35,8 +35,6 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
     SftpStore[IO](session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
   override lazy val store: Store[IO, Authority.Standard, SftpFile] = sftpStore.liftTo[Authority.Standard]
 
-  override val authority: Authority.Standard = Authority.Standard.localhost
-
   val scheme = "sftp"
 
   // remove dirs created by AbstractStoreTest
