@@ -11,7 +11,9 @@ import cats.{ApplicativeError, Show}
 
 import scala.util.Try
 
-case class Port(portNumber: Int)
+case class Port(portNumber: Int) {
+  override def toString: String = portNumber.toString
+}
 
 object Port {
   val MinPortNumber: Int = 0

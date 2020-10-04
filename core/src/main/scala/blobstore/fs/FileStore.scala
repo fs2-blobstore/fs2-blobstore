@@ -167,15 +167,15 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   override def liftTo[A <: Authority, B](f: NioPath => B, g: Plain => Plain): Store[F, A, B] =
     new Store.DelegatingStore[F, NioPath, A, B](f, Right(this), g)
 
-  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
   fsb: FileSystemObject[B]): F[Int] = {
-    dstStore.stat(dstPath).map(_.fold(dstPath.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+    dstStore.stat(dstUrl).map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
       list(srcPath.plain)
         .evalMap { p =>
           if (p.isDir) {
-            transferTo(dstStore, p, dstPath `//` p.lastSegment)
+            transferTo(dstStore, p, dstUrl `//` p.lastSegment)
           } else {
-            val dp = if (dstIsDir) dstPath / p.lastSegment else dstPath
+            val dp = if (dstIsDir) dstUrl / p.lastSegment else dstUrl
             get(p, 4096).through(dstStore.put(dp)).compile.drain.as(1)
           }
         }

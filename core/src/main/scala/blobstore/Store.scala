@@ -33,7 +33,7 @@ import scala.util.{Failure, Success, Try}
 trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
 
   /**
-    * @param path to list
+    * @param url to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
     *                  otherwise – return files and folder at given path.
     * @return stream of Paths. Implementing stores must guarantee that returned Paths
@@ -48,7 +48,7 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
     *          list(folder, recursive = true)  -> [a, b, c, d, e]
     *          list(folder, recursive = false) -> [a, b, c, sub-folder]
     */
-  def list(path: Url[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
+  def list(url: Url[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
 
   /**
     * @param url to get
@@ -202,8 +202,8 @@ object Store {
           }
       }
 
-    override def remove(path: Url[AA], recursive: Boolean): F[Unit] =
-      validateAndInvoke[F, Unit](path)(
+    override def remove(url: Url[AA], recursive: Boolean): F[Unit] =
+      validateAndInvoke[F, Unit](url)(
         _.remove(_, recursive),
         _.remove(_, recursive)
       )

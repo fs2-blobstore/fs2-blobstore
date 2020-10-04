@@ -64,30 +64,30 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
 
   /**
     * getContents with default UTF8 decoder
-    * @param path Path to get
+    * @param url Path to get
     * @return F[String] with file contents
     */
-  def getContents(path: Url[A], chunkSize: Int = 4096): F[String] = getContents(path, chunkSize, fs2.text.utf8Decode)
+  def getContents(url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
 
   /**
     * Decode get bytes from path into a string using decoder and return concatenated string.
     *
     * USE WITH CARE, this loads all file contents into memory.
     *
-    * @param path Path to get
+    * @param url Path to get
     * @param decoder Pipe[F, Byte, String]
     * @return F[String] with file contents
     */
-  def getContents(path: Url[A], chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
-    get(path, chunkSize).through(decoder).compile.toList.map(_.mkString)
+  def getContents(url: Url[A], chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
+    get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
 
   /**
     * Collect all list results in the same order as the original list Stream
-    * @param path Path to list
+    * @param url Path to list
     * @return F\[List\[Path\]\] with all items in the result
     */
-  def listAll(path: Url[A]): F[List[Path[B]]] =
-    list(path).compile.toList
+  def listAll(url: Url[A]): F[List[Path[B]]] =
+    list(url).compile.toList
 
   /**
     * Copy value of the given path in this store to the destination store.
@@ -99,16 +99,16 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
     * listing contents result in nested directories it will copy files inside dirs recursively.
     *
     * @param dstStore destination store
-    * @param srcPath path to transfer from (can be a path to a file or dir)
-    * @param dstPath path to transfer to (can be a path to a file or dir, if you are transferring multiple files,
+    * @param srcUrl path to transfer from (can be a path to a file or dir)
+    * @param dstUrl path to transfer to (can be a path to a file or dir, if you are transferring multiple files,
     *                make sure that dstPath.isDir == true, otherwise all files will override destination.
     * @return Stream[F, Int] number of files transfered
     */
-  def transferTo[AA <: Authority, BB](dstStore: Store[F, AA, BB], srcPath: Url[A], dstPath: Url[AA]): F[Int] =
-    list(srcPath, recursive = true)
+  def transferTo[AA <: Authority, BB](dstStore: Store[F, AA, BB], srcUrl: Url[A], dstUrl: Url[AA]): F[Int] =
+    list(srcUrl, recursive = true)
       .flatMap(p =>
-        get(srcPath.replacePath(p), 4096)
-          .through(dstStore.put(dstPath.copy(path = p.plain)))
+        get(srcUrl.replacePath(p), 4096)
+          .through(dstStore.put(dstUrl.copy(path = p.plain)))
           .last
           .map(_.fold(0)(_ => 1))
       )

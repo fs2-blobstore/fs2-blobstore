@@ -90,19 +90,19 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
 
 final case class DummyStore()(implicit cs: ContextShift[IO]) extends Store[IO, Authority.Bucket, String] {
   val buf = new ArrayBuffer[Byte]()
-  override def put(path: Url[Bucket], overwrite: Boolean, size: Option[Long] = None): Pipe[IO, Byte, Unit] = {
+  override def put(url: Url[Bucket], overwrite: Boolean, size: Option[Long] = None): Pipe[IO, Byte, Unit] = {
     in =>
       {
         buf.appendAll(in.compile.toVector.unsafeRunSync())
         Stream.emit(())
       }
   }
-  override def get(path: Url[Authority.Bucket], chunkSize: Int): Stream[IO, Byte]                    = Stream.emits(buf)
-  override def list(path: Url[Authority.Bucket], recursive: Boolean = false): Stream[IO, Path.Plain] = ???
-  override def move(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                                    = ???
-  override def copy(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                                    = ???
-  override def remove(path: Url[Bucket], recursive: Boolean): IO[Unit]                               = ???
-  override def putRotate(computePath: IO[Url[Bucket]], limit: Long): Pipe[IO, Byte, Unit]            = ???
+  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[IO, Byte]                    = Stream.emits(buf)
+  override def list(url: Url[Authority.Bucket], recursive: Boolean = false): Stream[IO, Path.Plain] = ???
+  override def move(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                                   = ???
+  override def copy(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                                   = ???
+  override def remove(url: Url[Bucket], recursive: Boolean): IO[Unit]                               = ???
+  override def putRotate(computePath: IO[Url[Bucket]], limit: Long): Pipe[IO, Byte, Unit]           = ???
 
   override def stat(url: Url[Bucket]): IO[Option[Path[String]]] = ???
 

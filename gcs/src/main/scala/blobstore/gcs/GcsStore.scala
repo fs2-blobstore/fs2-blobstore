@@ -19,6 +19,22 @@ import fs2.{Chunk, Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
+/**
+  * @param storage configured instance of GCS Storage
+  * @param blocker cats-effect Blocker to run blocking operations on.
+  * @param acls list of Access Control List objects to be set on all uploads.
+  * @param defaultTrailingSlashFiles test if folders returned by [[list]] are files with trailing slashes in their names.
+  *                                  This controls behaviour of [[list]] method from Store trait.
+  *                                  Use [[listUnderlying]] to control on per-invocation basis.
+  * @param defaultDirectDownload use direct download.
+  *                              When enabled the whole media content is downloaded in a single request (but still streamed).
+  *                              Otherwise use the resumable media download protocol to download in data chunks.
+  *                              This controls behaviour of [[get]] method from Store trait.
+  *                              Use [[getUnderlying]] to control on per-invocation basis.
+  * @param defaultMaxChunksInFlight limit maximum number of chunks buffered when direct download is used. Does not affect resumable download.
+  *                                 This controls behaviour of [[get]] method from Store trait.
+  *                                 Use [[getUnderlying]] to control on per-invocation basis.
+  */
 final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   storage: Storage,
   blocker: Blocker,
@@ -168,8 +184,8 @@ final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
-  override def stat(path: Url[Bucket]): F[Option[Path[GcsBlob]]] =
-    blocker.delay(Option(storage.get(toBlobId(path))))
+  override def stat(url: Url[Bucket]): F[Option[Path[GcsBlob]]] =
+    blocker.delay(Option(storage.get(toBlobId(url))))
       .map(b => b.map(b => Path.of(b.getName, GcsBlob(b))))
 
   override def liftToUniversal: UniversalStore[F] =

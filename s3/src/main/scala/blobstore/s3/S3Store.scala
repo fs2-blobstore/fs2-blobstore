@@ -65,8 +65,8 @@ final class S3Store[F[_]](
     s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}"
   )
 
-  override def list(path: Url[Authority.Bucket], recursive: Boolean = false): Stream[F, Path[S3Blob]] =
-    listUnderlying(path, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
+  override def list(url: Url[Authority.Bucket], recursive: Boolean = false): Stream[F, Path[S3Blob]] =
+    listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
   override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[F, Byte] = get(url, None)
 
@@ -172,13 +172,13 @@ final class S3Store[F[_]](
     }
 
   def listUnderlying(
-    path: Url[Authority.Bucket],
+    url: Url[Authority.Bucket],
     fullMetadata: Boolean,
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
   ): Stream[F, Path[S3Blob]] = {
-    val bucket = path.authority.show
-    val key    = path.path.show
+    val bucket = url.authority.show
+    val key    = url.path.show
     val request = {
       val b = ListObjectsV2Request
         .builder()

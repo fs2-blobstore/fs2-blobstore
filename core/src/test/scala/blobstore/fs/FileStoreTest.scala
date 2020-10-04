@@ -32,6 +32,6 @@ class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
   behavior of "FileStore.put"
   it should "not have side effects when creating a Sink" in {
     localStore.put(Path(s"fs_tests_$testRun/path/file.txt"))
-    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync().isEmpty must be(true)
+    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe empty
   }
 }

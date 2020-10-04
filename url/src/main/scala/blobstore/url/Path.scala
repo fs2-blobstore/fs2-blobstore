@@ -28,7 +28,7 @@ sealed trait Path[A] {
 
   def plain: Path.Plain = this match {
     case AbsolutePath(_, segments) => AbsolutePath("/" + segments.mkString_("/"), segments)
-    case RootlessPath(_, segments) => RootlessPath(segments.mkString_(""), segments)
+    case RootlessPath(_, segments) => RootlessPath(segments.mkString_("/"), segments)
   }
 
   def absolute: AbsolutePath[String] = plain match {
@@ -189,7 +189,7 @@ object Path {
       }
     }
 
-    def relativeHome: RootlessPath[String] = RootlessPath("", Chain.empty)
+    def root: RootlessPath[String] = RootlessPath("", Chain.empty)
 
     implicit def show[A]: Show[RootlessPath[A]] = _.segments.mkString_("/")
     implicit def order[A: Order]: Order[RootlessPath[A]] = (x, y) =>

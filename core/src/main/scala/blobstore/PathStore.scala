@@ -121,7 +121,7 @@ abstract class PathStore[F[_], BlobType] {
   def liftToStandard: Store[F, Authority.Standard, BlobType] =
     liftTo[Authority.Standard, BlobType](identity)
 
-  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit
+  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
   fsb: FileSystemObject[B]): F[Int]
 
   def stat[A](path: Path[A]): F[Option[Path[BlobType]]]

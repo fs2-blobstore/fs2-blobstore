@@ -10,6 +10,10 @@ import cats.instances.order._
 import cats.instances.string._
 import cats.syntax.all._
 
+/**
+  * The authority part of a URL. Used to encode hosts on a network, also supports a special "Bucket" authority which
+  * only allows for valid bucket names.
+  */
 sealed trait Authority {
   def host: Host
 

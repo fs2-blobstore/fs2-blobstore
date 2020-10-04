@@ -22,11 +22,8 @@ services:
 
     command: "blob:password:::sftp_tests"
 
-    ports:
-      - "2223:22"
-
   minio:
-    image: minio/minio:latest
+    image: minio/minio
 
     environment:
       - MINIO_ACCESS_KEY=my_access_key
@@ -36,9 +33,6 @@ services:
       - ./tmp/s3-store-root:/data
 
     command: "server --compat /data"
-
-    ports:
-      - "9000:9000"
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite

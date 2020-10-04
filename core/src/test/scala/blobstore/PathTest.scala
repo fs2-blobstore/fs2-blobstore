@@ -25,18 +25,14 @@ import cats.syntax.all._
 class PathTest extends AnyFlatSpec with Matchers with Inside {
   behavior of "Path"
   it should "parse string path to file correctly" in {
-    val s3Path  = Path("some-bucket/path/to/file")
-    val gcsPath = Path("some-bucket/path/to/file")
+    val path = Path("some-bucket/path/to/file")
 
-    s3Path.representation mustBe "some-bucket/path/to/file"
-    s3Path.show mustBe "some-bucket/path/to/file"
-    s3Path.segments mustBe Chain("some-bucket", "path", "to", "file")
-    s3Path.lastSegment mustBe "file".some
-
-    gcsPath.representation mustBe "some-bucket/path/to/file"
-    gcsPath.show mustBe "some-bucket/path/to/file"
-    gcsPath.segments mustBe Chain("some-bucket", "path", "to", "file")
-    gcsPath.lastSegment mustBe "file".some
+    path.representation mustBe "some-bucket/path/to/file"
+    path.show mustBe "some-bucket/path/to/file"
+    path.segments mustBe Chain("some-bucket", "path", "to", "file")
+    path.lastSegment mustBe "file".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "parse string path to file without prefix correctly" in {
@@ -46,6 +42,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     path.show mustBe "some-bucket/path/to/file"
     path.segments mustBe Chain("some-bucket", "path", "to", "file")
     path.lastSegment mustBe "file".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "parse string path to file stating with / correctly" in {
@@ -55,6 +53,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     path.show mustBe "/some-bucket/path/to/file"
     path.segments mustBe Chain("some-bucket", "path", "to", "file")
     path.lastSegment mustBe "file".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "parse string path to dir correctly" in {
@@ -64,6 +64,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     path.show mustBe "some-bucket/path/to/"
     path.segments mustBe Chain("some-bucket", "path", "to", "")
     path.lastSegment mustBe "to/".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "parse paths with no key" in {
@@ -73,6 +75,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     path.show mustBe "some-bucket"
     path.segments mustBe Chain("some-bucket")
     path.lastSegment mustBe "some-bucket".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "parse empty path" in {
@@ -86,6 +90,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     path.show mustBe "root with spaces/dir with spaces/file with spaces"
     path.segments mustBe Chain("root with spaces", "dir with spaces", "file with spaces")
     path.lastSegment mustBe "file with spaces".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "extend a path with no key correctly" in {
@@ -95,6 +101,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     path.show mustBe "some-bucket/key"
     path.segments mustBe Chain("some-bucket", "key")
     path.lastSegment mustBe "key".some
+    path.plain.show mustBe path.show
+    path.plain.representation mustBe path.representation
   }
 
   it should "be extractable using unapply" in {

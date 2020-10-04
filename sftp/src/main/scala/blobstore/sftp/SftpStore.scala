@@ -143,7 +143,7 @@ final class SftpStore[F[_]](
   private def mkdirs[A](path: Path[A], channel: ChannelSftp): F[Unit] = {
     val root: Path.Plain = path match {
       case AbsolutePath(_, _) => AbsolutePath.root
-      case RootlessPath(_, _) => RootlessPath.relativeHome
+      case RootlessPath(_, _) => RootlessPath.root
     }
 
     fs2.Stream.emits(path.segments.toList)
@@ -204,12 +204,12 @@ final class SftpStore[F[_]](
   override def liftTo[A <: Authority, B](f: SftpFile => B, g: Plain => Plain): Store[F, A, B] =
     new Store.DelegatingStore[F, SftpFile, A, B](f, Right(this), g)
 
-  override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstPath: Url[A])(implicit
+  override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
   fsb: FileSystemObject[B]): F[Int] =
     list(srcPath, recursive = true)
       .flatMap(p =>
         get(p, 4096)
-          .through(dstStore.put(dstPath.replacePath(p)))
+          .through(dstStore.put(dstUrl.replacePath(p)))
           .last
           .map(_.fold(0)(_ => 1))
       )
