@@ -28,7 +28,7 @@ object Port {
 
   def unsafe(c: String): Port = parse(c) match {
     case Valid(p)   => p
-    case Invalid(e) => throw SingleValidationException(e)
+    case Invalid(e) => throw SingleValidationException(e) // scalafix:ok
   }
 
   def compare(one: Port, two: Port): Int = one.portNumber compare two.portNumber

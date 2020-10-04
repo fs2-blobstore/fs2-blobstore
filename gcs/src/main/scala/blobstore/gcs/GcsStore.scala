@@ -2,13 +2,11 @@ package blobstore.gcs
 
 import java.io.OutputStream
 import java.nio.channels.Channels
-import java.nio.file
-import java.nio.file.Files
 
 import _root_.cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Sync}
 import _root_.cats.instances.list._
 import _root_.cats.syntax.all._
-import blobstore.{putRotateBase, Store, StoreOps}
+import blobstore.{putRotateBase, Store}
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.Store.{BlobStore, UniversalStore}

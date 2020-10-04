@@ -3,7 +3,7 @@ package blobstore.url
 import blobstore.url.exception.{MultipleUrlValidationException, UrlParseError}
 import blobstore.url.Authority.Standard
 import blobstore.url.Path.AbsolutePath
-import cats.{ApplicativeError, Functor, Order, Show}
+import cats.{ApplicativeError, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
 import cats.data.ValidatedNec
 import cats.instances.string._
@@ -48,7 +48,7 @@ object Url {
 
   def unsafe[A <: Authority: UrlParser](c: String): Url[A] = parse[A](c) match {
     case Valid(u)   => u
-    case Invalid(e) => throw MultipleUrlValidationException(e)
+    case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
   implicit def ordering[A <: Authority]: Ordering[Url[A]] = _.show compare _.show

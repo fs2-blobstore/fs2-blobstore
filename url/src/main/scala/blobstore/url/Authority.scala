@@ -57,7 +57,7 @@ object Authority {
     def apply(candidate: String): ValidatedNec[AuthorityParseError, Standard] = parse(candidate)
     def unsafe(candidate: String): Standard = parse(candidate) match {
       case Valid(a)   => a
-      case Invalid(e) => throw MultipleUrlValidationException(e)
+      case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
     }
 
     def localhost: Standard = unsafe("localhost")
@@ -144,7 +144,7 @@ object Authority {
     def unsafe(c: String): Bucket =
       parse(c) match {
         case Valid(a)   => a
-        case Invalid(e) => throw MultipleUrlValidationException(e)
+        case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
       }
 
     def parseWithRegion(c: String, region: String): ValidatedNec[BucketParseError, Bucket] =

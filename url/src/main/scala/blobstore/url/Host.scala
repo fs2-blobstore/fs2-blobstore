@@ -2,7 +2,6 @@ package blobstore.url
 
 import blobstore.url.exception.{HostParseError, MultipleUrlValidationException}
 import blobstore.url.Hostname.Label
-import blobstore.url.exception.HostParseError.label
 import cats.{ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
@@ -30,11 +29,11 @@ sealed trait Host
 
 object Host {
 
-  def parse(s: String): ValidatedNec[HostParseError, Host] = Hostname.parse(s).orElse(IpV4Address.parse(s))
+  def parse(s: String): ValidatedNec[HostParseError, Host] = Hostname.parse(s).widen[Host].orElse(IpV4Address.parse(s))
 
   def unsafe(s: String): Host = parse(s) match {
     case Valid(v)   => v
-    case Invalid(e) => throw MultipleUrlValidationException(e)
+    case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
   implicit def order: Order[Host] =
@@ -62,7 +61,8 @@ object IpV4Address {
   def parse(s: String): ValidatedNec[HostParseError, IpV4Address] = {
     def predicate(octet: String): ValidatedNec[HostParseError, Byte] =
       Try(octet.toInt).toEither.leftMap(_ => HostParseError.ipv4.InvalidIpv4(octet)).flatMap { o =>
-        if (o >= 0 && o <= 255) o.toByte.asRight else HostParseError.ipv4.OctetOutOfRange(o, octet).asLeft
+        if (o >= 0 && o <= 255) o.toByte.asRight[HostParseError]
+        else HostParseError.ipv4.OctetOutOfRange(o, octet).asLeft[Byte]
       }.toValidatedNec
 
     s.split('.').toList match {
@@ -74,7 +74,7 @@ object IpV4Address {
 
   def unsafe(s: String): IpV4Address = parse(s) match {
     case Valid(i)   => i
-    case Invalid(e) => throw MultipleUrlValidationException(e)
+    case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
   private object compareBytes extends (Const[(Byte, Byte)]#λ ~> Const[Int]#λ) {
@@ -145,7 +145,10 @@ object Hostname {
       )
 
     val firstCharacter: ValidatedNec[HostParseError, Unit] = value.headOption.map { h =>
-      Validated.cond(h.isLetterOrDigit, (), HostParseError.hostname.InvalidFirstCharacter(value)).toValidatedNec
+      Validated.cond(h.isLetterOrDigit, (), HostParseError.hostname.InvalidFirstCharacter(value)).toValidatedNec[
+        HostParseError,
+        Unit
+      ]
     }.getOrElse(HostParseError.hostname.EmptyDomainName.invalidNec[Unit])
 
     (labelsNec, length, firstCharacter).mapN((labels, _, _) => Hostname(labels))
@@ -153,7 +156,7 @@ object Hostname {
 
   def unsafe(value: String): Hostname = parse(value) match {
     case Valid(h)   => h
-    case Invalid(e) => throw MultipleUrlValidationException(e)
+    case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
   def compare(a: Hostname, b: Hostname): Int = a.show compare b.show

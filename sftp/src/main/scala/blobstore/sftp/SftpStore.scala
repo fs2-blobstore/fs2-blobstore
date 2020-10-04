@@ -6,13 +6,11 @@ import blobstore.{_writeAllToOutputStream1, putRotateBase, PathStore, Store}
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
-import blobstore.Store.{BlobStore, UniversalStore}
-import blobstore.url.general.UniversalFileSystemObject
+import blobstore.Store.BlobStore
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, Semaphore}
 import cats.instances.option._
 import cats.syntax.all._
-import cats.MonadError
 import com.jcraft.jsch._
 import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue

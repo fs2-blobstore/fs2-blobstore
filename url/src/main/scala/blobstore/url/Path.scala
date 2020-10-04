@@ -1,15 +1,14 @@
 package blobstore.url
 
-import java.net.URI
 import java.nio.file.Paths
 import java.time.Instant
 
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import blobstore.url.general.UniversalFileSystemObject
-import cats.{Eq, Functor, Show}
-import cats.data.{Chain, NonEmptyChain}
+import cats.{Functor, Show}
+import cats.data.Chain
 import cats.instances.string._
-import cats.instances.list._
+import cats.instances.option._
 import cats.kernel.Order
 import cats.syntax.all._
 
@@ -38,8 +37,8 @@ sealed trait Path[A] {
   }
 
   def relative: RootlessPath[String] = plain match {
-    case AbsolutePath(a, segments)     => RootlessPath(a.stripPrefix("/"), segments)
-    case p @ RootlessPath(a, segments) => p
+    case AbsolutePath(a, segments) => RootlessPath(a.stripPrefix("/"), segments)
+    case p @ RootlessPath(_, _)    => p
   }
 
   def nioPath: java.nio.file.Path = Paths.get(toString)
@@ -95,6 +94,8 @@ sealed trait Path[A] {
     (plain / segment).as(representation)
 
   override def toString: String = Show[Path[A]].show(this)
+
+  @SuppressWarnings(Array("scalafix:Disable.Any"))
   override def equals(obj: Any): Boolean =
     obj match {
       case p: Path[_] => p.plain.eqv(plain)
@@ -214,13 +215,14 @@ object Path {
 
   def plain(path: String): Path.Plain = apply(path)
 
-  def apply(s: String): Path.Plain =
-    AbsolutePath.parse(s).orElse(RootlessPath.parse(s)).getOrElse(
+  def apply(s: String): Path.Plain = {
+    AbsolutePath.parse(s).widen[Path.Plain].orElse(RootlessPath.parse(s)).getOrElse(
       RootlessPath(
         s,
         Chain(s.split("/").toList: _*)
       ) // Paths either have a root or they don't, this block is never executed
     )
+  }
 
   def of[B](path: String, b: B): Path[B] = Path(path).as(b)
 
