@@ -52,5 +52,5 @@ lazy val docs = (project in file("project-docs"))
     Compile / scalacOptions -= "-Ywarn-dead-code",
     mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94
   )
-  .dependsOn(gcs, sftp, s3, core % "compile->test")//, box, azure)
+  .dependsOn(gcs, sftp, s3, core % "compile->test") //, box, azure)
   .enablePlugins(MdocPlugin)

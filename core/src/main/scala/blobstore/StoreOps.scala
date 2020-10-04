@@ -31,11 +31,11 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
     * @param dst Path to write to
     * @return F[Unit]
     */
-  def put(store: Store[F, A, B], src: java.nio.file.Path, dst: Url[A], overwrite: Boolean, blocker: Blocker): F[Unit] =
+  def put(src: java.nio.file.Path, dst: Url[A], overwrite: Boolean, blocker: Blocker): F[Unit] =
     Sync[F].delay(Option(src.toFile.length)).map(_.filter(_ > 0)).flatMap { size =>
       fs2.io.file
         .readAll(src, blocker, 4096)
-        .through(store.put(dst, overwrite, size))
+        .through(put(dst, overwrite, size))
         .compile
         .drain
     }
