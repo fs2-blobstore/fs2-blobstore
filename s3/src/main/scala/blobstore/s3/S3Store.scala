@@ -38,8 +38,8 @@ import scala.jdk.CollectionConverters._
 
 /**
   * @param s3 - S3 Async Client
-  * @param objectAcl - optional default ACL to apply to all [[put]], [[move]] and [[copy]] operations.
-  * @param sseAlgorithm - optional default SSE Algorithm to apply to all [[put]], [[move]] and [[copy]] operations.
+  * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
+  * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
   * @param defaultFullMetadata       – return full object metadata on [[list]], requires additional request per object.
   *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
   *                                  This controls behaviour of [[list]] method from Store trait.
