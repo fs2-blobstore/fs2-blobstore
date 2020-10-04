@@ -47,7 +47,7 @@ sealed trait Path[A] {
     * Compose with string to form a new Path
     *
     * The underlying representation must be String in order for the representation and the path to be kept in sync.
-    * Use {@link addSegment()} to modify paths backed by non-String types
+    * Use [[addSegment]] to modify paths backed by non-String types
     *
     * @see addSegment
     */

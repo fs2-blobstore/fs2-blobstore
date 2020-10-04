@@ -58,7 +58,7 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
   def get(url: Url[A], chunkSize: Int): Stream[F, Byte]
 
   /**
-    * It is highly recommended to provide [[Path.size]] when writing as it allows for optimizations in some store.
+    * It is highly recommended to provide `Path.size` when writing as it allows for optimizations in some store.
     * Specifically, S3Store will behave very poorly if no size is provided as it will load all bytes in memory before
     * writing content to S3 server.
     *
@@ -132,7 +132,7 @@ object Store {
 
   /**
     * UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
-    * denominator" type [[UniversalFileSystemObject]]. This is useful if you want a common interface for all stores.
+    * denominator" type `blobstore.url.general.UniversalFileSystemObject`. This is useful if you want a common interface for all stores.
     *
     * @see [[Store.liftToUniversal]]
     * @see [[PathStore.liftToUniversal]]
