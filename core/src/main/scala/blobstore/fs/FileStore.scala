@@ -35,12 +35,12 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   override def authority: Authority = Authority.Standard(Hostname.unsafe("localhost"), None, None)
 
   override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[NioPath]] = {
-    val isDir  = Stream.eval(F.delay(Files.isDirectory(path.plain)))
-    val isFile = Stream.eval(F.delay(Files.exists(path.plain)))
+    val isDir  = Stream.eval(F.delay(Files.isDirectory(path.nioPath)))
+    val isFile = Stream.eval(F.delay(Files.exists(path.nioPath)))
 
     val stream: Stream[F, (JPath, Boolean)] =
       Stream
-        .eval(F.delay(if (recursive) Files.walk(path.plain) else Files.list(path.plain)))
+        .eval(F.delay(if (recursive) Files.walk(path.nioPath) else Files.list(path.nioPath)))
         .flatMap(x => Stream.fromIterator(x.iterator.asScala))
         .flatMap { x =>
           val isDir = Files.isDirectory(x)
@@ -58,7 +58,7 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
             x,
             Try(Files.size(x)).toOption,
             isDir,
-            Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
+            Try(Files.getLastModifiedTime(path.nioPath)).toOption.map(_.toInstant)
           ))
       }
 
@@ -66,9 +66,9 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
       F.delay {
         NioPath(
           path = Paths.get(path.show),
-          size = Try(Files.size(path.plain)).toOption,
+          size = Try(Files.size(path.nioPath)).toOption,
           isDir = false,
-          lastModified = Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
+          lastModified = Try(Files.getLastModifiedTime(path.nioPath)).toOption.map(_.toInstant)
         )
       }
     }
@@ -77,7 +77,7 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   }
 
   override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] =
-    fs2.io.file.readAll[F](path.plain, blocker, chunkSize)
+    fs2.io.file.readAll[F](path.nioPath, blocker, chunkSize)
 
   override def put[A](path: Path[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] = {
     in =>
@@ -85,7 +85,7 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
         if (overwrite) List(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
         else List(StandardOpenOption.CREATE_NEW)
       Stream.eval(createParentDir(path.plain)) >> fs2.io.file.writeAll(
-        path = path.plain,
+        path = path.nioPath,
         blocker = blocker,
         flags = flags
       ).apply(
@@ -94,10 +94,10 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   }
 
   override def move[A, B](src: Path[A], dst: Path[B]): F[Unit] =
-    createParentDir(dst.plain) >> F.delay(Files.move(src.plain, dst.plain)).void
+    createParentDir(dst.plain) >> F.delay(Files.move(src.nioPath, dst.nioPath)).void
 
   override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
-    createParentDir(dst.plain) >> F.delay(Files.copy(src.plain, dst.plain)).void
+    createParentDir(dst.plain) >> F.delay(Files.copy(src.nioPath, dst.nioPath)).void
 
   override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
     if (recursive)
@@ -113,7 +113,7 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
         .flatTap(p => Resource.liftF(createParentDir(p.plain)))
         .flatMap { p =>
           FileHandle.fromPath(
-            path = p.plain,
+            path = p.nioPath,
             blocker = blocker,
             flags = StandardOpenOption.CREATE :: StandardOpenOption.WRITE :: StandardOpenOption.TRUNCATE_EXISTING :: Nil
           )
@@ -136,12 +136,9 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
   }
 
   private def createParentDir(p: Path.Plain): F[Unit] =
-    F.delay(Files.createDirectories(_toJPath(p).getParent))
+    F.delay(Files.createDirectories(p.nioPath).getParent)
       .handleErrorWith { e => F.raiseError(new Exception(s"failed to create dir: $p", e)) }
       .void
-
-  implicit private def _toJPath(path: Path.Plain): JPath =
-    Paths.get(path.show)
 
   override def stat[A](path: Path[A]): F[Option[Path[NioPath]]] =
     Sync[F].delay {
@@ -153,7 +150,7 @@ final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: Con
           p,
           Try(Files.size(p)).toOption,
           Try(Files.isDirectory(p)).toOption.getOrElse(isDir(path)),
-          Try(Files.getLastModifiedTime(path.plain)).toOption.map(_.toInstant)
+          Try(Files.getLastModifiedTime(path.nioPath)).toOption.map(_.toInstant)
         )).some
     }
 
