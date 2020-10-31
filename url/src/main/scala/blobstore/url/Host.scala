@@ -9,7 +9,6 @@ import cats.instances.either._
 import cats.instances.int._
 import cats.instances.list._
 import cats.instances.order._
-import cats.instances.string._
 import cats.syntax.all._
 import shapeless.{Const, Sized}
 import shapeless.nat._
@@ -127,7 +126,7 @@ object Hostname {
         HostParseError.label.LabelLengthOutOfRange(el)
       ).toValidatedNec
       val charactersOk: ValidatedNec[HostParseError, Unit] =
-        Validated.cond(Label.Regex.matches(el), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
+        Validated.cond(Label.Regex.pattern.matcher(el).matches(), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
 
       (lengthOk, charactersOk).tupled.as(Label(el))
     }
