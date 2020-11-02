@@ -36,7 +36,7 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
 
 object Url {
 
-  type Plain  = Url[Standard] // TODO rename to Standard
+  type Standard  = Url[Standard]
   type Bucket = Url[Authority.Bucket]
 
   def bucket(url: String): ValidatedNec[UrlParseError, Url[Authority.Bucket]] = parse[Authority.Bucket](url)

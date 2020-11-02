@@ -53,7 +53,7 @@ object BucketParseError {
     val error = show"Bucket may not have userinfo segments: $u"
   }
   case class HostnameRequired(c: Host)       extends BucketParseError { val error = show"Expected hostname, but got $c" }
-  case class NotValidBucketUrl(u: Url.Plain) extends BucketParseError { val error = show"Not a valid bucket url $u"     }
+  case class NotValidBucketUrl(u: Url.Standard) extends BucketParseError { val error = show"Not a valid bucket url $u"     }
 }
 
 sealed trait AuthorityParseError extends UrlParseError
