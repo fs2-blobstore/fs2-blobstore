@@ -32,6 +32,9 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
   behavior of "GcsStore"
 
+  // When creating "folders" in the GCP UI, a zero byte object with the name of the prefix is created
+  it should "list prefix with first object named the same as prefix" is pending
+
   // Keys with trailing slashes are perfectly legal in GCS.
   // https://cloud.google.com/storage/docs/naming
   it should "handle files with trailing / in name" in {

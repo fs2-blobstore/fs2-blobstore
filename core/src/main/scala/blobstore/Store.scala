@@ -225,7 +225,7 @@ object Store {
       }
 
     private def validateForBlobStore[G[_]: ApplicativeError[*[_], Throwable]](url: Url[AA]): G[Url[Bucket]] =
-      Url.forBucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]
+      Url.bucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]
 
     private def validateForFileStore[G[_]: ApplicativeError[*[_], Throwable]](
       url: Url[AA],
