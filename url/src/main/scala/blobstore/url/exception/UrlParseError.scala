@@ -71,6 +71,8 @@ object AuthorityParseError {
   }
   case class HostWasEmpty(c: String) extends AuthorityParseError { val error = show"Host was empty: $c" }
 
+  case class InvalidFileUrl(m: String) extends AuthorityParseError { val error = m }
+
   implicit val show: Show[AuthorityParseError] = _.error
 }
 

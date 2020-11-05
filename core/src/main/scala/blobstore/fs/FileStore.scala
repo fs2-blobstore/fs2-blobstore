@@ -18,7 +18,7 @@ package fs
 
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
-import blobstore.url.{Authority, FileSystemObject, Hostname, Path, Url}
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Path.Plain
 
 import scala.jdk.CollectionConverters._
@@ -32,7 +32,7 @@ import scala.util.Try
 final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
   extends PathStore[F, NioPath] {
 
-  override def authority: Authority = Authority.Standard(Hostname.unsafe("localhost"), None, None)
+  override def authority: Authority = Authority.Standard.localhost
 
   override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[NioPath]] = {
     val isDir  = Stream.eval(F.delay(Files.isDirectory(path.nioPath)))

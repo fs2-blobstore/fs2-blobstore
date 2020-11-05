@@ -1,7 +1,6 @@
 package blobstore.url
 
 import blobstore.url.exception.{MultipleUrlValidationException, UrlParseError}
-import blobstore.url.Authority.Standard
 import blobstore.url.Path.AbsolutePath
 import cats.{ApplicativeError, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
@@ -36,7 +35,7 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
 
 object Url {
 
-  type Standard  = Url[Standard]
+  type Standard  = Url[Authority.Standard]
   type Bucket = Url[Authority.Bucket]
 
   def bucket(url: String): ValidatedNec[UrlParseError, Url[Authority.Bucket]] = parse[Authority.Bucket](url)
