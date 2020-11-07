@@ -20,6 +20,8 @@ case class UniversalFileSystemObject(
 object UniversalFileSystemObject {
   implicit val fileSystemObject: FileSystemObject[UniversalFileSystemObject] =
     new FileSystemObject[UniversalFileSystemObject] {
+      type StorageClassType = GeneralStorageClass
+
       override def name(a: UniversalFileSystemObject): String = a.name
 
       override def size(a: UniversalFileSystemObject): Option[Long] = a.size
@@ -28,6 +30,8 @@ object UniversalFileSystemObject {
 
       override def lastModified(a: UniversalFileSystemObject): Option[Instant] = a.lastModified
 
-      override def storageClass(a: UniversalFileSystemObject): Option[GeneralStorageClass] = a.storageClass
+      override def storageClass(a: UniversalFileSystemObject): Option[StorageClassType] = a.storageClass
+
+      override def universal(a: UniversalFileSystemObject): UniversalFileSystemObject = a
     }
 }

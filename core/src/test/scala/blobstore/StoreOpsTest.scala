@@ -8,7 +8,7 @@ import java.util.concurrent.Executors
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.Store.UniversalStore
-import blobstore.url.general.GeneralStorageClass
+import blobstore.url.general.UniversalFileSystemObject
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.effect.laws.util.TestInstances
 import fs2.{Pipe, Stream}
@@ -24,6 +24,8 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
   val blocker     = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
   implicit val fso: FileSystemObject[String] = new FileSystemObject[String] {
+    override type StorageClassType = Nothing
+
     override def name(a: String): String = ???
 
     override def size(a: String): Option[Long] = ???
@@ -32,7 +34,16 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
 
     override def lastModified(a: String): Option[Instant] = ???
 
-    override def storageClass(a: String): Option[GeneralStorageClass] = ???
+    override def storageClass(a: String): Option[Nothing] = None
+
+    override def universal(a: String): UniversalFileSystemObject =
+      UniversalFileSystemObject(
+        name(a),
+        size(a),
+        isDir(a),
+        storageClass(a),
+        lastModified(a)
+      )
   }
 
   behavior of "PutOps"

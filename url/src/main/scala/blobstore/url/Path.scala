@@ -113,12 +113,13 @@ sealed trait Path[A] {
     lastNonEmpty.map(_ + slashSuffix)
   }
 
-  def fullName(implicit B: FileSystemObject[A]): String              = FileSystemObject[A].name(representation)
-  def size(implicit B: FileSystemObject[A]): Option[Long]            = FileSystemObject[A].size(representation)
-  def isDir(implicit B: FileSystemObject[A]): Boolean                = FileSystemObject[A].isDir(representation)
-  def lastModified(implicit B: FileSystemObject[A]): Option[Instant] = FileSystemObject[A].lastModified(representation)
-  def fileName(implicit B: FileSystemObject[A]): Option[String]      = if (isDir) None else lastSegment
-  def dirName(implicit B: FileSystemObject[A]): Option[String]       = if (!isDir) None else lastSegment
+  def fullName(implicit B: FileSystemObject[A]): String                         = B.name(representation)
+  def size(implicit B: FileSystemObject[A]): Option[Long]                       = B.size(representation)
+  def isDir(implicit B: FileSystemObject[A]): Boolean                           = B.isDir(representation)
+  def lastModified(implicit B: FileSystemObject[A]): Option[Instant]            = B.lastModified(representation)
+  def storageClass(implicit B: FileSystemObject[A]): Option[B.StorageClassType] = B.storageClass(representation)
+  def fileName(implicit B: FileSystemObject[A]): Option[String]                 = if (isDir) None else lastSegment
+  def dirName(implicit B: FileSystemObject[A]): Option[String]                  = if (!isDir) None else lastSegment
 
 }
 
