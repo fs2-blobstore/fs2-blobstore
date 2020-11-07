@@ -25,7 +25,7 @@ import fs2.{Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
-final class BoxStore[F[_]](
+class BoxStore[F[_]](
   api: BoxAPIConnection,
   blocker: Blocker,
   rootFolderId: String,

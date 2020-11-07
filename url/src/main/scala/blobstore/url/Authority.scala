@@ -8,6 +8,7 @@ import cats.instances.either._
 import cats.instances.option._
 import cats.instances.order._
 import cats.instances.string._
+import cats.kernel.Eq
 import cats.syntax.all._
 
 /**
@@ -16,8 +17,6 @@ import cats.syntax.all._
   */
 sealed trait Authority {
   def host: Host
-
-  def equals(authority: Authority): Boolean
 
   override val toString: String = Show[Authority].show(this)
 }
@@ -35,11 +34,6 @@ object Authority {
     */
   case class Standard(host: Host, userInfo: Option[UserInfo], port: Option[Port]) extends Authority {
     lazy val toBucket: ValidatedNec[BucketParseError, Bucket] = Bucket.parse(Show[Standard].show(this))
-
-    def equals(a: Authority): Boolean = a match {
-      case Standard(host, _, port) => this.host === host && this.port === port
-      case Bucket(name, _)         => this.host === name && port.isEmpty
-    }
   }
 
   object Standard {
@@ -88,6 +82,9 @@ object Authority {
     implicit val show: Show[Standard]         = s => s.host.show + s.port.map(_.show).map(":" + _).getOrElse("")
     implicit val order: Order[Standard]       = Order.by(_.show)
     implicit val ordering: Ordering[Standard] = order.toOrdering
+    implicit val eq: Eq[Standard] = (x, y) => {
+      x.host === y.host && x.port === y.port
+    }
   }
 
   /**
@@ -162,6 +159,8 @@ object Authority {
     implicit val order: Order[Bucket]       = _.name compare _.name
     implicit val ordering: Ordering[Bucket] = order.toOrdering
     implicit val show: Show[Bucket]         = _.name.show
+    implicit val eq: Eq[Bucket] = (x, y) =>
+      x.host === y.host && x.region === y.region
   }
 
   def parse(s: String): ValidatedNec[AuthorityParseError, Authority] = Standard.parse(s)
@@ -183,6 +182,13 @@ object Authority {
   implicit val show: Show[Authority] = {
     case url: Standard => url.show
     case b: Bucket     => b.show
+  }
+
+  implicit val eq: Eq[Authority] = {
+    case (x: Standard, y: Standard) => x === y
+    case (x: Bucket, y: Bucket) => x === y
+    case (x: Standard, y: Bucket) => x.userInfo.isEmpty && x.port.isEmpty && x.host === y.host
+    case (x: Bucket, y: Standard) => y.userInfo.isEmpty && y.port.isEmpty && y.host === x.host
   }
 
 }

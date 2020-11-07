@@ -50,7 +50,7 @@ import scala.jdk.CollectionConverters._
   * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
   *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
   */
-final class S3Store[F[_]](
+class S3Store[F[_]](
   s3: S3AsyncClient,
   objectAcl: Option[ObjectCannedACL] = None,
   sseAlgorithm: Option[String] = None,
@@ -72,7 +72,7 @@ final class S3Store[F[_]](
 
   def get(url: Url[Authority.Bucket], meta: Option[S3MetaInfo]): Stream[F, Byte] = {
     val bucket = url.bucket.show
-    val key    = url.path.show
+    val key    = url.path.relative.show
 
     val request: GetObjectRequest =
       meta.fold(GetObjectRequest.builder())(S3MetaInfo.getObjectRequest).bucket(bucket).key(key).build()
@@ -104,7 +104,7 @@ final class S3Store[F[_]](
   ): Pipe[F, Byte, Unit] =
     in => {
       val bucket = url.bucket.show
-      val key    = url.path.show
+      val key    = url.path.relative.show
 
       val checkOverwrite = if (!overwrite) {
         liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
@@ -130,9 +130,9 @@ final class S3Store[F[_]](
   def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): F[Unit] = {
     val request = {
       val srcBucket = src.bucket.show
-      val srcKey    = src.path.show
+      val srcKey    = src.path.relative.show
       val dstBucket = dst.bucket.show
-      val dstKey    = dst.path.show
+      val dstKey    = dst.path.relative.show
 
       val builder = CopyObjectRequest.builder()
       val withAcl = objectAcl.fold(builder)(builder.acl)
@@ -149,7 +149,7 @@ final class S3Store[F[_]](
 
   override def remove(url: Url[Authority.Bucket], recursive: Boolean): F[Unit] = {
     val bucket = url.bucket.show
-    val key    = url.path.show
+    val key    = url.path.relative.show
     val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
     if (recursive) removeAll(url).void else liftJavaFuture(F.delay(s3.deleteObject(req))).void
@@ -178,7 +178,7 @@ final class S3Store[F[_]](
     recursive: Boolean
   ): Stream[F, Path[S3Blob]] = {
     val bucket = url.authority.show
-    val key    = url.path.show
+    val key    = url.path.relative.show
     val request = {
       val b = ListObjectsV2Request
         .builder()
@@ -347,11 +347,11 @@ final class S3Store[F[_]](
 
   override def stat(url: Url[Authority.Bucket]): F[Option[Path[S3Blob]]] =
     liftJavaFuture(
-      F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.bucket.show).key(url.path.show).build()))
+      F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.bucket.show).key(url.path.relative.show).build()))
     ).map { resp =>
       Path.of(
         url.path.show,
-        S3Blob(url.bucket.show, url.path.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
+        S3Blob(url.bucket.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
       ).some
     }
       .recover {
@@ -359,7 +359,7 @@ final class S3Store[F[_]](
           val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ =>
             defaultTrailingSlashFiles
           )
-          Path.of(url.path.show, S3Blob(url.bucket.show, url.path.show, meta)).some
+          Path.of(url.path.show, S3Blob(url.bucket.show, url.path.relative.show, meta)).some
       }
 
   override def liftToUniversal: UniversalStore[F] =

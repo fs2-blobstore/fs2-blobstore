@@ -35,7 +35,7 @@ import scala.jdk.CollectionConverters._
   *                                 This controls behaviour of `get`` method from Store trait.
   *                                 Use [[getUnderlying]] to control on per-invocation basis.
   */
-final class GcsStore[F[_]: ConcurrentEffect: ContextShift](
+class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   storage: Storage,
   blocker: Blocker,
   acls: List[Acl] = Nil,

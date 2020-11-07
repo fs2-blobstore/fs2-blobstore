@@ -29,7 +29,7 @@ import fs2.{Hotswap, Pipe, Stream}
 
 import scala.util.Try
 
-final class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
+class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
   extends PathStore[F, NioPath] {
 
   override def authority: Authority = Authority.Standard.localhost

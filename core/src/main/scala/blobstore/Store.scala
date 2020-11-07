@@ -22,7 +22,7 @@ import blobstore.url.Authority.Bucket
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.url.general.UniversalFileSystemObject
 import blobstore.Store.UniversalStore
-import cats.{ApplicativeError, MonadError}
+import cats.{ApplicativeError, Eq, MonadError}
 import cats.effect.{ContextShift, Sync}
 import cats.instances.try_._
 import cats.syntax.all._
@@ -231,7 +231,7 @@ object Store {
       url: Url[AA],
       fileStore: PathStore[F, Blob]
     ): G[Path.Plain] =
-      if (url.authority.equals(fileStore.authority)) transformPath(url.path).pure[G]
+      if (Eq[Authority].eqv(url.authority, fileStore.authority)) transformPath(url.path).pure[G]
       else
         new Exception(
           show"Expected authorities to match, but got ${url.authority} for ${fileStore.authority}"

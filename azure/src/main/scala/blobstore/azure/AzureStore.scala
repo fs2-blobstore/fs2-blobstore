@@ -38,7 +38,7 @@ import scala.jdk.CollectionConverters._
   *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
   *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
   */
-final class AzureStore[F[_]](
+class AzureStore[F[_]](
   azure: BlobServiceAsyncClient,
   defaultFullMetadata: Boolean = false,
   defaultTrailingSlashFiles: Boolean = false,

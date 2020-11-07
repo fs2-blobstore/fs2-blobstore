@@ -17,7 +17,7 @@ import fs2.concurrent.Queue
 
 import scala.util.Try
 
-final class SftpStore[F[_]](
+class SftpStore[F[_]] private (
   val authority: Authority,
   private[sftp] val session: Session,
   blocker: Blocker,
@@ -246,9 +246,12 @@ object SftpStore {
           }
           Stream.bracket(attemptConnect)(session => blocker.delay(session.disconnect()))
         }
-        authority <- Stream.eval(
-          Authority.parse(session.getHost).leftMap(MultipleUrlValidationException.apply).liftTo[F]
-        )
+        authority <- {
+          val port = Option(session.getPort).filter(_ != 22).map(":" + _).getOrElse("")
+          Stream.eval(
+            Authority.parse(session.getHost + port).leftMap(MultipleUrlValidationException.apply).liftTo[F]
+          )
+        }
         semaphore <- Stream.eval(maxChannels.traverse(Semaphore.apply[F]))
         mVar <- Stream.bracket(MVar.empty[F, ChannelSftp])(mVar =>
           mVar.tryTake.flatMap(_.fold(().pure[F])(closeChannel[F](semaphore, blocker)))

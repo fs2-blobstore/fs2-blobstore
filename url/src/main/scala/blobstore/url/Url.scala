@@ -63,7 +63,8 @@ object Url {
       case a @ AbsolutePath(_, _) => a.show.stripPrefix("/")
       case a                      => a.show
     }
-    show"${u.scheme}://${u.authority}/$pathString"
+
+    if (u.scheme === "file") show"${u.scheme}:///$pathString" else show"${u.scheme}://${u.authority}/$pathString"
   }
 
 }
