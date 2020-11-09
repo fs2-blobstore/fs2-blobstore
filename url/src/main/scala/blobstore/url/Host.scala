@@ -121,7 +121,7 @@ object Hostname {
   def parse(value: String): ValidatedNec[HostParseError, Hostname] = {
     val labels: ValidatedNec[HostParseError, List[Label]] = value.split('.').toList.traverse { el =>
       val lengthOk: ValidatedNec[HostParseError, Unit] = Validated.cond(
-        el.length >= 3 && el.length <= 63,
+        el.length >= 1 && el.length <= 63,
         (),
         HostParseError.label.LabelLengthOutOfRange(el)
       ).toValidatedNec
