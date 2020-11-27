@@ -97,7 +97,7 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
     * @param url to remove
     * @return F[Unit]
     */
-  def remove(url: Url[A], recursive: Boolean): F[Unit]
+  def remove(url: Url[A], recursive: Boolean = false): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.

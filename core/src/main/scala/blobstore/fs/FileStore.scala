@@ -29,8 +29,7 @@ import fs2.{Hotswap, Pipe, Stream}
 
 import scala.util.Try
 
-class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F])
-  extends PathStore[F, NioPath] {
+class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]) extends PathStore[F, NioPath] {
 
   override def authority: Authority = Authority.Standard.localhost
 
@@ -99,7 +98,7 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
   override def copy[A, B](src: Path[A], dst: Path[B]): F[Unit] =
     createParentDir(dst.plain) >> F.delay(Files.copy(src.nioPath, dst.nioPath)).void
 
-  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
+  override def remove[A](path: Path[A], recursive: Boolean = false): F[Unit] =
     if (recursive)
       fs2.io.file.directoryStream(blocker, path.nioPath).parEvalMap(maxConcurrent = 20)(p =>
         blocker.delay(Files.deleteIfExists(p))
