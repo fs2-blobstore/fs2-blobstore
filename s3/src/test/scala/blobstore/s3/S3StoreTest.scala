@@ -22,7 +22,6 @@ import blobstore.url.{Authority, Path}
 import blobstore.url.Authority.Bucket
 import cats.effect.IO
 import cats.effect.concurrent.Ref
-import cats.instances.list._
 import cats.syntax.all._
 import fs2.{Chunk, Stream}
 import org.scalatest.Inside

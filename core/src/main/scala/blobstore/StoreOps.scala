@@ -20,13 +20,11 @@ import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.all._
 import fs2.Pipe
 
-/**
-  * This object contains shared implementations of functions that requires additional capabilities from the effect type
+/** This object contains shared implementations of functions that requires additional capabilities from the effect type
   */
 private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Authority, B] { this: Store[F, A, B] =>
 
-  /**
-    * Write contents of src file into dst Path
+  /** Write contents of src file into dst Path
     * @param src java.nio.file.Path
     * @param dst Path to write to
     * @return F[Unit]
@@ -40,8 +38,7 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
         .drain
     }
 
-  /**
-    * Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
+  /** Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
     * to store. Useful when uploading data to stores that require content size like S3Store.
     *
     * @param url Path to write to
@@ -53,8 +50,7 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
         s.through(put(url, overwrite, Option(n)))
     }
 
-  /**
-    * get src path and write to local file system
+  /** get src path and write to local file system
     * @param src Path to get
     * @param dst local file to write contents to
     * @return F[Unit]
@@ -62,15 +58,13 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
   def get(src: Url[A], dst: java.nio.file.Path, chunkSize: Int, blocker: Blocker): F[Unit] =
     get(src, chunkSize).through(fs2.io.file.writeAll[F](dst, blocker)).compile.drain
 
-  /**
-    * getContents with default UTF8 decoder
+  /** getContents with default UTF8 decoder
     * @param url Path to get
     * @return F[String] with file contents
     */
   def getContents(url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
 
-  /**
-    * Decode get bytes from path into a string using decoder and return concatenated string.
+  /** Decode get bytes from path into a string using decoder and return concatenated string.
     *
     * USE WITH CARE, this loads all file contents into memory.
     *
@@ -81,16 +75,14 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
   def getContents(url: Url[A], chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
     get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
 
-  /**
-    * Collect all list results in the same order as the original list Stream
+  /** Collect all list results in the same order as the original list Stream
     * @param url Path to list
     * @return F\[List\[Path\]\] with all items in the result
     */
   def listAll(url: Url[A]): F[List[Path[B]]] =
     list(url).compile.toList
 
-  /**
-    * Copy value of the given path in this store to the destination store.
+  /** Copy value of the given path in this store to the destination store.
     *
     * This is especially useful when transferring content into S3Store that requires to know content
     * size before starting content upload.
@@ -115,8 +107,7 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
       .fold(0)(_ + _)
       .compile.last.map(_.getOrElse(0))
 
-  /**
-    * Remove all files from a store recursively, given a path
+  /** Remove all files from a store recursively, given a path
     */
   def removeAll(url: Url[A])(implicit F: FileSystemObject[B]): F[Int] = {
     val isDir = stat(url).map {

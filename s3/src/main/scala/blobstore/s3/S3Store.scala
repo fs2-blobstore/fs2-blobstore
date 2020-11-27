@@ -18,14 +18,12 @@ package s3
 
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
+
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.Store.{BlobStore, UniversalStore}
 import blobstore.url.general.UniversalFileSystemObject
 import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
 import cats.syntax.all._
-import cats.instances.string._
-import cats.instances.list._
-import cats.instances.option._
 import fs2.{Chunk, Hotswap, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
@@ -35,8 +33,7 @@ import util.liftJavaFuture
 
 import scala.jdk.CollectionConverters._
 
-/**
-  * @param s3 - S3 Async Client
+/** @param s3 - S3 Async Client
   * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
   * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
   * @param defaultFullMetadata       – return full object metadata on [[list]], requires additional request per object.
@@ -81,7 +78,7 @@ class S3Store[F[_]](
         override def prepare(): CompletableFuture[Stream[F, Byte]] = cf
         override def onResponse(response: GetObjectResponse): Unit = ()
         override def onStream(publisher: SdkPublisher[ByteBuffer]): Unit = {
-          cf.complete(publisher.toStream().flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
+          cf.complete(publisher.toStream.flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
           ()
         }
         override def exceptionOccurred(error: Throwable): Unit = {
@@ -105,15 +102,16 @@ class S3Store[F[_]](
       val bucket = url.bucket.show
       val key    = url.path.relative.show
 
-      val checkOverwrite = if (!overwrite) {
-        liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
-          .flatMap {
-            case Left(_: NoSuchKeyException) => F.unit
-            case Left(e)                     => F.raiseError[Unit](e)
-            case Right(_) =>
-              F.raiseError[Unit](new IllegalArgumentException(s"File at path '$url' already exist."))
-          }
-      } else F.unit
+      val checkOverwrite =
+        if (!overwrite) {
+          liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
+            .flatMap {
+              case Left(_: NoSuchKeyException) => F.unit
+              case Left(e)                     => F.raiseError[Unit](e)
+              case Right(_) =>
+                F.raiseError[Unit](new IllegalArgumentException(s"File at path '$url' already exist."))
+            }
+        } else F.unit
 
       Stream.eval(checkOverwrite) ++
         size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
@@ -186,7 +184,7 @@ class S3Store[F[_]](
       val builder = if (recursive) b else b.delimiter("/")
       builder.build()
     }
-    s3.listObjectsV2Paginator(request).toStream().flatMap { ol =>
+    s3.listObjectsV2Paginator(request).toStream.flatMap { ol =>
       val fDirs = ol.commonPrefixes().asScala.toList.traverse[F, Path[S3Blob]] { cp =>
         if (expectTrailingSlashFiles) {
           liftJavaFuture(
@@ -233,7 +231,7 @@ class S3Store[F[_]](
   ): Stream[F, Unit] = {
     val request = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, size)
 
-    val requestBody = AsyncRequestBody.fromPublisher(in.chunks.map(chunk => chunk.toByteBuffer).toUnicastPublisher())
+    val requestBody = AsyncRequestBody.fromPublisher(in.chunks.map(chunk => chunk.toByteBuffer).toUnicastPublisher)
 
     Stream.eval(liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
   }
@@ -408,8 +406,7 @@ object S3Store {
 
   private val mb: Int = 1024 * 1024
 
-  /**
-    * @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+  /** @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
     */
   private val multiUploadMinimumPartSize: Long = 5L * mb
   private val multiUploadDefaultPartSize: Long = 500L * mb
