@@ -19,8 +19,7 @@ import fs2.{Pipe, Stream}
 
 trait Store[F[_]] {
 
-  /**
-    * List paths. See [[StoreOps.ListOps]] for convenient listAll method.
+  /** List paths. See [[StoreOps.ListOps]] for convenient listAll method.
     *
     * @param path to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
@@ -39,16 +38,14 @@ trait Store[F[_]] {
     */
   def list(path: Path, recursive: Boolean = false): Stream[F, Path]
 
-  /**
-    * Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.
+  /** Get bytes for the given Path. See [[StoreOps.GetOps]] for convenient get and getContents methods.
     * @param path to get
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
   def get(path: Path, chunkSize: Int): Stream[F, Byte]
 
-  /**
-    * Provides a Sink that writes bytes into the provided path. See [[StoreOps.PutOps]] for convenient put String
+  /** Provides a Sink that writes bytes into the provided path. See [[StoreOps.PutOps]] for convenient put String
     * and put file methods.
     *
     * It is highly recommended to provide [[Path.size]] when writing as it allows for optimizations in some store.
@@ -61,31 +58,27 @@ trait Store[F[_]] {
     */
   def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit]
 
-  /**
-    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
+  /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     * @param src path
     * @param dst path
     * @return F[Unit]
     */
   def move(src: Path, dst: Path): F[Unit]
 
-  /**
-    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
+  /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     * @param src path
     * @param dst path
     * @return F[Unit]
     */
   def copy(src: Path, dst: Path): F[Unit]
 
-  /**
-    * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
+  /** Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param path to remove
     * @return F[Unit]
     */
   def remove(path: Path): F[Unit]
 
-  /**
-    * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
+  /** Writes all data to a sequence of blobs/files, each limited in size to `limit`.
     *
     * The `computePath` operation is used to compute the path of the first file
     * and every subsequent file. Typically, the next file should be determined
