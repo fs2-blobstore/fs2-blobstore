@@ -13,8 +13,7 @@ import org.slf4j.LoggerFactory
 import scala.jdk.CollectionConverters._
 import scala.util.Try
 
-/**
-  * Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
+/** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
   * See AbstractStoreTest to see what operations performed here.
   */
 @IntegrationTest
@@ -47,7 +46,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
       .adaptError {
         case _ => new Exception(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey")
       }
-      .get
+      .get // scalafix:ok
   }
 
   lazy val rootFolder: BoxFolder#Info = {
@@ -65,7 +64,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
     super.beforeAll()
     val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
 
-    rootFolder.getResource
+    rootFolder.getResource // scalafix:ok
       .getChildren(BoxFolder.ALL_FIELDS: _*)
       .asScala
       .toList

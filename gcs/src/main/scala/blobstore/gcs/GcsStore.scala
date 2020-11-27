@@ -6,8 +6,6 @@ import java.nio.channels.Channels
 
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
 import cats.syntax.all._
-import cats.instances.string._
-import cats.instances.list._
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobListOption, BlobWriteOption, CopyRequest}
@@ -15,8 +13,7 @@ import fs2.{Chunk, Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
-/**
-  * @param storage configured instance of GCS Storage
+/** @param storage configured instance of GCS Storage
   * @param blocker cats-effect Blocker to run blocking operations on.
   * @param acls list of Access Control List objects to be set on all uploads.
   * @param defaultTrailingSlashFiles test if folders returned by [[list]] are files with trailing slashes in their names.

@@ -15,7 +15,7 @@ import reactor.core.publisher.Mono
 
 class AzureStoreTest extends AbstractStoreTest with Inside {
   override val root: String = "container"
-  val options               = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null)
+  val options               = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
   // TODO: Remove this once version of azure-storage-blob containing https://github.com/Azure/azure-sdk-for-java/pull/9123 is released
   val azuriteContainerIp = InetAddress.getByName("azurite-container").getHostAddress
   val azure = new BlobServiceClientBuilder()

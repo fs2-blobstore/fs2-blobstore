@@ -15,6 +15,7 @@ project.vim
 test-output
 .metals
 .bloop
+.bsp
 project/metals.sbt
 
 # Project specific

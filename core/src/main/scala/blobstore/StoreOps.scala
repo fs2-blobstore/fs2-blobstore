@@ -25,8 +25,7 @@ trait StoreOps {
 
   implicit class PutOps[F[_]](store: Store[F]) {
 
-    /**
-      * Write contents String into path.
+    /** Write contents String into path.
       * @param contents String
       * @param path Path to write to
       * @return F[Unit]
@@ -42,8 +41,7 @@ trait StoreOps {
           .drain
       } yield ()
 
-    /**
-      * Write contents of src file into dst Path
+    /** Write contents of src file into dst Path
       * @param src java.nio.file.Path
       * @param dst Path to write to
       * @return F[Unit]
@@ -55,8 +53,7 @@ trait StoreOps {
         .compile
         .drain
 
-    /**
-      * Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
+    /** Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
       * to store. Useful when uploading data to stores that require content size like S3Store.
       *
       * @param path Path to write to
@@ -71,15 +68,13 @@ trait StoreOps {
 
   implicit class GetOps[F[_]](store: Store[F]) {
 
-    /**
-      * get with default buffer size of 4kb
+    /** get with default buffer size of 4kb
       * @param path Path to get
       * @return Stream of Byte
       */
     def get(path: Path): Stream[F, Byte] = store.get(path, 4096)
 
-    /**
-      * get src path and write to local file system
+    /** get src path and write to local file system
       * @param src Path to get
       * @param dst local file to write contents to
       * @return F[Unit]
@@ -87,15 +82,13 @@ trait StoreOps {
     def get(src: Path, dst: java.nio.file.Path, blocker: Blocker)(implicit F: Sync[F], CS: ContextShift[F]): F[Unit] =
       store.get(src, 4096).through(fs2.io.file.writeAll(dst, blocker)).compile.drain
 
-    /**
-      * getContents with default UTF8 decoder
+    /** getContents with default UTF8 decoder
       * @param path Path to get
       * @return F[String] with file contents
       */
     def getContents(path: Path)(implicit F: Sync[F]): F[String] = getContents(path, fs2.text.utf8Decode)
 
-    /**
-      * Decode get bytes from path into a string using decoder and return concatenated string.
+    /** Decode get bytes from path into a string using decoder and return concatenated string.
       *
       * USE WITH CARE, this loads all file contents into memory.
       *
@@ -111,8 +104,7 @@ trait StoreOps {
 
   implicit class ListOps[F[_]](store: Store[F]) {
 
-    /**
-      * Collect all list results in the same order as the original list Stream
+    /** Collect all list results in the same order as the original list Stream
       * @param path Path to list
       * @return F\[List\[Path\]\] with all items in the result
       */
@@ -123,8 +115,7 @@ trait StoreOps {
 
   implicit class TransferOps[F[_]](store: Store[F]) {
 
-    /**
-      * Copy value of the given path in this store to the destination store.
+    /** Copy value of the given path in this store to the destination store.
       *
       * This is especially useful when transferring content into S3Store that requires to know content
       * size before starting content upload.
@@ -164,8 +155,7 @@ trait StoreOps {
 
   implicit class RemoveOps[F[_]](store: Store[F]) {
 
-    /**
-      * Remove all files from a store recursively, given a path
+    /** Remove all files from a store recursively, given a path
       */
     def removeAll(dstPath: Path)(implicit F: Sync[F]): F[Int] = {
       import implicits._

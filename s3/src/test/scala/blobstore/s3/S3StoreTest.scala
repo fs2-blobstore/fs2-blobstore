@@ -20,7 +20,6 @@ import java.net.URI
 
 import cats.effect.IO
 import cats.effect.concurrent.Ref
-import cats.instances.list._
 import cats.syntax.traverse._
 import org.scalatest.{Assertion, Inside}
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
@@ -213,7 +212,7 @@ class S3StoreTest extends AbstractStoreTest with Inside {
     try {
       client.createBucket(CreateBucketRequest.builder().bucket(root).build()).get()
     } catch {
-      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
+      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] => // scalafix:ok
       // noop
     }
     ()

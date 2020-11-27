@@ -6,8 +6,6 @@ import java.time.Duration
 import java.time.temporal.ChronoUnit
 
 import cats.syntax.all._
-import cats.instances.string._
-import cats.instances.option._
 import cats.effect.{ConcurrentEffect, Resource}
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.BlobServiceAsyncClient
@@ -20,8 +18,7 @@ import util.liftJavaFuture
 
 import scala.jdk.CollectionConverters._
 
-/**
-  * @param azure - Azure Blob Service Async Client
+/** @param azure - Azure Blob Service Async Client
   * @param defaultFullMetadata – return full object metadata on [[list]], requires additional request per object.
   *                              Metadata returned by default: size, lastModified, eTag, storageClass.
   *                              This controls behaviour of [[list]] method from Store trait.
@@ -73,8 +70,8 @@ final class AzureStore[F[_]](
           val blobClient = azure
             .getBlobContainerAsyncClient(container)
             .getBlobAsyncClient(blobName)
-          val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher())
-          val pto  = new ParallelTransferOptions(blockSize, numBuffers, null)
+          val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher)
+          val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
           val upload = AzurePath
             .narrow(path)
             .flatMap(AzureStore.headersMetadataAccessTier)
@@ -82,14 +79,15 @@ final class AzureStore[F[_]](
               blobClient.upload(flux, pto, overwrite)
             } {
               case (headers, meta, tier) =>
-                val (overwriteCheck, requestConditions) = if (overwrite) {
-                  Mono.empty -> null
-                } else {
-                  blobClient.exists.flatMap((exists: java.lang.Boolean) =>
-                    if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
-                    else Mono.empty[Unit]
-                  ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
-                }
+                val (overwriteCheck, requestConditions) =
+                  if (overwrite) {
+                    Mono.empty -> null
+                  } else {
+                    blobClient.exists.flatMap((exists: java.lang.Boolean) =>
+                      if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
+                      else Mono.empty[Unit]
+                    ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
+                  }
                 overwriteCheck
                   .`then`(blobClient.uploadWithResponse(flux, pto, headers, meta.asJava, tier, requestConditions))
                   .flatMap(resp => FluxUtil.toMono(resp))
@@ -168,8 +166,8 @@ final class AzureStore[F[_]](
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto  = new ParallelTransferOptions(blockSize, numBuffers, null)
-      flux = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher())
+      pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+      flux = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher)
       upload = AzurePath
         .narrow(path)
         .flatMap(AzureStore.headersMetadataAccessTier)

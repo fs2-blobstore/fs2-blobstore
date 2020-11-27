@@ -18,12 +18,10 @@ package sftp
 
 import com.jcraft.jsch._
 import cats.syntax.all._
-import cats.instances.option._
-import cats.instances.string._
-import java.io.OutputStream
 
+import java.io.OutputStream
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
-import cats.effect.concurrent.{MVar, Semaphore}
+import cats.effect.concurrent.{MVar, MVar2, Semaphore}
 import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
 import implicits._
@@ -34,7 +32,7 @@ final class SftpStore[F[_]](
   absRoot: String,
   private[sftp] val session: Session,
   blocker: Blocker,
-  mVar: MVar[F, ChannelSftp],
+  mVar: MVar2[F, ChannelSftp],
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
 )(
@@ -201,8 +199,7 @@ final class SftpStore[F[_]](
 
 object SftpStore {
 
-  /**
-    * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
+  /** Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
     *
     * @param fa F[ChannelSftp] how to connect to SFTP server
     * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.

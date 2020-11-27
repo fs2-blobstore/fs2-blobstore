@@ -19,15 +19,12 @@ import java.time.Instant
 
 import cats.data.Chain
 import cats.syntax.foldable._
-import cats.instances.string._
 
-/**
-  * Open trait for path abstraction.
+/** Open trait for path abstraction.
   */
 trait Path {
 
-  /**
-    * Returns optional root of this path.
+  /** Returns optional root of this path.
     * It might be bucket name or specific directory to which it is necessary to restrict access to.
     *
     * @example Given path pointing inside S3 bucket 'bucket':
@@ -36,8 +33,7 @@ trait Path {
     */
   def root: Option[String]
 
-  /**
-    * Returns names of directories along the path to the item, starting at the root.
+  /** Returns names of directories along the path to the item, starting at the root.
     *
     * @example Given path pointing to a local file in /root/dir1/dir2/file with root == "root":
     *          val p: Path = ???
@@ -49,8 +45,7 @@ trait Path {
     */
   def pathFromRoot: Chain[String]
 
-  /**
-    * Returns name of the file pointed by this path.
+  /** Returns name of the file pointed by this path.
     *
     * @example Given path pointing to a local file in /root/dir1/dir2/file with root == "root":
     *          val p: Path = ???
@@ -67,8 +62,7 @@ trait Path {
     */
   def fileName: Option[String]
 
-  /**
-    * Returns size in bytes of the file pointed by this path if known. For directories always return None.
+  /** Returns size in bytes of the file pointed by this path if known. For directories always return None.
     *
     * @example Given path pointing to a local 20 byte file:
     *          val p: Path = ???
@@ -76,8 +70,7 @@ trait Path {
     */
   def size: Option[Long]
 
-  /**
-    * If known returns true if path points to a directory, otherwise – false.
+  /** If known returns true if path points to a directory, otherwise – false.
     * It's not always possible to know from string representation whether path points to directory or file ending with trailing slash.
     * Paths returned by [[blobstore.Store.list]] must have this field defined.
     *
@@ -96,13 +89,11 @@ trait Path {
     */
   def isDir: Option[Boolean]
 
-  /**
-    * Returns most recent time when file pointed by this path has been modified if known.
+  /** Returns most recent time when file pointed by this path has been modified if known.
     */
   def lastModified: Option[Instant]
 
-  /**
-    * Returns path with [[root]] field set to provided value.
+  /** Returns path with [[root]] field set to provided value.
     * @param newRoot - value to be set as [[root]].
     * @param reset - when true fields [[isDir]], [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
     * @return new Path with [[root]] field set to provided param.
@@ -119,8 +110,7 @@ trait Path {
         if (reset) None else lastModified
       )
 
-  /**
-    * Returns path with [[pathFromRoot]] field set to provided value.
+  /** Returns path with [[pathFromRoot]] field set to provided value.
     * @param newPathFromRoot - value to be set as [[pathFromRoot]].
     * @param reset - when true fields [[isDir]], [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
     * @return new Path with [[pathFromRoot]] field set to provided param.
@@ -137,8 +127,7 @@ trait Path {
         if (reset) None else lastModified
       )
 
-  /**
-    * Returns path with [[fileName]] field set to provided value.
+  /** Returns path with [[fileName]] field set to provided value.
     * @param newFileName - value to be set as [[fileName]].
     * @param reset - when true fields [[isDir]], [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
     * @return new Path with [[fileName]] field set to provided param.
@@ -155,8 +144,7 @@ trait Path {
         if (reset) None else lastModified
       )
 
-  /**
-    * Returns path with [[size]] field set to provided value.
+  /** Returns path with [[size]] field set to provided value.
     * @param newSize - value to be set as [[size]].
     * @param reset - when true fields [[isDir]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
     * @return new Path with [[size]] field set to provided param.
@@ -165,8 +153,7 @@ trait Path {
     if (newSize == size) this
     else BasePath(root, pathFromRoot, fileName, newSize, if (reset) None else isDir, if (reset) None else lastModified)
 
-  /**
-    * Returns path with [[isDir]] field set to provided value.
+  /** Returns path with [[isDir]] field set to provided value.
     * @param newIsDir - value to be set as [[isDir]].
     * @param reset - when true fields [[size]] and [[lastModified]] in returned object would be set to None, otherwise kept the same.
     * @return new Path with [[isDir]] field set to provided param.
@@ -175,8 +162,7 @@ trait Path {
     if (newIsDir == isDir) this
     else BasePath(root, pathFromRoot, fileName, if (reset) None else size, newIsDir, if (reset) None else lastModified)
 
-  /**
-    * Returns path with [[lastModified]] field set to provided value.
+  /** Returns path with [[lastModified]] field set to provided value.
     * @param newLastModified - value to be set as [[lastModified]].
     * @param reset - when true fields [[size]] and [[isDir]] in returned object would be set to None, otherwise kept the same.
     * @return new Path with [[lastModified]] field set to provided param.

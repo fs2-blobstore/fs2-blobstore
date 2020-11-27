@@ -8,8 +8,7 @@ import cats.effect.IO
 import fs2.Stream
 import com.jcraft.jsch.{ChannelSftp, JSch, Session}
 
-/**
-  * sftp-no-chroot-container doesn't map user's home directory to "/". User's instead land in "/home/<username>/"
+/** sftp-no-chroot-container doesn't map user's home directory to "/". User's instead land in "/home/<username>/"
   */
 class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
   override val session: IO[Session] = IO {
