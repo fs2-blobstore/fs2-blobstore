@@ -19,6 +19,6 @@ class FixedFakeStorageRpc(throwIfOption: Boolean) extends FakeStorageRpc(throwIf
     last: Boolean
   ): StorageObject = {
     write(uploadId, toWrite, toWriteOffset, destOffset, length, last)
-    null
+    null // scalafix:ok
   }
 }

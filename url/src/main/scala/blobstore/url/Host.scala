@@ -126,7 +126,11 @@ object Hostname {
         HostParseError.label.LabelLengthOutOfRange(el)
       ).toValidatedNec
       val charactersOk: ValidatedNec[HostParseError, Unit] =
-        Validated.cond(Label.Regex.pattern.matcher(el).matches(), (), HostParseError.label.InvalidCharactersInLabel(el)).toValidatedNec
+        Validated.cond(
+          Label.Regex.pattern.matcher(el).matches(),
+          (),
+          HostParseError.label.InvalidCharactersInLabel(el)
+        ).toValidatedNec
 
       (lengthOk, charactersOk).tupled.as(Label(el))
     }

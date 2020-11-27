@@ -24,7 +24,7 @@ object GcsBlob {
     override def storageClass(a: GcsBlob): Option[StorageClassType] = Option(a.blob.getStorageClass)
 
     override def universal(a: GcsBlob): UniversalFileSystemObject =
-        UniversalFileSystemObject(
+      UniversalFileSystemObject(
         name(a),
         size(a),
         isDir(a),

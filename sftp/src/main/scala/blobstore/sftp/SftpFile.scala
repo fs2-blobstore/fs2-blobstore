@@ -25,7 +25,7 @@ object SftpFile {
     override def storageClass(a: SftpFile): Option[StorageClassType] = None
 
     override def universal(a: SftpFile): UniversalFileSystemObject =
-        UniversalFileSystemObject(
+      UniversalFileSystemObject(
         name(a),
         size(a),
         isDir(a),

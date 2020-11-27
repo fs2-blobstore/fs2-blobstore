@@ -159,8 +159,7 @@ object Authority {
     implicit val order: Order[Bucket]       = _.name compare _.name
     implicit val ordering: Ordering[Bucket] = order.toOrdering
     implicit val show: Show[Bucket]         = _.name.show
-    implicit val eq: Eq[Bucket] = (x, y) =>
-      x.host === y.host && x.region === y.region
+    implicit val eq: Eq[Bucket]             = (x, y) => x.host === y.host && x.region === y.region
   }
 
   def parse(s: String): ValidatedNec[AuthorityParseError, Authority] = Standard.parse(s)
@@ -186,9 +185,9 @@ object Authority {
 
   implicit val eq: Eq[Authority] = {
     case (x: Standard, y: Standard) => x === y
-    case (x: Bucket, y: Bucket) => x === y
-    case (x: Standard, y: Bucket) => x.userInfo.isEmpty && x.port.isEmpty && x.host === y.host
-    case (x: Bucket, y: Standard) => y.userInfo.isEmpty && y.port.isEmpty && y.host === x.host
+    case (x: Bucket, y: Bucket)     => x === y
+    case (x: Standard, y: Bucket)   => x.userInfo.isEmpty && x.port.isEmpty && x.host === y.host
+    case (x: Bucket, y: Standard)   => y.userInfo.isEmpty && y.port.isEmpty && y.host === x.host
   }
 
 }

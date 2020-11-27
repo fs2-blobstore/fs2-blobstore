@@ -77,9 +77,9 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     store.getContents(url).unsafeRunSync() must be(contents(filename))
 
     // check remove works
-    store.remove(url, recursive = false).unsafeRunSync()
+    store.remove(url).unsafeRunSync()
     val notFound = store.listAll(url).unsafeRunSync()
-    notFound mustBe empty
+    notFound mustBe Nil
   }
 
   it should "move keys" in {
@@ -121,7 +121,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
     io.unsafeRunSync()
 
-    store.listAll(dir).unsafeRunSync() mustBe empty
+    store.listAll(dir).unsafeRunSync() mustBe Nil
   }
 
   // We've had some bugs involving directories at the root level, since it is a bit of an edge case.
@@ -142,7 +142,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
       store.listAll(Url(scheme, authority, rootDir)).unsafeRunSync().map(_.show).toSet.toString()
     exp.foreach(s => pathsListed must include(s))
 
-    val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
+    val io: IO[List[Unit]] = paths.traverse(store.remove(_))
     io.unsafeRunSync()
   }
 
@@ -159,7 +159,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
       case Some(dir) => dir must fullyMatch regex "subdir/?"
     }
 
-    val io: IO[List[Unit]] = paths.parTraverse(store.remove(_, recursive = false))
+    val io: IO[List[Unit]] = paths.parTraverse(store.remove(_))
     io.unsafeRunSync()
   }
 
@@ -295,17 +295,16 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
       c2 <- store
         .getContents(dstDir / "filename.txt")
         .handleError(e => s"FAILED getContents: ${e.getMessage}")
-      _ <- store.remove(dstDir / "filename.txt", recursive = false)
-      _ <- store.remove(srcDir / "filename.txt", recursive = false)
+      _ <- store.remove(dstDir / "filename.txt")
+      _ <- store.remove(srcDir / "filename.txt")
     } yield {
-      c1 must be(c2)
+      c1 mustBe c2
     }
 
     test.unsafeRunSync()
   }
 
-  // TODO this doesn't test recursive directories. Once listRecursively() is implemented we can fix this
-  it should "remove all should remove all files in a directory" in {
+  it should "remove all files in a directory" in {
     val srcDir = dirUrl("rm-dir-to-dir-src")
 
     (1 to 10).toList
@@ -320,7 +319,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
   it should "succeed on remove when path does not exist" in {
     val dir  = dirUrl("remove-nonexistent-path")
     val path = dir / "no-file.txt"
-    store.remove(path, recursive = false).unsafeRunSync()
+    store.remove(path).unsafeRunSync()
   }
 
   it should "support putting content with no size" in {

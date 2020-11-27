@@ -4,14 +4,15 @@ package azure
 import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.temporal.ChronoUnit
-
+import java.util.function.{Function => JavaFunction}
+import blobstore.Store.{BlobStore, UniversalStore}
+import blobstore.url.general.UniversalFileSystemObject
+import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import cats.syntax.all._
-import cats.instances.string._
-import cats.instances.option._
-import cats.effect.{ConcurrentEffect, Resource}
+import cats.effect.{ConcurrentEffect, ContextShift, Resource}
 import com.azure.core.util.FluxUtil
-import com.azure.storage.blob.BlobServiceAsyncClient
-import com.azure.storage.blob.models._
+import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
+import com.azure.storage.blob.models.{BlobItemProperties, _}
 import com.azure.storage.common.implementation.Constants
 import fs2.{Chunk, Pipe, Stream}
 import fs2.interop.reactivestreams._
@@ -45,191 +46,172 @@ class AzureStore[F[_]](
   blockSize: Int = 50 * 1024 * 1024,
   numBuffers: Int = 2,
   queueSize: Int = 32
-)(implicit F: ConcurrentEffect[F])
-  extends Store[F] {
+)(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
+  extends BlobStore[F, AzureBlob] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
 
-  override def list(path: Path, recursive: Boolean = false): Stream[F, AzurePath] =
-    listUnderlying(path, defaultTrailingSlashFiles, defaultFullMetadata, recursive)
+  override def list(url: Url[Authority.Bucket], recursive: Boolean): Stream[F, Path[AzureBlob]] =
+    listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
-  override def get(path: Path, chunkSize: Int): Stream[F, Byte] =
-    AzureStore.pathToContainerAndBlob(path) match {
-      case None => Stream.raiseError(AzureStore.missingRootError(s"Unable to read '$path'"))
-      case Some((container, blobName)) =>
-        fromPublisher(
-          azure
-            .getBlobContainerAsyncClient(container)
-            .getBlobAsyncClient(blobName)
-            .download()
-        ).flatMap(byteBuffer => Stream.chunk(Chunk.byteBuffer(byteBuffer)))
+  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[F, Byte] = {
+    val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
+    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).download())
+      .flatMap(byteBuffer => Stream.chunk(Chunk.byteBuffer(byteBuffer)))
+  }
+
+  override def put(
+    url: Url[Authority.Bucket],
+    overwrite: Boolean = true,
+    size: Option[Long] = None
+  ): Pipe[F, Byte, Unit] =
+    put(
+      url,
+      overwrite,
+      size.fold(none[BlobItemProperties])(s => new BlobItemProperties().setContentLength(s).some),
+      Map.empty
+    )
+
+  def put(
+    url: Url[Authority.Bucket],
+    overwrite: Boolean,
+    properties: Option[BlobItemProperties],
+    meta: Map[String, String]
+  ): Pipe[F, Byte, Unit] = in => {
+    val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
+    val blobClient = azure
+      .getBlobContainerAsyncClient(container)
+      .getBlobAsyncClient(blobName)
+    val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher())
+    val pto  = new ParallelTransferOptions(blockSize, numBuffers, null) // scalafix:ok
+    val (overwriteCheck, requestConditions) = if (overwrite) {
+      Mono.empty -> null // scalafix:ok
+    } else {
+      blobClient.exists.flatMap((exists: java.lang.Boolean) =>
+        if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
+        else Mono.empty[Unit]
+      ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
     }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.null"))
-  override def put(path: Path, overwrite: Boolean = true): Pipe[F, Byte, Unit] =
-    in =>
-      AzureStore.pathToContainerAndBlob(path) match {
-        case None => Stream.raiseError(AzureStore.missingRootError(s"Unable to write to '$path'"))
-        case Some((container, blobName)) =>
-          val blobClient = azure
-            .getBlobContainerAsyncClient(container)
-            .getBlobAsyncClient(blobName)
-          val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher())
-          val pto  = new ParallelTransferOptions(blockSize, numBuffers, null)
-          val upload = AzurePath
-            .narrow(path)
-            .flatMap(AzureStore.headersMetadataAccessTier)
-            .fold {
-              blobClient.upload(flux, pto, overwrite)
-            } {
-              case (headers, meta, tier) =>
-                val (overwriteCheck, requestConditions) = if (overwrite) {
-                  Mono.empty -> null
-                } else {
-                  blobClient.exists.flatMap((exists: java.lang.Boolean) =>
-                    if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
-                    else Mono.empty[Unit]
-                  ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
-                }
-                overwriteCheck
-                  .`then`(blobClient.uploadWithResponse(flux, pto, headers, meta.asJava, tier, requestConditions))
-                  .flatMap(resp => FluxUtil.toMono(resp))
-            }
+    val headers = properties.map(AzureStore.toHeaders)
 
-          Stream.eval(liftJavaFuture(F.delay(upload.toFuture)).void)
+    val upload = overwriteCheck
+      .`then`(blobClient.uploadWithResponse(
+        flux,
+        pto,
+        headers.orNull,
+        meta.asJava,
+        properties.flatMap(bip => Option(bip.getAccessTier)).orNull,
+        requestConditions
+      ))
+      .flatMap(resp => FluxUtil.toMono(resp))
+    Stream.eval(liftJavaFuture(F.delay(upload.toFuture)).void)
+  }
+
+  override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
+    copy(src, dst) >> remove(
+      src,
+      recursive = true
+    ) // TODO: Copied recursive = true from gcs store. Does it make sense??
+
+  override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] = {
+    val (srcContainer, srcBlob) = AzureStore.urlToContainerAndBlob(src)
+    val (dstContainer, dstBlob) = AzureStore.urlToContainerAndBlob(dst)
+    val srcUrl = azure
+      .getBlobContainerAsyncClient(srcContainer)
+      .getBlobAsyncClient(srcBlob)
+      .getBlobUrl
+    val blobClient = azure
+      .getBlobContainerAsyncClient(dstContainer)
+      .getBlobAsyncClient(dstBlob)
+    val copy = blobClient.beginCopy(srcUrl, Duration.of(1, ChronoUnit.SECONDS))
+    liftJavaFuture(F.delay(copy.next().flatMap(_.getFinalResult).toFuture)).void
+  }
+
+  override def remove(url: Url[Authority.Bucket], recursive: Boolean = false): F[Unit] = {
+    val (container, blobOrPrefix) = AzureStore.urlToContainerAndBlob(url)
+    def recoverNotFound(m: Mono[Void]): Mono[Void] = m.onErrorResume(
+      (t: Throwable) =>
+        t match {
+          case e: BlobStorageException => e.getStatusCode == 404
+          case _                       => false
+        },
+      new JavaFunction[Throwable, Mono[Void]] {
+        def apply(t: Throwable): Mono[Void] = Mono.empty()
       }
-
-  override def move(src: Path, dst: Path): F[Unit] =
-    copy(src, dst) >> remove(src)
-
-  @SuppressWarnings(Array("scalafix:DisableSyntax.null"))
-  override def copy(src: Path, dst: Path): F[Unit] =
-    for {
-      (srcContainer, srcBlob) <- AzureStore
-        .pathToContainerAndBlob(src)
-        .fold[F[(String, String)]](AzureStore.missingRootError(s"Wrong src '$src'").raiseError)(_.pure[F])
-      (dstContainer, dstBlob) <- AzureStore
-        .pathToContainerAndBlob(dst)
-        .fold[F[(String, String)]](AzureStore.missingRootError(s"Wrong dst '$dst'").raiseError)(_.pure[F])
-      _ <- {
-        val srcUrl = azure
-          .getBlobContainerAsyncClient(srcContainer)
-          .getBlobAsyncClient(srcBlob)
-          .getBlobUrl
-        val blobClient = azure
-          .getBlobContainerAsyncClient(dstContainer)
-          .getBlobAsyncClient(dstBlob)
-        val copy = AzurePath
-          .narrow(dst)
-          .flatMap(AzureStore.headersMetadataAccessTier)
-          .fold {
-            blobClient.beginCopy(srcUrl, Duration.of(1, ChronoUnit.SECONDS))
-          } {
-            case (_, meta, tier) =>
-              blobClient.beginCopy(
-                srcUrl,
-                meta.asJava,
-                tier,
-                RehydratePriority.STANDARD,
-                null,
-                null,
-                Duration.of(1, ChronoUnit.SECONDS)
-              )
-          }
-        liftJavaFuture(F.delay(copy.next().flatMap(_.getFinalResult).toFuture))
+    )
+    val containerClient = azure.getBlobContainerAsyncClient(container)
+    val mono: Mono[Void] = if (recursive) {
+      val options = {
+        val opts = new ListBlobsOptions
+        opts.setPrefix(blobOrPrefix)
       }
-    } yield ()
-
-  override def remove(path: Path): F[Unit] =
-    AzureStore.pathToContainerAndBlob(path) match {
-      case None =>
-        AzureStore.missingRootError(s"Unable to remove '$path'").raiseError[F, Unit]
-      case Some((container, blobName)) =>
-        liftJavaFuture(
-          F.delay(
-            azure
-              .getBlobContainerAsyncClient(container)
-              .getBlobAsyncClient(blobName)
-              .delete()
-              .toFuture
-          )
-        ).void.recover { case e: BlobStorageException if e.getStatusCode == 404 => () }
+      containerClient.listBlobs(options).flatMap[Void] {
+        new JavaFunction[BlobItem, Mono[Void]] {
+          def apply(item: BlobItem): Mono[Void] =
+            recoverNotFound(containerClient.getBlobAsyncClient(item.getName).delete())
+        }
+      }.ignoreElements()
+    } else {
+      recoverNotFound(containerClient.getBlobAsyncClient(blobOrPrefix).delete())
     }
+    liftJavaFuture(F.delay(mono.toFuture)).void
+  }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.null"))
-  override def putRotate(computePath: F[Path], limit: Long): Pipe[F, Byte, Unit] = {
+  override def putRotate(computePath: F[Url[Authority.Bucket]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile = for {
-      path <- Resource.liftF(computePath)
-      (container, blob) <- Resource.liftF(
-        AzureStore
-          .pathToContainerAndBlob(path)
-          .fold[F[(String, String)]](AzureStore.missingRootError(s"Unable to write to '$path'").raiseError)(F.pure)
-      )
+      computed <- Resource.liftF(computePath)
+      (container, blob) = AzureStore.urlToContainerAndBlob(computed)
       queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[ByteBuffer]](queueSize))
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto  = new ParallelTransferOptions(blockSize, numBuffers, null)
-      flux = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher())
-      upload = AzurePath
-        .narrow(path)
-        .flatMap(AzureStore.headersMetadataAccessTier)
-        .fold {
-          blobClient.upload(flux, pto, true)
-        } {
-          case (headers, meta, tier) =>
-            blobClient
-              .uploadWithResponse(flux, pto, headers, meta.asJava, tier, null)
-              .flatMap(resp => FluxUtil.toMono(resp))
-        }
+      pto    = new ParallelTransferOptions(blockSize, numBuffers, null) // scalafix:ok
+      flux   = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher())
+      upload = blobClient.upload(flux, pto, true)
       _ <- Resource.make(F.start(liftJavaFuture(F.delay(upload.toFuture)).void))(_.join)
       _ <- Resource.make(F.unit)(_ => queue.enqueue1(None))
     } yield queue
     putRotateBase(limit, openNewFile)(queue => bytes => queue.enqueue1(Some(bytes.toByteBuffer)))
   }
 
+  override def stat(url: Url[Authority.Bucket]): F[Option[Path[AzureBlob]]] = {
+    val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
+    val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
+    liftJavaFuture(F.delay(mono.toFuture)).attempt.flatMap {
+      case Right(props) =>
+        val (bip, meta) = AzureStore.toBlobItemProperties(props)
+        Path.of(blobName, AzureBlob(container, blobName, bip.some, meta)).some.pure[F]
+      case Left(e: BlobStorageException) if e.getStatusCode == 404 =>
+        none[Path[AzureBlob]].pure[F]
+      case Left(e) => e.raiseError
+    }
+  }
+
+  override def liftToUniversal: UniversalStore[F] =
+    new Store.DelegatingStore[F, AzureBlob, Authority.Standard, UniversalFileSystemObject](
+      FileSystemObject[AzureBlob].universal,
+      Left(this)
+    )
+
   def listUnderlying(
-    path: Path,
+    url: Url[Authority.Bucket],
     fullMetadata: Boolean,
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
-  ): Stream[F, AzurePath] =
-    AzureStore.pathToContainerAndBlob(path) match {
-      case None => Stream.raiseError(AzureStore.missingRootError(s"Unable to list '$path'"))
-      case Some((container, blobNameOrPrefix)) =>
-        val options = new ListBlobsOptions()
-          .setPrefix(if (blobNameOrPrefix == "/") "" else blobNameOrPrefix)
-          .setDetails(new BlobListDetails().setRetrieveMetadata(fullMetadata))
-        val containerClient = azure.getBlobContainerAsyncClient(container)
-        val blobPagedFlux =
-          if (recursive) containerClient.listBlobs(options)
-          else containerClient.listBlobsByHierarchy("/", options)
-        fromPublisher(blobPagedFlux)
-          .filterNot(blobItem => Option(blobItem.isDeleted).contains(true))
-          .flatMap { blobItem: BlobItem =>
-            val properties: F[Option[(BlobItemProperties, Map[String, String])]] =
-              if (Option(blobItem.isPrefix: Boolean).contains(true) && expectTrailingSlashFiles) {
-                liftJavaFuture(F.delay(containerClient.getBlobAsyncClient(blobItem.getName).getProperties.toFuture))
-                  .map(_.some)
-                  .recover { case e: BlobStorageException if e.getStatusCode == 404 => none }
-                  .map(_.map(AzureStore.toBlobItemProperties))
-              } else {
-                (
-                  Option(blobItem.getProperties),
-                  Option(blobItem.getMetadata).fold(Map.empty[String, String])(_.asScala.toMap).some
-                ).tupled.pure[F]
-              }
-            Stream.eval(properties).map(blobItem -> _)
-          }
-          .map {
-            case (blobItem, propsMetadata) =>
-              AzurePath(
-                container,
-                blobItem.getName,
-                propsMetadata.map(_._1),
-                propsMetadata.fold(Map.empty[String, String])(_._2)
-              )
-          }
-    }
+  ): Stream[F, Path[AzureBlob]] = {
+    val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
+    val options = new ListBlobsOptions()
+      .setPrefix(if (blobName == "/") "" else blobName)
+      .setDetails(new BlobListDetails().setRetrieveMetadata(fullMetadata))
+    val containerClient = azure.getBlobContainerAsyncClient(container)
+    val blobPagedFlux =
+      if (recursive) containerClient.listBlobs(options)
+      else containerClient.listBlobsByHierarchy("/", options)
+    val flux = blobPagedFlux
+      .filter(bi => Option(bi.isDeleted).forall(deleted => !deleted))
+      .flatMap[Path[AzureBlob]](AzureStore.blobItemToPath(containerClient, expectTrailingSlashFiles, container))
+    fromPublisher(flux)
+  }
 }
 
 object AzureStore {
@@ -240,22 +222,12 @@ object AzureStore {
     blockSize: Int = 50 * 1024 * 1024,
     numBuffers: Int = 2,
     queueSize: Int = 32
-  )(implicit F: ConcurrentEffect[F]): F[AzureStore[F]] =
+  )(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): F[AzureStore[F]] =
     if (numBuffers < 2) new IllegalArgumentException(s"Number of buffers must be at least 2").raiseError
     else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize).pure[F]
 
-  private def missingRootError(msg: String) =
-    new IllegalArgumentException(s"$msg - root (container) is required to reference blobs in Azure Storage")
-
-  private def pathToContainerAndBlob(path: Path): Option[(String, String)] = AzurePath.narrow(path) match {
-    case Some(azurePath) => Some(azurePath.container -> azurePath.blob)
-    case None =>
-      path.root.map { container =>
-        val blob = path.pathFromRoot
-          .mkString_("/") ++ path.fileName.fold("/")((if (path.pathFromRoot.isEmpty) "" else "/") ++ _)
-        container -> blob
-      }
-  }
+  private def urlToContainerAndBlob(url: Url[Authority.Bucket]): (String, String) =
+    (url.authority.show, url.path.show.stripPrefix("/"))
 
   private def toBlobItemProperties(bp: BlobProperties): (BlobItemProperties, Map[String, String]) = {
     val bip = new BlobItemProperties()
@@ -286,16 +258,51 @@ object AzureStore {
     bip -> Option(bp.getMetadata).fold(Map.empty[String, String])(_.asScala.toMap)
   }
 
-  private def headersMetadataAccessTier(path: AzurePath): Option[(BlobHttpHeaders, Map[String, String], AccessTier)] =
-    path.properties.map { blobProperties =>
-      val at = blobProperties.getAccessTier
-      val headers = new BlobHttpHeaders()
-        .setCacheControl(blobProperties.getCacheControl)
-        .setContentDisposition(blobProperties.getContentDisposition)
-        .setContentEncoding(blobProperties.getContentEncoding)
-        .setContentLanguage(blobProperties.getContentLanguage)
-        .setContentMd5(blobProperties.getContentMd5)
-        .setContentType(blobProperties.getContentType)
-      (headers, path.meta, at)
+  private def toHeaders(bip: BlobItemProperties): BlobHttpHeaders =
+    new BlobHttpHeaders()
+      .setCacheControl(bip.getCacheControl)
+      .setContentDisposition(bip.getContentDisposition)
+      .setContentEncoding(bip.getContentEncoding)
+      .setContentLanguage(bip.getContentLanguage)
+      .setContentMd5(bip.getContentMd5)
+      .setContentType(bip.getContentType)
+
+  private type MaybeBlobItemPropertiesMeta = Option[(BlobItemProperties, Map[String, String])]
+
+  private def blobItemToPath(
+    containerClient: BlobContainerAsyncClient,
+    expectTrailingSlashFiles: Boolean,
+    container: String
+  ): JavaFunction[BlobItem, Mono[Path[AzureBlob]]] = new JavaFunction[BlobItem, Mono[Path[AzureBlob]]] {
+    def recoverNotFound[T](m: Mono[T], fallback: T): Mono[T] = m.onErrorReturn(
+      (t: Throwable) =>
+        t match {
+          case e: BlobStorageException => e.getStatusCode == 404
+          case _                       => false
+        },
+      fallback
+    )
+    def apply(blobItem: BlobItem): Mono[Path[AzureBlob]] = {
+      val properties = if (Option(blobItem.isPrefix: Boolean).contains(true) && expectTrailingSlashFiles) {
+        val m = containerClient.getBlobAsyncClient(blobItem.getName).getProperties
+          .map[AzureStore.MaybeBlobItemPropertiesMeta](new JavaFunction[BlobProperties, MaybeBlobItemPropertiesMeta] {
+            def apply(bp: BlobProperties): Option[(BlobItemProperties, Map[String, String])] =
+              AzureStore.toBlobItemProperties(bp).some
+          })
+        recoverNotFound(m, none)
+      } else {
+        val value = Option(blobItem.getProperties).map(
+          _ -> Option(blobItem.getMetadata).fold(Map.empty[String, String])(_.asScala.toMap)
+        )
+        Mono.just(value)
+      }
+      properties.map[Path[AzureBlob]](new JavaFunction[MaybeBlobItemPropertiesMeta, Path[AzureBlob]] {
+        def apply(propMeta: MaybeBlobItemPropertiesMeta): Path[AzureBlob] =
+          Path(blobItem.getName).map { name =>
+            AzureBlob(container, name, propMeta.map(_._1), propMeta.fold(Map.empty[String, String])(_._2))
+          }
+      })
     }
+
+  }
 }
