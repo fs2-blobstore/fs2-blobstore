@@ -81,7 +81,7 @@ abstract class PathStore[F[_], BlobType] {
     * @param url to remove
     * @return F[Unit]
     */
-  def remove[A](url: Path[A], recursive: Boolean): F[Unit]
+  def remove[A](url: Path[A], recursive: Boolean = false): F[Unit]
 
   /**
     * Writes all data to a sequence of blobs/files, each limited in size to `limit`.

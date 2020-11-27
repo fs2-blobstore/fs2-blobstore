@@ -110,7 +110,7 @@ class SftpStore[F[_]] private (
     mkdirs(dst, channel) >> get(src, 4096).through(put(dst)).compile.drain
   }
 
-  override def remove[A](path: Path[A], recursive: Boolean): F[Unit] = channelResource.use { channel =>
+  override def remove[A](path: Path[A], recursive: Boolean = false): F[Unit] = channelResource.use { channel =>
     def recursiveRemove(path: Path[SftpFile]): F[Unit] = {
       //TODO: Parallelize this with multiple channels
       val r = if (path.isDir) {

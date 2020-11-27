@@ -66,7 +66,7 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   def put(path: Path[GcsBlob], options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
-  override def remove(url: Url[Bucket], recursive: Boolean): F[Unit] =
+  override def remove(url: Url[Bucket], recursive: Boolean = false): F[Unit] =
     if (recursive) removeAll(url).void
     else
       blocker.delay(storage.delete(GcsStore.toBlobId(url))).void

@@ -18,9 +18,8 @@ package s3
 
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
-
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
-import blobstore.Store.UniversalStore
+import blobstore.Store.{BlobStore, UniversalStore}
 import blobstore.url.general.UniversalFileSystemObject
 import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
 import cats.syntax.all._
@@ -59,7 +58,7 @@ class S3Store[F[_]](
   bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
   queueSize: Int = 32
 )(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
-  extends Store[F, Authority.Bucket, S3Blob] {
+  extends BlobStore[F, S3Blob] {
   require(
     bufferSize >= S3Store.multiUploadMinimumPartSize,
     s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}"
@@ -147,7 +146,7 @@ class S3Store[F[_]](
     liftJavaFuture(F.delay(s3.copyObject(request))).void
   }
 
-  override def remove(url: Url[Authority.Bucket], recursive: Boolean): F[Unit] = {
+  override def remove(url: Url[Authority.Bucket], recursive: Boolean = false): F[Unit] = {
     val bucket = url.bucket.show
     val key    = url.path.relative.show
     val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
