@@ -10,7 +10,6 @@ import blobstore.{putRotateBase, Store}
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.Store.{BlobStore, UniversalStore}
-import blobstore.gcs.GcsStore.toBlobId
 import blobstore.url.general.UniversalFileSystemObject
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
@@ -185,7 +184,7 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
   override def stat(url: Url[Bucket]): F[Option[Path[GcsBlob]]] =
-    blocker.delay(Option(storage.get(toBlobId(url))))
+    blocker.delay(Option(storage.get(GcsStore.toBlobId(url))))
       .map(b => b.map(b => Path.of(b.getName, GcsBlob(b))))
 
   override def liftToUniversal: UniversalStore[F] =
@@ -215,6 +214,6 @@ object GcsStore {
 
   private val minimalReaderChunkSize = 2 * 1024 * 1024 // BlobReadChannel.DEFAULT_CHUNK_SIZE
 
-  private def toBlobId[A](url: Url[Bucket]): BlobId =
+  private def toBlobId(url: Url[Bucket]): BlobId =
     BlobId.of(url.authority.show, url.path.show.stripPrefix("/"))
 }
