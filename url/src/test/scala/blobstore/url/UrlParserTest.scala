@@ -4,7 +4,6 @@ import cats.data.Validated.Valid
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import cats.syntax.all._
-import cats.instances.string._
 import org.scalatest.Inside
 
 class UrlParserTest extends AnyFlatSpec with Matchers with Inside {
@@ -44,19 +43,22 @@ class UrlParserTest extends AnyFlatSpec with Matchers with Inside {
 
   it should "parse file uris" in {
     inside(Url.standard("file:/bar")) {
-      case Valid(u) => u.scheme mustBe "file"
+      case Valid(u) =>
+        u.scheme mustBe "file"
         u.authority.host.show mustBe "localhost"
         u.path.show mustBe "/bar"
     }
 
     inside(Url.standard("file://bar")) {
-      case Valid(u) => u.scheme mustBe "file"
+      case Valid(u) =>
+        u.scheme mustBe "file"
         u.authority.host.show mustBe "localhost"
         u.path.show mustBe "bar"
     }
 
-    inside(Url.standard("file:///bar")) {
-      case Valid(u) => u.scheme mustBe "file"
+    inside(Url.standard("file:///bar")) { // scalafix:ok
+      case Valid(u) =>
+        u.scheme mustBe "file"
         u.authority.host.show mustBe "localhost"
         u.path.show mustBe "/bar"
     }

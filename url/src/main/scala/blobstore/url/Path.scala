@@ -2,18 +2,16 @@ package blobstore.url
 
 import java.nio.file.Paths
 import java.time.Instant
-
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import blobstore.url.general.UniversalFileSystemObject
 import cats.{Functor, Show}
 import cats.data.Chain
-import cats.instances.option._
-import cats.instances.string._
 import cats.kernel.Order
 import cats.syntax.all._
 
-/**
-  * The path segment of a URI. It is parameterized on the type representing the path. This can be a plain String, or a
+import scala.annotation.tailrec
+
+/** The path segment of a URI. It is parameterized on the type representing the path. This can be a plain String, or a
   * storage provider specific type.
   *
   * Examples of storage provider types would be `software.amazon.awssdk.services.s3.internal.resource.S3ObjectResource`
@@ -43,8 +41,7 @@ sealed trait Path[A] {
 
   def nioPath: java.nio.file.Path = Paths.get(toString)
 
-  /**
-    * Compose with string to form a new Path
+  /** Compose with string to form a new Path
     *
     * The underlying representation must be String in order for the representation and the path to be kept in sync.
     * Use [[addSegment]] to modify paths backed by non-String types
@@ -74,8 +71,7 @@ sealed trait Path[A] {
     case None    => this.map(ev.flip)
   }
 
-  /**
-    * Ensure that path always is suffixed with '/'
+  /** Ensure that path always is suffixed with '/'
     */
   def `//`(segment: String)(implicit ev: String =:= A): Path[String] =
     this / (if (segment.endsWith("/")) segment else segment + "/")
@@ -85,8 +81,7 @@ sealed trait Path[A] {
     case RootlessPath(_, segments) => RootlessPath(b, segments)
   }
 
-  /**
-    * Adds a segment to the path while ensuring that the segments and path representation are kept in sync
+  /** Adds a segment to the path while ensuring that the segments and path representation are kept in sync
     *
     * If you're just working with String paths, see [[/]]
     */
@@ -105,13 +100,14 @@ sealed trait Path[A] {
 
   def isEmpty: Boolean = segments.isEmpty
 
-  def lastSegment: Option[String] = if (isEmpty) None
-  else {
-    val slashSuffix  = segments.reverse.takeWhile(_.isEmpty).map(_ => "/").toList.mkString
-    val lastNonEmpty = segments.reverse.dropWhile(_.isEmpty).headOption
+  def lastSegment: Option[String] =
+    if (isEmpty) None
+    else {
+      val slashSuffix  = segments.reverse.takeWhile(_.isEmpty).map(_ => "/").toList.mkString
+      val lastNonEmpty = segments.reverse.dropWhile(_.isEmpty).headOption
 
-    lastNonEmpty.map(_ + slashSuffix)
-  }
+      lastNonEmpty.map(_ + slashSuffix)
+    }
 
   def fullName(implicit B: FileSystemObject[A]): String                         = B.name(representation)
   def size(implicit B: FileSystemObject[A]): Option[Long]                       = B.size(representation)
@@ -125,8 +121,7 @@ sealed trait Path[A] {
 
 object Path {
 
-  /**
-    * A plain path represented with a String
+  /** A plain path represented with a String
     *
     * See .apply for creating these
     */
@@ -134,8 +129,7 @@ object Path {
   type AbsolutePlain = AbsolutePath[String]
   type RootlessPlain = RootlessPath[String]
 
-  /**
-    * A file system object represented with a "general" structure
+  /** A file system object represented with a "general" structure
     *
     * This is typically used in stores that abstracts multiple file systems
     */
@@ -166,8 +160,8 @@ object Path {
     val root: AbsolutePath[String] = AbsolutePath("/", Chain.empty)
 
     implicit def show[A]: Show[AbsolutePath[A]] = "/" + _.segments.mkString_("/")
-    implicit def order[A: Order]: Order[AbsolutePath[A]] = (x, y) =>
-      Order[A].compare(x.representation, y.representation)
+    implicit def order[A: Order]: Order[AbsolutePath[A]] =
+      (x, y) => Order[A].compare(x.representation, y.representation)
   }
 
   case class RootlessPath[A] private (representation: A, segments: Chain[String]) extends Path[A]
@@ -180,6 +174,7 @@ object Path {
         Some(RootlessPath(s, Chain(nonEmpty ++ empty: _*)))
       } else None
 
+    @tailrec
     def createFrom(s: String): RootlessPath[String] = {
       if (s.startsWith("/")) {
         createFrom(s.stripPrefix("/"))
@@ -193,8 +188,8 @@ object Path {
     def root: RootlessPath[String] = RootlessPath("", Chain.empty)
 
     implicit def show[A]: Show[RootlessPath[A]] = _.segments.mkString_("/")
-    implicit def order[A: Order]: Order[RootlessPath[A]] = (x, y) =>
-      Order[A].compare(x.representation, y.representation)
+    implicit def order[A: Order]: Order[RootlessPath[A]] =
+      (x, y) => Order[A].compare(x.representation, y.representation)
     implicit def ordering[A: Ordering]: Ordering[RootlessPath[A]] = order[A](Order.fromOrdering[A]).toOrdering
   }
 

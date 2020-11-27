@@ -5,12 +5,10 @@ import cats.Semigroup
 import scala.annotation.tailrec
 import scala.util.Try
 import cats.syntax.show._
-import cats.instances.string._
 
 object Throwables {
 
-  /**
-    * @return A new Throwable where `y` is appended as a root cause to `x`. We prefix `y`'s message with
+  /** @return A new Throwable where `y` is appended as a root cause to `x`. We prefix `y`'s message with
     *         "APPENDED: " to make the distinction clear in x's stack trace
     */
   val collapsingSemigroup: Semigroup[Throwable] = (x, y) => {

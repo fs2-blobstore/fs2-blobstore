@@ -5,7 +5,6 @@ import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import cats.syntax.all._
-import cats.instances.list._
 import org.scalatest.Inside
 
 class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
@@ -31,7 +30,7 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
       case Valid(_) => // ok
     }
 
-    inside(invalid) {
+    inside(invalid) { // scalafix:ok
       case Invalid(_) => // ok
     }
   }

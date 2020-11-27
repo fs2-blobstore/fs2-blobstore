@@ -3,8 +3,6 @@ package blobstore.url
 import blobstore.url.exception.{PortParseError, SingleValidationException}
 import cats.data.Validated
 import cats.data.Validated.{Invalid, Valid}
-import cats.instances.either._
-import cats.instances.int._
 import cats.kernel.Order
 import cats.syntax.all._
 import cats.{ApplicativeError, Show}

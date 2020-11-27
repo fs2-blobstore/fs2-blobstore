@@ -5,10 +5,6 @@ import blobstore.url.Hostname.Label
 import cats.{ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
-import cats.instances.either._
-import cats.instances.int._
-import cats.instances.list._
-import cats.instances.order._
 import cats.syntax.all._
 import shapeless.{Const, Sized}
 import shapeless.nat._
@@ -18,8 +14,7 @@ import shapeless.PolyDefns.~>
 import scala.util.Try
 import scala.util.matching.Regex
 
-/**
-  * A Host is any device or computer on a computer network. It can be an IP address or any string that can appear in a
+/** A Host is any device or computer on a computer network. It can be an IP address or any string that can appear in a
   * A, AAAA or CNAME DNS record.
   *
   * @see https://www.ietf.org/rfc/rfc1123.txt 2.1 "Host names and numbers"
@@ -95,8 +90,7 @@ case class Hostname private (labels: NonEmptyChain[Label]) extends Host {
 
 object Hostname {
 
-  /**
-    * Label component of a hostname.
+  /** Label component of a hostname.
     *
     * Rules
     * - 1 to 63 characters

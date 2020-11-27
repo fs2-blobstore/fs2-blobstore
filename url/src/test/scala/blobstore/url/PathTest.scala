@@ -31,16 +31,16 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       "../foo/bar//"
     )
 
-    absolutePaths.map(Path.apply).zipWithIndex.foreach {
-      case (p, i) =>
-        p mustBe a[AbsolutePath[_]]
-        p.value mustBe absolutePaths(i)
+    absolutePaths.foreach { s =>
+      val p = Path(s)
+      p mustBe a[AbsolutePath[_]]
+      p.value mustBe s
     }
 
-    rootlessPaths.map(Path.apply).zipWithIndex.foreach {
-      case (p, i) =>
-        p mustBe a[RootlessPath[_]]
-        p.value mustBe rootlessPaths(i)
+    rootlessPaths.foreach { s =>
+      val p = Path(s)
+      p mustBe a[RootlessPath[_]]
+      p.value mustBe s
     }
   }
 
@@ -76,15 +76,17 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       "foo/bar//"
     )
 
-    validPaths.map(AbsolutePath.parse).zipWithIndex.foreach {
-      case (p, i) => inside(p) {
-          case Some(path) => path.value mustBe validPaths(i)
-        }
+    validPaths.foreach { s =>
+      val p = AbsolutePath.parse(s)
+      inside(p) {
+        case Some(path) => path.value mustBe s
+      }
     }
 
     invalidPaths.map(AbsolutePath.parse).foreach(p => p mustBe None)
-    invalidPaths.map(AbsolutePath.createFrom).zipWithIndex.foreach {
-      case (p, i) => p.value mustBe "/" + invalidPaths(i)
+    invalidPaths.foreach { s =>
+      val p = AbsolutePath.createFrom(s)
+      p.value mustBe "/" ++ s
     }
   }
 

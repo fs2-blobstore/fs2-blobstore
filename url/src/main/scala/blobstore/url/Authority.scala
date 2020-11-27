@@ -4,15 +4,10 @@ import blobstore.url.exception.{AuthorityParseError, BucketParseError, MultipleU
 import cats.{ApplicativeError, ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
-import cats.instances.either._
-import cats.instances.option._
-import cats.instances.order._
-import cats.instances.string._
 import cats.kernel.Eq
 import cats.syntax.all._
 
-/**
-  * The authority part of a URL. Used to encode hosts on a network, also supports a special "Bucket" authority which
+/** The authority part of a URL. Used to encode hosts on a network, also supports a special "Bucket" authority which
   * only allows for valid bucket names.
   */
 sealed trait Authority {
@@ -23,8 +18,7 @@ sealed trait Authority {
 
 object Authority {
 
-  /**
-    * An authority as defined by RFC3986. Can point to any valid host on a computer network. Characterized by supporting
+  /** An authority as defined by RFC3986. Can point to any valid host on a computer network. Characterized by supporting
     * userinfo, port as well as IP addresses in addition to normal hostnames.
     *
     * @param host A valid host. This is either a domain name, or an IPv4 or IPv6 address
@@ -38,8 +32,7 @@ object Authority {
 
   object Standard {
 
-    /**
-      * input string bob:vacuum2000@example.com:8080
+    /** input string bob:vacuum2000@example.com:8080
       *
       * results in the following subexpression matches
       *
@@ -87,8 +80,7 @@ object Authority {
     }
   }
 
-  /**
-    * A bucket is a special class of authorities typically associated with cloud storage providers. Buckets are only
+  /** A bucket is a special class of authorities typically associated with cloud storage providers. Buckets are only
     * identifiable by a domain name, and they never have userinfo or ports associated with them. Optionally buckets may
     * have a vendor specific region.
     *
