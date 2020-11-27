@@ -8,15 +8,14 @@ import blobstore.url.Path.Plain
 import cats.effect.IO
 import fs2.Stream
 import com.google.cloud.storage.{BlobInfo, StorageClass}
-import com.google.cloud.storage.contrib.nio.testing.FixedLocalStorageHelper
+import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
 import org.scalatest.Inside
 
 import scala.jdk.CollectionConverters._
 
 class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   val gcsStore: GcsStore[IO] = GcsStore[IO](
-    // TODO: Change this back to LocalStorageHelper once google-cloud-nio updates and implements writeWithResponse
-    FixedLocalStorageHelper.getOptions.getService,
+    LocalStorageHelper.getOptions.getService,
     blocker,
     defaultTrailingSlashFiles = true,
     defaultDirectDownload = false
@@ -45,7 +44,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
     // Note
     val entities = store.list(dir).compile.toList.unsafeRunSync()
-    entities must not be empty
+    entities must not be Nil
 
     entities.foreach { listedPath =>
       listedPath.fileName mustBe Some("file-with-slash/")
@@ -54,9 +53,9 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
 
     store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
 
-    store.remove(filePath, recursive = false).unsafeRunSync()
+    store.remove(filePath).unsafeRunSync()
 
-    store.list(dir).compile.toList.unsafeRunSync() mustBe empty
+    store.list(dir).compile.toList.unsafeRunSync() mustBe Nil
   }
 
   it should "expose underlying metadata" in {

@@ -7,11 +7,10 @@ import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.Store.BlobStore
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
-import cats.effect.concurrent.{MVar, Semaphore}
-import cats.instances.option._
-import cats.syntax.all._
 import com.jcraft.jsch._
+import cats.syntax.all._
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
+import cats.effect.concurrent.{MVar, MVar2, Semaphore}
 import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
 
@@ -21,7 +20,7 @@ class SftpStore[F[_]] private (
   val authority: Authority,
   private[sftp] val session: Session,
   blocker: Blocker,
-  mVar: MVar[F, ChannelSftp],
+  mVar: MVar2[F, ChannelSftp],
   semaphore: Option[Semaphore[F]],
   connectTimeout: Int
 )(implicit F: ConcurrentEffect[F], CS: ContextShift[F])
@@ -113,9 +112,10 @@ class SftpStore[F[_]] private (
   override def remove[A](path: Path[A], recursive: Boolean = false): F[Unit] = channelResource.use { channel =>
     def recursiveRemove(path: Path[SftpFile]): F[Unit] = {
       //TODO: Parallelize this with multiple channels
-      val r = if (path.isDir) {
-        list(path).evalMap(recursiveRemove) ++ Stream.eval(blocker.delay(channel.rmdir(path.show)))
-      } else Stream.eval(blocker.delay(channel.rm(path.show)))
+      val r =
+        if (path.isDir) {
+          list(path).evalMap(recursiveRemove) ++ Stream.eval(blocker.delay(channel.rmdir(path.show)))
+        } else Stream.eval(blocker.delay(channel.rm(path.show)))
       r.compile.drain
     }
 
@@ -222,8 +222,7 @@ class SftpStore[F[_]] private (
 
 object SftpStore {
 
-  /**
-    * Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
+  /** Safely initialize SftpStore and disconnect ChannelSftp and Session upon finish.
     *
     * @param fa F[ChannelSftp] how to connect to SFTP server
     * @return Stream[ F, SftpStore[F] ] stream with one SftpStore, sftp channel will disconnect once stream is done.

@@ -3,14 +3,13 @@ package blobstore.gcs
 import java.io.OutputStream
 import java.nio.channels.Channels
 
-import _root_.cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Sync}
-import _root_.cats.instances.list._
-import _root_.cats.syntax.all._
 import blobstore.{putRotateBase, Store}
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.Store.{BlobStore, UniversalStore}
 import blobstore.url.general.UniversalFileSystemObject
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
+import cats.syntax.all._
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
@@ -18,20 +17,19 @@ import fs2.{Chunk, Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
 
-/**
-  * @param storage configured instance of GCS Storage
+/** @param storage configured instance of GCS Storage
   * @param blocker cats-effect Blocker to run blocking operations on.
   * @param acls list of Access Control List objects to be set on all uploads.
-  * @param defaultTrailingSlashFiles test if folders returned by `list`` are files with trailing slashes in their names.
-  *                                  This controls behaviour of `list`` method from Store trait.
+  * @param defaultTrailingSlashFiles test if folders returned by `list` are files with trailing slashes in their names.
+  *                                  This controls behaviour of `list` method from Store trait.
   *                                  Use [[listUnderlying]] to control on per-invocation basis.
   * @param defaultDirectDownload use direct download.
   *                              When enabled the whole media content is downloaded in a single request (but still streamed).
   *                              Otherwise use the resumable media download protocol to download in data chunks.
-  *                              This controls behaviour of `get`` method from Store trait.
+  *                              This controls behaviour of `get` method from Store trait.
   *                              Use [[getUnderlying]] to control on per-invocation basis.
   * @param defaultMaxChunksInFlight limit maximum number of chunks buffered when direct download is used. Does not affect resumable download.
-  *                                 This controls behaviour of `get`` method from Store trait.
+  *                                 This controls behaviour of `get` method from Store trait.
   *                                 Use [[getUnderlying]] to control on per-invocation basis.
   */
 class GcsStore[F[_]: ConcurrentEffect: ContextShift](
@@ -107,7 +105,7 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     Stream.eval(Fs2OutputStream[F](chunkSize, maxChunksInFlight)).flatMap { os =>
       os.stream.concurrently(
         Stream.eval(
-          ConcurrentEffect[F].guarantee(blocker.delay(blob.downloadTo(os)))(Sync[F].delay(os.close()))
+          ConcurrentEffect[F].guarantee(blocker.delay(blob.downloadTo(os)))(ConcurrentEffect[F].delay(os.close()))
         )
       )
     }
@@ -161,10 +159,9 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   }
 
   private def newOutputStream[A](blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
-    Sync[F].delay(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
+    ConcurrentEffect[F].delay(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
 
-  /**
-    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
+  /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     *
     * @param src path
     * @param dst path
@@ -173,8 +170,7 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   override def move(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     copy(src, dst) >> remove(src, recursive = true)
 
-  /**
-    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
+  /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     *
     * @param src path
     * @param dst path

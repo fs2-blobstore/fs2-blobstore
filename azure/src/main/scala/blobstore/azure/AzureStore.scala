@@ -21,8 +21,7 @@ import util.liftJavaFuture
 
 import scala.jdk.CollectionConverters._
 
-/**
-  * @param azure - Azure Blob Service Async Client
+/** @param azure - Azure Blob Service Async Client
   * @param defaultFullMetadata – return full object metadata on [[list]], requires additional request per object.
   *                              Metadata returned by default: size, lastModified, eTag, storageClass.
   *                              This controls behaviour of [[list]] method from Store trait.
@@ -81,16 +80,17 @@ class AzureStore[F[_]](
     val blobClient = azure
       .getBlobContainerAsyncClient(container)
       .getBlobAsyncClient(blobName)
-    val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher())
-    val pto  = new ParallelTransferOptions(blockSize, numBuffers, null) // scalafix:ok
-    val (overwriteCheck, requestConditions) = if (overwrite) {
-      Mono.empty -> null // scalafix:ok
-    } else {
-      blobClient.exists.flatMap((exists: java.lang.Boolean) =>
-        if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
-        else Mono.empty[Unit]
-      ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
-    }
+    val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher)
+    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+    val (overwriteCheck, requestConditions) =
+      if (overwrite) {
+        Mono.empty -> null // scalafix:ok
+      } else {
+        blobClient.exists.flatMap((exists: java.lang.Boolean) =>
+          if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
+          else Mono.empty[Unit]
+        ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
+      }
 
     val headers = properties.map(AzureStore.toHeaders)
 
@@ -140,20 +140,21 @@ class AzureStore[F[_]](
       }
     )
     val containerClient = azure.getBlobContainerAsyncClient(container)
-    val mono: Mono[Void] = if (recursive) {
-      val options = {
-        val opts = new ListBlobsOptions
-        opts.setPrefix(blobOrPrefix)
-      }
-      containerClient.listBlobs(options).flatMap[Void] {
-        new JavaFunction[BlobItem, Mono[Void]] {
-          def apply(item: BlobItem): Mono[Void] =
-            recoverNotFound(containerClient.getBlobAsyncClient(item.getName).delete())
+    val mono: Mono[Void] =
+      if (recursive) {
+        val options = {
+          val opts = new ListBlobsOptions
+          opts.setPrefix(blobOrPrefix)
         }
-      }.ignoreElements()
-    } else {
-      recoverNotFound(containerClient.getBlobAsyncClient(blobOrPrefix).delete())
-    }
+        containerClient.listBlobs(options).flatMap[Void] {
+          new JavaFunction[BlobItem, Mono[Void]] {
+            def apply(item: BlobItem): Mono[Void] =
+              recoverNotFound(containerClient.getBlobAsyncClient(item.getName).delete())
+          }
+        }.ignoreElements()
+      } else {
+        recoverNotFound(containerClient.getBlobAsyncClient(blobOrPrefix).delete())
+      }
     liftJavaFuture(F.delay(mono.toFuture)).void
   }
 
@@ -165,8 +166,8 @@ class AzureStore[F[_]](
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto    = new ParallelTransferOptions(blockSize, numBuffers, null) // scalafix:ok
-      flux   = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher())
+      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+      flux   = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher)
       upload = blobClient.upload(flux, pto, true)
       _ <- Resource.make(F.start(liftJavaFuture(F.delay(upload.toFuture)).void))(_.join)
       _ <- Resource.make(F.unit)(_ => queue.enqueue1(None))
@@ -283,19 +284,20 @@ object AzureStore {
       fallback
     )
     def apply(blobItem: BlobItem): Mono[Path[AzureBlob]] = {
-      val properties = if (Option(blobItem.isPrefix: Boolean).contains(true) && expectTrailingSlashFiles) {
-        val m = containerClient.getBlobAsyncClient(blobItem.getName).getProperties
-          .map[AzureStore.MaybeBlobItemPropertiesMeta](new JavaFunction[BlobProperties, MaybeBlobItemPropertiesMeta] {
-            def apply(bp: BlobProperties): Option[(BlobItemProperties, Map[String, String])] =
-              AzureStore.toBlobItemProperties(bp).some
-          })
-        recoverNotFound(m, none)
-      } else {
-        val value = Option(blobItem.getProperties).map(
-          _ -> Option(blobItem.getMetadata).fold(Map.empty[String, String])(_.asScala.toMap)
-        )
-        Mono.just(value)
-      }
+      val properties =
+        if (Option(blobItem.isPrefix: Boolean).contains(true) && expectTrailingSlashFiles) {
+          val m = containerClient.getBlobAsyncClient(blobItem.getName).getProperties
+            .map[AzureStore.MaybeBlobItemPropertiesMeta](new JavaFunction[BlobProperties, MaybeBlobItemPropertiesMeta] {
+              def apply(bp: BlobProperties): Option[(BlobItemProperties, Map[String, String])] =
+                AzureStore.toBlobItemProperties(bp).some
+            })
+          recoverNotFound(m, none)
+        } else {
+          val value = Option(blobItem.getProperties).map(
+            _ -> Option(blobItem.getMetadata).fold(Map.empty[String, String])(_.asScala.toMap)
+          )
+          Mono.just(value)
+        }
       properties.map[Path[AzureBlob]](new JavaFunction[MaybeBlobItemPropertiesMeta, Path[AzureBlob]] {
         def apply(propMeta: MaybeBlobItemPropertiesMeta): Path[AzureBlob] =
           Path(blobItem.getName).map { name =>

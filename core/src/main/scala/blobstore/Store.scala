@@ -24,7 +24,6 @@ import blobstore.url.general.UniversalFileSystemObject
 import blobstore.Store.UniversalStore
 import cats.{ApplicativeError, Eq, MonadError}
 import cats.effect.{ContextShift, Sync}
-import cats.instances.try_._
 import cats.syntax.all._
 import fs2.{Pipe, Stream}
 
@@ -32,8 +31,7 @@ import scala.util.{Failure, Success, Try}
 
 trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
 
-  /**
-    * @param url to list
+  /** @param url to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
     *                  otherwise – return files and folder at given path.
     * @return stream of Paths. Implementing stores must guarantee that returned Paths
@@ -50,15 +48,13 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
     */
   def list(url: Url[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
 
-  /**
-    * @param url to get
+  /** @param url to get
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
   def get(url: Url[A], chunkSize: Int): Stream[F, Byte]
 
-  /**
-    * It is highly recommended to provide `Path.size` when writing as it allows for optimizations in some store.
+  /** It is highly recommended to provide `Path.size` when writing as it allows for optimizations in some store.
     * Specifically, S3Store will behave very poorly if no size is provided as it will load all bytes in memory before
     * writing content to S3 server.
     *
@@ -76,31 +72,27 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
       .through(put(url, size = Some(bytes.length.toLong)))
   }
 
-  /**
-    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
+  /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     * @param src path
     * @param dst path
     * @return F[Unit]
     */
   def move(src: Url[A], dst: Url[A]): F[Unit]
 
-  /**
-    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
+  /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     * @param src path
     * @param dst path
     * @return F[Unit]
     */
   def copy(src: Url[A], dst: Url[A]): F[Unit]
 
-  /**
-    * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
+  /** Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param url to remove
     * @return F[Unit]
     */
   def remove(url: Url[A], recursive: Boolean = false): F[Unit]
 
-  /**
-    * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
+  /** Writes all data to a sequence of blobs/files, each limited in size to `limit`.
     *
     * The `computePath` operation is used to compute the path of the first file
     * and every subsequent file. Typically, the next file should be determined
@@ -123,15 +115,13 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
 
 object Store {
 
-  /**
-    * Blobstores operates on buckets and returns store specific blob types
+  /** Blobstores operates on buckets and returns store specific blob types
     *
     * For example, S3 is a BlobStore[F, S3MetaInfo]
     */
   type BlobStore[F[_], B] = Store[F, Authority.Bucket, B]
 
-  /**
-    * UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
+  /** UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
     * denominator" type `blobstore.url.general.UniversalFileSystemObject`. This is useful if you want a common interface for all stores.
     *
     * @see [[Store.liftToUniversal]]
@@ -139,8 +129,7 @@ object Store {
     */
   type UniversalStore[F[_]] = Store[F, Authority.Standard, UniversalFileSystemObject]
 
-  /**
-    * Validates input URLs before delegating to underlying store. This allows different stores to be exposed
+  /** Validates input URLs before delegating to underlying store. This allows different stores to be exposed
     * under a the same, and wider, interface. For instance, we can expose FileStore's with Path input as a
     * BlobStore with bucket input and which validates that the bucket equals the FileStore's authority.
     *
