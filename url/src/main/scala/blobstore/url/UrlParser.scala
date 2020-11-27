@@ -5,10 +5,7 @@ import blobstore.url.exception.AuthorityParseError.{InvalidFileUrl, InvalidHost,
 import blobstore.url.exception.UrlParseError.{CouldntParseUrl, MissingScheme}
 import blobstore.url.Authority.{Bucket, Standard}
 import cats.data.{NonEmptyChain, OptionT, ValidatedNec}
-import cats.instances.either._
-import cats.instances.try_._
 import cats.syntax.all._
-import cats.instances.string._
 
 import scala.util.Try
 
@@ -22,8 +19,7 @@ object UrlParser {
 
   def apply[A <: Authority: UrlParser]: UrlParser[A] = implicitly[UrlParser[A]]
 
-  /**
-    * RFC 3986, Appendix B.  Parsing a URI Reference with a Regular Expression, https://www.ietf.org/rfc/rfc3986.txt
+  /** RFC 3986, Appendix B.  Parsing a URI Reference with a Regular Expression, https://www.ietf.org/rfc/rfc3986.txt
     *
     * Input string:
     * http://www.ics.uci.edu/pub/ietf/uri/#Related

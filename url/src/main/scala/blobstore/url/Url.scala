@@ -5,7 +5,6 @@ import blobstore.url.Path.AbsolutePath
 import cats.{ApplicativeError, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
 import cats.data.ValidatedNec
-import cats.instances.string._
 import cats.syntax.all._
 
 case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) {
@@ -17,8 +16,7 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
     case None    => this
   }
 
-  /**
-    * Ensure that path always is suffixed with '/'
+  /** Ensure that path always is suffixed with '/'
     */
   def `//`(segment: String): Url[A] = copy(path = path.`//`(segment))
   def `//`(segment: Option[String]): Url[A] = segment match {

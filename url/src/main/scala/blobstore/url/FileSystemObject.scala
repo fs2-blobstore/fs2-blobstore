@@ -4,8 +4,7 @@ import java.time.Instant
 
 import blobstore.url.general.UniversalFileSystemObject
 
-/**
-  * A FileSystemObject is an object in the underlying file system
+/** A FileSystemObject is an object in the underlying file system
   */
 trait FileSystemObject[-A] {
   type StorageClassType

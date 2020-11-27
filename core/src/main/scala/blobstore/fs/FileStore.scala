@@ -156,8 +156,7 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
   // The local file system can't have file names ending with slash
   private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")
 
-  /**
-    * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+  /** Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
     * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
     *
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed

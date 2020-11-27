@@ -4,8 +4,7 @@ import java.time.Instant
 
 import blobstore.url.FileSystemObject
 
-/**
-  * This type represents a product of properties that are typically present in file system objects
+/** This type represents a product of properties that are typically present in file system objects
   *
   * It's used to represent underlying file system objects in stores that abstracts multiple file systems
   */
