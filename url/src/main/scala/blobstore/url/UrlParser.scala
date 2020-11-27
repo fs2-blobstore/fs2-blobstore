@@ -23,30 +23,30 @@ object UrlParser {
   def apply[A <: Authority: UrlParser]: UrlParser[A] = implicitly[UrlParser[A]]
 
   /**
-   * RFC 3986, Appendix B.  Parsing a URI Reference with a Regular Expression, https://www.ietf.org/rfc/rfc3986.txt
-   *
-   * Input string:
-   * http://www.ics.uci.edu/pub/ietf/uri/#Related
-   *
-   * results in the following subexpression matches:
-   *
-   * $1 = http:
-   * $2 = http
-   * $3 = //www.ics.uci.edu
-   * $4 = www.ics.uci.edu
-   * $5 = /pub/ietf/uri/
-   * $6 = <undefined>
-   * $7 = <undefined>
-   * $8 = #Related
-   * $9 = Related
-   *
-   * This parser also supports parsing file uri's into URLs, according to https://tools.ietf.org/html/rfc8089 and https://tools.ietf.org/html/rfc1738:
-   * - file:/bar =   path is "/bar"
-   * - file://bar =  path is "bar"
-   * - file:///bar = path is "/bar"
-   *
-   * hostname for all of the above is "localhost"
-   */
+    * RFC 3986, Appendix B.  Parsing a URI Reference with a Regular Expression, https://www.ietf.org/rfc/rfc3986.txt
+    *
+    * Input string:
+    * http://www.ics.uci.edu/pub/ietf/uri/#Related
+    *
+    * results in the following subexpression matches:
+    *
+    * $1 = http:
+    * $2 = http
+    * $3 = //www.ics.uci.edu
+    * $4 = www.ics.uci.edu
+    * $5 = /pub/ietf/uri/
+    * $6 = <undefined>
+    * $7 = <undefined>
+    * $8 = #Related
+    * $9 = Related
+    *
+    * This parser also supports parsing file uri's into URLs, according to https://tools.ietf.org/html/rfc8089 and https://tools.ietf.org/html/rfc1738:
+    * - file:/bar =   path is "/bar"
+    * - file://bar =  path is "bar"
+    * - file:///bar = path is "/bar"
+    *
+    * hostname for all of the above is "localhost"
+    */
   private val regex = "^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?".r
 
   implicit val standardParser: UrlParser[Authority.Standard] = { c =>

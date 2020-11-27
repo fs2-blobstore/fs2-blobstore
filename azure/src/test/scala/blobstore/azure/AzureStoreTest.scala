@@ -3,61 +3,68 @@ package azure
 
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
-
-import implicits._
+import blobstore.url.Authority.Bucket
+import blobstore.url.Path.Plain
+import blobstore.url.{Path, Url}
 import cats.effect.IO
 import fs2.Stream
-import com.azure.storage.blob.BlobServiceClientBuilder
+import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
-import org.scalatest.{Assertion, Inside}
+import org.scalatest.Inside
 import reactor.core.publisher.Mono
 
-class AzureStoreTest extends AbstractStoreTest with Inside {
-  override val authority: String = "container"
-  val options               = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null)
+class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
+  override val scheme: String        = "https"
+  override val authority: Bucket     = Bucket.unsafe("container")
+  override val fileSystemRoot: Plain = Path("")
+
+  val options = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
+
   // TODO: Remove this once version of azure-storage-blob containing https://github.com/Azure/azure-sdk-for-java/pull/9123 is released
-  val azuriteContainerIp = InetAddress.getByName("azurite-container").getHostAddress
-  val azure = new BlobServiceClientBuilder()
+  val azuriteContainerIp: String = InetAddress.getByName("azurite-container").getHostAddress
+
+  val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
     .connectionString(
       s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://$azuriteContainerIp:10000/devstoreaccount1;"
     )
     .retryOptions(options)
     .buildAsyncClient()
 
-  override val store: Store[IO] = new AzureStore(azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
+  val azureStore: AzureStore[IO] = new AzureStore(azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
+
+  override val store: Store[IO, Bucket, AzureBlob] =
+    azureStore
 
   behavior of "AzureStore"
 
   it should "handle files with trailing / in name" in {
-    val dir: Path = dirPath("trailing-slash")
-    val filePath  = dir / "file-with-slash/"
+    val dir      = dirUrl("trailing-slash")
+    val filePath = dir / "file-with-slash/"
 
-    store.put("test", filePath).unsafeRunSync()
+    store.put("test", filePath).compile.drain.unsafeRunSync()
 
-    // Note
     val entities = store.list(dir).compile.toList.unsafeRunSync()
     entities.foreach { listedPath =>
       listedPath.fileName mustBe Some("file-with-slash/")
-      listedPath.isDir mustBe Some(false)
+      listedPath.isDir mustBe false
     }
 
     store.getContents(filePath).unsafeRunSync() mustBe "test"
 
     store.remove(filePath).unsafeRunSync()
 
-    store.list(dir).compile.toList.unsafeRunSync() mustBe empty
+    store.list(dir).compile.toList.unsafeRunSync() mustBe Nil
   }
 
   it should "expose underlying metadata" in {
-    val dir  = dirPath("expose-underlying")
-    val path = writeLocalFile(store, dir)("abc.txt")
+    val dir  = dirUrl("expose-underlying")
+    val path = writeFile(store, dir.path)("abc.txt")
 
-    val entities = store.list(path).map(AzurePath.narrow).unNone.compile.toList.unsafeRunSync()
+    val entities = store.list(path).compile.toList.unsafeRunSync()
 
     entities.foreach { azurePath =>
-      azurePath.properties mustBe defined
-      inside(azurePath.properties) {
+      inside(azurePath.representation.properties) {
         case Some(properties) =>
           Option(properties.getAccessTier) must contain(AccessTier.HOT)
           Option(properties.getBlobType) must contain(BlobType.BLOCK_BLOB)
@@ -66,17 +73,24 @@ class AzureStoreTest extends AbstractStoreTest with Inside {
   }
 
   it should "set underlying metadata on write" in {
-    val ct         = "text/plain"
-    val at         = AccessTier.COOL
-    val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
-    val filePath   = new AzurePath(authority, s"test-$testRun/set-underlying/file", Some(properties), Map("key" -> "value"))
-    Stream("data".getBytes.toIndexedSeq: _*).through(store.put(filePath)).compile.drain.unsafeRunSync()
-    val entities = store.list(filePath).map(AzurePath.narrow).unNone.compile.toList.unsafeRunSync()
+    val ct                    = "text/plain"
+    val at                    = AccessTier.COOL
+    val properties            = new BlobItemProperties().setAccessTier(at).setContentType(ct)
+    val filePath: Url[Bucket] = dirUrl("set-underlying") / "file"
+//      new AzurePath(authority, s"test-$testRun/set-underlying/file", Some(properties), )
+    Stream("data".getBytes.toIndexedSeq: _*).through(azureStore.put(
+      filePath,
+      overwrite = true,
+      properties = Some(properties),
+      meta = Map("key" -> "value")
+    )).compile.drain.unsafeRunSync()
+
+    val entities = store.list(filePath).compile.toList.unsafeRunSync()
 
     entities.foreach { azurePath =>
-      azurePath.meta must contain key "key"
-      azurePath.meta.get("key") must contain("value")
-      inside(azurePath.properties) {
+      azurePath.representation.metadata must contain key "key"
+      azurePath.representation.metadata.get("key") must contain("value")
+      inside(azurePath.representation.properties) {
         case Some(properties) =>
           Option(properties.getAccessTier) must contain(at)
           Option(properties.getContentType) must contain(ct)
@@ -84,45 +98,15 @@ class AzureStoreTest extends AbstractStoreTest with Inside {
     }
   }
 
-  it should "fail trying to reference path with no root" in {
-    val path = Path("s3://bucket/folder/file")
-    inside[Option[Path], Assertion](Path.fromString("/folder/file.txt", forceRoot = false)) {
-      case Some(pathNoRoot) =>
-        the[IllegalArgumentException] thrownBy store
-          .get(pathNoRoot, 10)
-          .compile
-          .drain
-          .unsafeRunSync() must have message s"Unable to read '$pathNoRoot' - root (container) is required to reference blobs in Azure Storage"
-        the[IllegalArgumentException] thrownBy Stream.empty
-          .through(store.put(pathNoRoot))
-          .compile
-          .drain
-          .unsafeRunSync() must have message s"Unable to write to '$pathNoRoot' - root (container) is required to reference blobs in Azure Storage"
-        the[IllegalArgumentException] thrownBy store
-          .list(pathNoRoot)
-          .compile
-          .drain
-          .unsafeRunSync() must have message s"Unable to list '$pathNoRoot' - root (container) is required to reference blobs in Azure Storage"
-        the[IllegalArgumentException] thrownBy store
-          .remove(pathNoRoot)
-          .unsafeRunSync() must have message s"Unable to remove '$pathNoRoot' - root (container) is required to reference blobs in Azure Storage"
-        the[IllegalArgumentException] thrownBy store
-          .copy(pathNoRoot, path)
-          .unsafeRunSync() must have message s"Wrong src '$pathNoRoot' - root (container) is required to reference blobs in Azure Storage"
-        the[IllegalArgumentException] thrownBy store
-          .copy(path, pathNoRoot)
-          .unsafeRunSync() must have message s"Wrong dst '$pathNoRoot' - root (container) is required to reference blobs in Azure Storage"
-    }
-  }
-
   override def beforeAll(): Unit = {
     super.beforeAll()
-    azure
-      .deleteBlobContainer(authority)
+    val delete: Mono[Void] = azure
+      .deleteBlobContainer(authority.host.toString)
       .onErrorResume(_ => Mono.empty())
-      .`then`(azure.createBlobContainer(authority))
-      .toFuture
-      .get(1, TimeUnit.MINUTES)
+    val create: Mono[Void]   = azure.createBlobContainer(authority.host.toString).flatMap(_ => Mono.empty())
+    def recreate: Mono[Void] = delete.`then`(create).onErrorResume(_ => recreate)
+    recreate.toFuture.get(1, TimeUnit.MINUTES)
     ()
   }
+
 }

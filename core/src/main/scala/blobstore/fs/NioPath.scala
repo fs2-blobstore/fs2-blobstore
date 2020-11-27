@@ -25,7 +25,7 @@ object NioPath {
     override def storageClass(a: NioPath): Option[StorageClassType] = None
 
     override def universal(a: NioPath): UniversalFileSystemObject =
-        UniversalFileSystemObject(
+      UniversalFileSystemObject(
         name(a),
         size(a),
         isDir(a),

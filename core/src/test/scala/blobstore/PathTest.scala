@@ -112,7 +112,7 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     inside[Path[Unit], Assertion](path) {
       case Path(s, representation, segments) =>
         s mustBe "some-bucket/folder/file"
-        representation mustBe ()
+        representation mustBe (())
         segments mustBe Chain("some-bucket", "folder", "file")
     }
 

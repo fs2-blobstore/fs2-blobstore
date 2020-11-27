@@ -188,7 +188,7 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
     try {
       client.createBucket(CreateBucketRequest.builder().bucket(authority.show).build()).get()
     } catch {
-      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] =>
+      case e: ExecutionException if e.getCause.isInstanceOf[BucketAlreadyOwnedByYouException] => // scalafix:ok
       // noop
     }
     ()
