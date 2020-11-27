@@ -11,8 +11,7 @@ abstract class PathStore[F[_], BlobType] {
 
   def authority: Authority
 
-  /**
-    * List paths.
+  /** List paths.
     *
     * @param path to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
@@ -31,16 +30,14 @@ abstract class PathStore[F[_], BlobType] {
     */
   def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
 
-  /**
-    * Get bytes for the given Path.
+  /** Get bytes for the given Path.
     * @param path to get
     * @param chunkSize bytes to read in each chunk.
     * @return stream of bytes
     */
   def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte]
 
-  /**
-    * Provides a Sink that writes bytes into the provided path.
+  /** Provides a Sink that writes bytes into the provided path.
     *
     * It is highly recommended to provide `Path.size` when writing as it allows for optimizations in some store.
     * Specifically, S3Store will behave very poorly if no size is provided as it will load all bytes in memory before
@@ -60,31 +57,27 @@ abstract class PathStore[F[_], BlobType] {
       .through(put(path.plain, overwrite, Option(bytes.size.toLong)))
   }
 
-  /**
-    * Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
+  /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     * @param src path
     * @param dst path
     * @return F[Unit]
     */
   def move[A, B](src: Path[A], dst: Path[B]): F[Unit]
 
-  /**
-    * Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
+  /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     * @param src path
     * @param dst path
     * @return F[Unit]
     */
   def copy[A, B](src: Path[A], dst: Path[B]): F[Unit]
 
-  /**
-    * Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
+  /** Remove bytes for given path. Call should succeed even if there is nothing stored at that path.
     * @param url to remove
     * @return F[Unit]
     */
   def remove[A](url: Path[A], recursive: Boolean = false): F[Unit]
 
-  /**
-    * Writes all data to a sequence of blobs/files, each limited in size to `limit`.
+  /** Writes all data to a sequence of blobs/files, each limited in size to `limit`.
     *
     * The `computePath` operation is used to compute the path of the first file
     * and every subsequent file. Typically, the next file should be determined
@@ -100,8 +93,7 @@ abstract class PathStore[F[_], BlobType] {
     */
   def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  /**
-    * Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+  /** Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
     * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
     *
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
