@@ -5,7 +5,7 @@ import implicits._
 import cats.effect.IO
 import fs2.Stream
 import com.google.cloud.storage.{BlobInfo, StorageClass}
-import com.google.cloud.storage.contrib.nio.testing.FixedLocalStorageHelper
+import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
 import org.scalatest.{Assertion, Inside}
 
 import scala.jdk.CollectionConverters._
@@ -13,7 +13,7 @@ import scala.jdk.CollectionConverters._
 class GcsStoreTest extends AbstractStoreTest with Inside {
   val gcsStore: GcsStore[IO] = GcsStore[IO](
     // TODO: Change this back to LocalStorageHelper once google-cloud-nio updates and implements writeWithResponse
-    FixedLocalStorageHelper.getOptions.getService,
+    LocalStorageHelper.getOptions.getService,
     blocker,
     defaultTrailingSlashFiles = true,
     defaultDirectDownload = false
