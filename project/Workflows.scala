@@ -13,7 +13,7 @@ object Workflows extends AutoPlugin {
           coursierSetup.value ::
           coursierCache.value ::
           checkWorkflows.value ::
-          WorkflowStep.Sbt(
+          Sbtn(
             name = Some("Checks"),
             commands = List(
               "scalafmtSbtCheck",
@@ -47,7 +47,7 @@ object Workflows extends AutoPlugin {
         javas = githubWorkflowJavaVersions.value.toList,
         steps = testSteps(
           "unit",
-          WorkflowStep.Sbt(
+          Sbtn(
             name = Some("Test"),
             commands =
               List("coverage", "testOnly * -- -l blobstore.IntegrationTest", "coverageAggregate").mkString("; ") :: Nil
@@ -73,7 +73,7 @@ object Workflows extends AutoPlugin {
               "openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d"
             )
           ),
-          WorkflowStep.Sbt(
+          Sbtn(
             name = Some("Test"),
             commands = List("coverage", "test", "coverageAggregate").mkString("; ") :: Nil
           )
@@ -98,7 +98,7 @@ object Workflows extends AutoPlugin {
               "setup-gpg",
               "v3"
             ) ::
-            WorkflowStep.Sbt(
+            Sbtn(
               name = Some("CI Release"),
               commands = List("ci-release"),
               env = Map(

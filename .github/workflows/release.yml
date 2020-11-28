@@ -31,7 +31,7 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Check that workflows are up to date
-        run: sbtn githubWorkflowCheck
+        run: sbt githubWorkflowCheck
 
       - uses: olafurpg/setup-gpg@v3
 
@@ -41,7 +41,7 @@ jobs:
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: sbtn ++${{ matrix.scala }} ci-release
+        run: sbtn ++${{ matrix.scala }}! ci-release
 
   readme:
     name: Update Readme
@@ -63,10 +63,10 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Check that workflows are up to date
-        run: sbtn githubWorkflowCheck
+        run: sbt githubWorkflowCheck
 
       - name: Generate updated README.md
-        run: sbtn ++${{ matrix.scala }} 'docs/mdoc --out .'
+        run: sbtn ++${{ matrix.scala }}! 'docs/mdoc --out .'
 
       - uses: EndBug/add-and-commit@v5
         with:

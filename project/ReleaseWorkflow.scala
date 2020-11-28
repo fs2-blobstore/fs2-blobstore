@@ -52,7 +52,7 @@ object ReleaseWorkflow extends AutoPlugin {
         coursierSetup.value ::
         coursierCache.value ::
         checkWorkflows.value ::
-        WorkflowStep.Sbt(
+        Sbtn(
           name = Some("Generate updated README.md"),
           commands = List("docs/mdoc --out .")
         )

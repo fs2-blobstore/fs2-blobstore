@@ -37,16 +37,16 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Check that workflows are up to date
-        run: sbtn githubWorkflowCheck
+        run: sbt githubWorkflowCheck
 
       - name: Checks
-        run: sbtn ++${{ matrix.scala }} 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafix --check'
+        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafix --check'
 
       - name: Create tmp directory
         run: mkdir tmp
 
       - name: Test
-        run: sbtn ++${{ matrix.scala }} 'coverage; testOnly * -- -l blobstore.IntegrationTest; coverageAggregate'
+        run: sbtn ++${{ matrix.scala }}! 'coverage; testOnly * -- -l blobstore.IntegrationTest; coverageAggregate'
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
@@ -73,10 +73,10 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Check that workflows are up to date
-        run: sbtn githubWorkflowCheck
+        run: sbt githubWorkflowCheck
 
       - name: Checks
-        run: sbtn ++${{ matrix.scala }} 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafix --check'
+        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafix --check'
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -85,7 +85,7 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Test
-        run: sbtn ++${{ matrix.scala }} 'coverage; test; coverageAggregate'
+        run: sbtn ++${{ matrix.scala }}! 'coverage; test; coverageAggregate'
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
@@ -112,7 +112,7 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Check that workflows are up to date
-        run: sbtn githubWorkflowCheck
+        run: sbt githubWorkflowCheck
 
       - uses: olafurpg/setup-gpg@v3
 
@@ -122,4 +122,4 @@ jobs:
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: sbtn ++${{ matrix.scala }} ci-release
+        run: sbtn ++${{ matrix.scala }}! ci-release
