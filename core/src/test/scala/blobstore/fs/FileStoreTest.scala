@@ -22,18 +22,20 @@ import cats.syntax.all._
 
 class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
 
-  override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
+  private val localStore: FileStore[IO] = FileStore[IO](blocker)
 
-  override val fileSystemRoot: Path.Plain = testRunRoot
-  private val localStore: FileStore[IO]   = FileStore[IO](blocker)
-  override val store: Store[IO, Authority.Standard, NioPath] =
+  override def mkStore(): Store[IO, Authority.Standard, NioPath] =
     localStore.liftTo[Authority.Standard]((u: Url[Authority.Standard]) => u.path.valid)
-  override val authority: Authority.Standard = Authority.Standard.localhost
+
   override val scheme: String                = "file"
+  override val authority: Authority.Standard = Authority.Standard.localhost
+
+  override val fileSystemRoot: Path.Plain   = testRunRoot
+  override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
 
   behavior of "FileStore.put"
   it should "not have side effects when creating a Sink" in {
     localStore.put(Path(s"fs_tests_$testRun/path/file.txt"))
-    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe empty
+    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe Nil
   }
 }

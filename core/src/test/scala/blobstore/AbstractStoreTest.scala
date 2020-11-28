@@ -17,20 +17,18 @@ package blobstore
 
 import java.util.UUID
 import java.nio.file.{Path => NioPath}
-import java.util.concurrent.Executors
 
 import blobstore.fs.FileStore
 import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
-import cats.effect.{Blocker, ContextShift, IO, Timer}
+import cats.effect.IO
 import cats.effect.laws.util.TestInstances
 import cats.implicits._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import fs2.Stream
 
-import scala.concurrent.ExecutionContext
 import scala.util.Random
 import scala.concurrent.duration._
 
@@ -39,27 +37,39 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   with Matchers
   with BeforeAndAfterAll
   with TestInstances
-  with Inside {
+  with Inside
+  with IOTest {
 
-  implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-  implicit val timer: Timer[IO]     = IO.timer(ExecutionContext.global)
-  val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  // Override this
+  def mkStore(): Store[IO, A, B]
+  def scheme: String
+  def authority: A
 
   val testRun: UUID = java.util.UUID.randomUUID()
 
   val transferStoreRootDir: Path.Plain = Path(s"tmp/transfer-store-root/$testRun")
   val transferStore: FileStore[IO]     = new FileStore[IO](blocker)
 
-  val store: Store[IO, A, B]
-  val scheme: String
-  val authority: A
-
   // This path used for testing root level listing. Can be overridden by tests for stores that doesn't allow access
   // to the real root. No writing is done to this path.
   val fileSystemRoot: Path.Plain = Path("/")
 
-  // All testdata goes under this path
+  // All test data goes under this path
   lazy val testRunRoot: Path.Plain = Path(s"test-$testRun")
+
+  // Store being tested
+  protected final var store: Store[IO, A, B] = _ // scalafix:ok
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    store = mkStore()
+  }
+
+  // remove dirs created by AbstractStoreTest
+  override def afterAll(): Unit = {
+    cleanup(transferStoreRootDir.nioPath.resolve(testRunRoot.nioPath))
+    super.afterAll()
+  }
 
   behavior of "all stores"
 
@@ -95,7 +105,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
       _  <- store.move(src, dst)
       l3 <- store.listAll(src)
       l4 <- store.listAll(dst)
-      _  <- store.remove(dst, recursive = false)
+      _  <- store.remove(dst)
     } yield {
       l1.isEmpty must be(false)
       l2.isEmpty must be(true)
@@ -120,7 +130,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
 
     store.listAll(dir).unsafeRunSync().map(_.show).toSet must be(exp)
 
-    paths.parTraverse_(store.remove(_, recursive = false)).unsafeRunSync()
+    paths.parTraverse_(store.remove(_)).unsafeRunSync()
 
     store.listAll(dir).unsafeRunSync() mustBe Nil
   }
@@ -177,8 +187,8 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
         .getContents(srcPath)
         .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
       c2 <- store.getContents(dstPath).handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-      _  <- transferStore.remove(srcPath, recursive = false).handleError(_ => ())
-      _  <- store.remove(dstPath, recursive = false).handleError(_ => ())
+      _  <- transferStore.remove(srcPath).handleError(_ => ())
+      _  <- store.remove(dstPath).handleError(_ => ())
     } yield {
       i must be(1)
       c1 must be(c2)
@@ -200,8 +210,8 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
       c2 <- store
         .getContents(dstPath)
         .handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-      _ <- transferStore.remove(srcPath, recursive = false).handleError(_ => ())
-      _ <- store.remove(dstPath, recursive = false).handleError(_ => ())
+      _ <- transferStore.remove(srcPath).handleError(_ => ())
+      _ <- store.remove(dstPath).handleError(_ => ())
     } yield {
       i must be(1)
       c1 must be(c2)
@@ -230,8 +240,8 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
           .getContents(dstDir / p.lastSegment)
           .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
       }
-      _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ()))
-      _ <- paths.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ()))
+      _ <- paths.traverse(transferStore.remove(_).handleError(_ => ()))
+      _ <- paths.traverse(p => store.remove(dstDir / p.lastSegment).handleError(_ => ()))
     } yield {
       i must be(paths.length)
       c2 must be(c1)
@@ -271,9 +281,9 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
               .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
           }
       }.sequence
-      _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ()))
-      _ <- paths1.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ()))
-      _ <- paths2.traverse(p => store.remove(dstDir / "subdir" / p.lastSegment, recursive = false).handleError(_ => ()))
+      _ <- paths.traverse(transferStore.remove(_).handleError(_ => ()))
+      _ <- paths1.traverse(p => store.remove(dstDir / p.lastSegment).handleError(_ => ()))
+      _ <- paths2.traverse(p => store.remove(dstDir / "subdir" / p.lastSegment).handleError(_ => ()))
     } yield {
       i must be(9)
       c1.mkString("\n") must be(c2.mkString("\n"))
@@ -337,7 +347,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
         .through(store.put(path))
         .compile.drain
       res <- store.getContents(path)
-      _   <- store.remove(path, recursive = false)
+      _   <- store.remove(path)
     } yield res must be(exp)
 
     test.unsafeRunSync()
@@ -418,7 +428,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
         .compile
         .toList
       get    <- store.get(url, 1024).compile.drain.attempt
-      remove <- store.remove(url, recursive = false).attempt
+      remove <- store.remove(url).attempt
     } yield {
       list.map(_.show) must contain only url.path.show
       list.headOption.flatMap(_.fileName) must contain("file with spaces")
@@ -493,7 +503,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
 
   def writeFile(store: Store[IO, A, B], tmpDir: Path.Plain)(filename: String): Url[A] = {
     def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
-      if (count < times) Timer[IO].sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
+      if (count < times) timer.sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
     }
     val url = Url(scheme, authority, tmpDir / filename)
 
@@ -512,9 +522,6 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
     Random.nextBytes(ba)
     ba
   }
-
-  // remove dirs created by AbstractStoreTest
-  override def afterAll(): Unit = cleanup(transferStoreRootDir.nioPath.resolve(testRunRoot.nioPath))
 
   def cleanup(root: NioPath): Unit = {
 
