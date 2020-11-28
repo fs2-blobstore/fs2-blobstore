@@ -36,6 +36,7 @@ lazy val fs2blobstore = project
     skip in publish := true
   )
   .aggregate(url, core, s3, sftp, gcs, azure, box)
+  .enablePlugins(Workflows)
 
 lazy val url = project
 
