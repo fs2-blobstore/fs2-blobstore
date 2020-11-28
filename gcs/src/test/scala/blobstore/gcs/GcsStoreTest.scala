@@ -14,6 +14,11 @@ import org.scalatest.Inside
 import scala.jdk.CollectionConverters._
 
 class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
+
+  override val scheme: String        = "gs"
+  override val authority: Bucket     = Bucket.unsafe("bucket")
+  override val fileSystemRoot: Plain = Path("")
+
   val gcsStore: GcsStore[IO] = GcsStore[IO](
     LocalStorageHelper.getOptions.getService,
     blocker,
@@ -21,13 +26,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
     defaultDirectDownload = false
   )
 
-  override val scheme: String = "gs"
-
-  override val store: GcsStore[IO] = gcsStore
-
-  override val authority: Bucket = Bucket.unsafe("bucket")
-
-  override val fileSystemRoot: Plain = Path("")
+  override def mkStore(): GcsStore[IO] = gcsStore
 
   behavior of "GcsStore"
 
@@ -83,7 +82,7 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
       .build()
 
     Stream("data".getBytes.toIndexedSeq: _*).through(
-      store.put(url.path.as(GcsBlob(blobInfo)), List.empty)
+      gcsStore.put(url.path.as(GcsBlob(blobInfo)), List.empty)
     ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()
 
