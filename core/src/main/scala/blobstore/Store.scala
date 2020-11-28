@@ -22,14 +22,15 @@ import blobstore.url.Authority.Bucket
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.url.general.UniversalFileSystemObject
 import blobstore.Store.UniversalStore
-import cats.{ApplicativeError, Eq, MonadError}
+import cats.{ApplicativeError, MonadError}
+import cats.data.Validated
 import cats.effect.{ContextShift, Sync}
 import cats.syntax.all._
 import fs2.{Pipe, Stream}
 
 import scala.util.{Failure, Success, Try}
 
-trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
+trait Store[F[_], A <: Authority, BlobType] {
 
   /** @param url to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
@@ -114,6 +115,8 @@ trait Store[F[_], A <: Authority, BlobType] extends StoreOps[F, A, BlobType] {
 }
 
 object Store {
+  implicit def syntax[F[_]: Sync: ContextShift, A <: Authority, B](store: Store[F, A, B]): StoreOps[F, A, B] =
+    new StoreOps[F, A, B](store)
 
   /** Blobstores operates on buckets and returns store specific blob types
     *
@@ -139,7 +142,7 @@ object Store {
   private[blobstore] class DelegatingStore[F[_]: Sync: ContextShift, Blob: FileSystemObject, AA <: Authority, BB](
     liftBlob: Blob => BB,
     underlying: Either[BlobStore[F, Blob], PathStore[F, Blob]],
-    transformPath: Path.Plain => Path.Plain = identity
+    pathStoreValidate: Url[AA] => Validated[Throwable, Path.Plain] = (_: Url[AA]).path.valid[Throwable]
   ) extends Store[F, AA, BB] {
 
     override def list(url: Url[AA], recursive: Boolean): Stream[F, Path[BB]] =
@@ -174,7 +177,7 @@ object Store {
             case (s, d) => blobstore.move(s, d)
           }
         case Right(filestore) =>
-          (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
+          (validateForFileStore[F](src), validateForFileStore[F](dst)).tupled.flatMap {
             case (s, d) => filestore.move(s, d)
           }
       }
@@ -186,7 +189,7 @@ object Store {
             case (s, d) => blobstore.copy(s, d)
           }
         case Right(filestore) =>
-          (validateForFileStore[F](src, filestore), validateForFileStore[F](dst, filestore)).tupled.flatMap {
+          (validateForFileStore[F](src), validateForFileStore[F](dst)).tupled.flatMap {
             case (s, d) => filestore.copy(s, d)
           }
       }
@@ -209,7 +212,7 @@ object Store {
           val u = computePath.flatMap(u => validateForBlobStore[F](u))
           blobStore.putRotate(u, limit)
         case Right(fileStore) =>
-          val u = computePath.flatMap(u => validateForFileStore[F](u, fileStore))
+          val u = computePath.flatMap(u => validateForFileStore[F](u))
           fileStore.putRotate(u, limit)
       }
 
@@ -217,14 +220,9 @@ object Store {
       Url.bucket(url.show).leftMap(MultipleUrlValidationException.apply).liftTo[G]
 
     private def validateForFileStore[G[_]: ApplicativeError[*[_], Throwable]](
-      url: Url[AA],
-      fileStore: PathStore[F, Blob]
+      url: Url[AA]
     ): G[Path.Plain] =
-      if (Eq[Authority].eqv(url.authority, fileStore.authority)) transformPath(url.path).pure[G]
-      else
-        new Exception(
-          show"Expected authorities to match, but got ${url.authority} for ${fileStore.authority}"
-        ).raiseError[G, Path.Plain]
+      pathStoreValidate(url).liftTo[G]
 
     private def validateAndInvoke[G[_]: MonadError[*[_], Throwable], A](url: Url[AA])(
       f: (BlobStore[F, Blob], Url[Bucket]) => G[A],
@@ -232,7 +230,7 @@ object Store {
     ): G[A] =
       underlying match {
         case Left(blobStore)  => validateForBlobStore[G](url).flatMap(f(blobStore, _))
-        case Right(fileStore) => validateForFileStore[G](url, fileStore).flatMap(g(fileStore, _))
+        case Right(fileStore) => validateForFileStore[G](url).flatMap(g(fileStore, _))
       }
 
     override def liftToUniversal: UniversalStore[F] =

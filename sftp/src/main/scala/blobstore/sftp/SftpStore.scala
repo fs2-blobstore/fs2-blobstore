@@ -7,6 +7,7 @@ import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.Store.BlobStore
+import cats.data.Validated
 import com.jcraft.jsch._
 import cats.syntax.all._
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
@@ -193,15 +194,15 @@ class SftpStore[F[_]] private (
       }
 
   override def liftToBlobStore: BlobStore[F, SftpFile] =
-    liftTo[Authority.Bucket, SftpFile](identity, _.relative)
+    liftTo[Authority.Bucket, SftpFile](identity, _.path.relative.valid)
 
   override def liftTo[AA <: Authority]: Store[F, AA, SftpFile] =
-    liftTo[AA, SftpFile](identity, _.relative)
+    liftTo[AA, SftpFile](identity, _.path.relative.valid)
 
   override def liftToStandard: Store[F, Authority.Standard, SftpFile] =
-    liftTo[Authority.Standard, SftpFile](identity, _.relative)
+    liftTo[Authority.Standard, SftpFile](identity, _.path.relative.valid)
 
-  override def liftTo[A <: Authority, B](f: SftpFile => B, g: Plain => Plain): Store[F, A, B] =
+  override def liftTo[A <: Authority, B](f: SftpFile => B, g: Url[A] => Validated[Throwable, Plain]): Store[F, A, B] =
     new Store.DelegatingStore[F, SftpFile, A, B](f, Right(this), g)
 
   override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit

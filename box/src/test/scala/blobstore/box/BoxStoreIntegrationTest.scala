@@ -4,9 +4,9 @@ package box
 import java.io.{File, FileNotFoundException, FileReader}
 import java.time.{Instant, ZoneOffset}
 
-import blobstore.implicits._
+import blobstore.url.Authority
 import cats.effect.IO
-import cats.implicits._
+import cats.syntax.all._
 import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnection, BoxFile, BoxFolder}
 import org.slf4j.LoggerFactory
 
@@ -17,12 +17,22 @@ import scala.util.Try
   * See AbstractStoreTest to see what operations performed here.
   */
 @IntegrationTest
-class BoxStoreIntegrationTest extends AbstractStoreTest {
+class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxPath] {
 
   private val log = LoggerFactory.getLogger(getClass)
 
   val BoxAppKey   = "BOX_TEST_BOX_APP_KEY"
   val BoxDevToken = "BOX_TEST_BOX_DEV_TOKEN"
+
+  private lazy val boxStore: BoxStore[IO]                         = BoxStore[IO](api, blocker)
+  override lazy val store: Store[IO, Authority.Standard, BoxPath] = boxStore.liftTo[Authority.Standard]
+
+  override val scheme = "https"
+
+  // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
+  override val authority: Authority.Standard = Authority.Standard.unsafe("foo")
+
+  val rootFolderName = "BoxStoreTest"
 
   lazy val api: BoxAPIConnection = {
     val fileCredentialName = sys.env.getOrElse(BoxAppKey, "box_appkey.json")
@@ -44,14 +54,15 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
     devToken
       .orElse(fileCredentials)
       .adaptError {
-        case _ => new Exception(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey")
+        case t => new Exception(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey", t)
       }
       .get // scalafix:ok
   }
 
   lazy val rootFolder: BoxFolder#Info = {
-    val rootInfo = BoxFolder.getRootFolder(api).asScala.toList.collectFirst {
-      case f: BoxFolder#Info if f.getName == authority => f
+    val list = BoxFolder.getRootFolder(api).asScala.toList
+    val rootInfo = list.collectFirst {
+      case f: BoxFolder#Info if f.getName == rootFolderName => f
     }
 
     rootInfo match {
@@ -80,32 +91,26 @@ class BoxStoreIntegrationTest extends AbstractStoreTest {
       }
   }
 
-  override lazy val store: Store[IO] = BoxStore[IO](api, blocker)
-
-  // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
-  override val authority: String = "BoxStoreTest"
-
   behavior of "BoxStore"
 
   it should "expose underlying metadata" in {
     val dirP = dirUrl("expose-underlying")
 
-    writeLocalFile(store, dirP)("abc.txt")
-    val subFolderFile = writeLocalFile(store, dirP / "subfolder")("cde.txt")
+    writeLocalFile(transferStore, dirP.path)("abc.txt")
+    val subFolderFile = writeLocalFile(transferStore, dirP.path / "subfolder")("cde.txt")
 
     @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
-    val paths = store
-      .asInstanceOf[BoxStore[IO]]
-      .listUnderlying(dirP, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS, recursive = false)
+    val paths = boxStore
+      .listUnderlying(dirP.path, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS, recursive = false)
       .compile
       .toList
       .unsafeRunSync()
 
-    paths.map(_.fileOrFolder).foreach {
+    paths.map(_.representation.fileOrFolder).foreach {
       case Left(file)    => Option(file.getCommentCount) mustBe defined
       case Right(folder) => Option(folder.getIsWatermarked) mustBe defined
     }
-    (subFolderFile :: paths).map(store.remove).sequence.unsafeRunSync()
+    (subFolderFile :: paths).map(boxStore.remove(_, false)).sequence.unsafeRunSync()
   }
 
 }

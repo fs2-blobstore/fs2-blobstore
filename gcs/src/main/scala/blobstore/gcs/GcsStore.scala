@@ -3,7 +3,7 @@ package blobstore.gcs
 import java.io.OutputStream
 import java.nio.channels.Channels
 
-import blobstore.{putRotateBase, Store}
+import blobstore.{putRotateBase, Store, StoreOps}
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.Store.{BlobStore, UniversalStore}
@@ -64,7 +64,7 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
   override def remove(url: Url[Bucket], recursive: Boolean = false): F[Unit] =
-    if (recursive) removeAll(url).void
+    if (recursive) new StoreOps[F, Authority.Bucket, GcsBlob](this).removeAll(url).void
     else
       blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
 

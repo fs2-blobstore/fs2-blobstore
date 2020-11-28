@@ -10,7 +10,7 @@ case class SftpFile(name: String, attrs: SftpATTRS)
 
 object SftpFile {
 
-  implicit val blob: FileSystemObject[SftpFile] = new FileSystemObject[SftpFile] {
+  implicit val blob: FileSystemObject.Aux[SftpFile, Nothing] = new FileSystemObject[SftpFile] {
     type StorageClassType = Nothing
 
     override def name(a: SftpFile): String = a.name

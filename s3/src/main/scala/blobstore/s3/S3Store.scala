@@ -149,7 +149,8 @@ class S3Store[F[_]](
     val key    = url.path.relative.show
     val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
-    if (recursive) removeAll(url).void else liftJavaFuture(F.delay(s3.deleteObject(req))).void
+    if (recursive) new StoreOps[F, Authority.Bucket, S3Blob](this).removeAll(url).void
+    else liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
 
   override def putRotate(computePath: F[Url[Authority.Bucket]], limit: Long): Pipe[F, Byte, Unit] =

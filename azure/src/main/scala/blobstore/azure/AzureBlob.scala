@@ -13,7 +13,7 @@ case class AzureBlob(
 )
 
 object AzureBlob {
-  implicit val fileSystemObject: FileSystemObject[AzureBlob] = new FileSystemObject[AzureBlob] {
+  implicit val fileSystemObject: FileSystemObject.Aux[AzureBlob, AccessTier] = new FileSystemObject[AzureBlob] {
     type StorageClassType = AccessTier
 
     override def name(a: AzureBlob): String = a.blob

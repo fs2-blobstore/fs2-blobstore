@@ -10,7 +10,7 @@ import com.google.cloud.storage.{BlobInfo, StorageClass}
 case class GcsBlob(blob: BlobInfo) extends AnyVal
 object GcsBlob {
 
-  implicit val fileSystemObject: FileSystemObject[GcsBlob] = new FileSystemObject[GcsBlob] {
+  implicit val fileSystemObject: FileSystemObject.Aux[GcsBlob, StorageClass] = new FileSystemObject[GcsBlob] {
     type StorageClassType = StorageClass
 
     override def name(a: GcsBlob): String = a.blob.getName

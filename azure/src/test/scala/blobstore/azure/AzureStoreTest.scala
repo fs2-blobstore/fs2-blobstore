@@ -98,6 +98,13 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
     }
   }
 
+  it should "resolve type of storage class" in {
+    store.list(dirUrl("foo")).map { path =>
+      val sc: Option[AccessTier] = path.storageClass
+      sc mustBe None
+    }
+  }
+
   override def beforeAll(): Unit = {
     super.beforeAll()
     val delete: Mono[Void] = azure

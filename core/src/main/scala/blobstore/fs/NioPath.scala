@@ -11,7 +11,7 @@ case class NioPath(path: JPath, size: Option[Long], isDir: Boolean, lastModified
 
 object NioPath {
 
-  implicit val filesystemObject: FileSystemObject[NioPath] = new FileSystemObject[NioPath] {
+  implicit val filesystemObject: FileSystemObject.Aux[NioPath, Nothing] = new FileSystemObject[NioPath] {
     type StorageClassType = Nothing
 
     override def name(a: NioPath): String = a.path.toString.toString

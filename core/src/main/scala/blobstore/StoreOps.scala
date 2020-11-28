@@ -22,7 +22,7 @@ import fs2.Pipe
 
 /** This object contains shared implementations of functions that requires additional capabilities from the effect type
   */
-private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Authority, B] { this: Store[F, A, B] =>
+class StoreOps[F[_]: Sync: ContextShift, A <: Authority, B](store: Store[F, A, B]) {
 
   /** Write contents of src file into dst Path
     * @param src java.nio.file.Path
@@ -33,7 +33,7 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
     Sync[F].delay(Option(src.toFile.length)).map(_.filter(_ > 0)).flatMap { size =>
       fs2.io.file
         .readAll(src, blocker, 4096)
-        .through(put(dst, overwrite, size))
+        .through(store.put(dst, overwrite, size))
         .compile
         .drain
     }
@@ -47,7 +47,7 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
   def bufferedPut(url: Url[A], overwrite: Boolean, chunkSize: Int, blocker: Blocker): Pipe[F, Byte, Unit] =
     _.through(bufferToDisk[F](chunkSize, blocker)).flatMap {
       case (n, s) =>
-        s.through(put(url, overwrite, Option(n)))
+        s.through(store.put(url, overwrite, Option(n)))
     }
 
   /** get src path and write to local file system
@@ -56,7 +56,7 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
     * @return F[Unit]
     */
   def get(src: Url[A], dst: java.nio.file.Path, chunkSize: Int, blocker: Blocker): F[Unit] =
-    get(src, chunkSize).through(fs2.io.file.writeAll[F](dst, blocker)).compile.drain
+    store.get(src, chunkSize).through(fs2.io.file.writeAll[F](dst, blocker)).compile.drain
 
   /** getContents with default UTF8 decoder
     * @param url Path to get
@@ -73,14 +73,14 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
     * @return F[String] with file contents
     */
   def getContents(url: Url[A], chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
-    get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
+    store.get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
 
   /** Collect all list results in the same order as the original list Stream
     * @param url Path to list
     * @return F\[List\[Path\]\] with all items in the result
     */
   def listAll(url: Url[A]): F[List[Path[B]]] =
-    list(url).compile.toList
+    store.list(url).compile.toList
 
   /** Copy value of the given path in this store to the destination store.
     *
@@ -97,9 +97,9 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
     * @return Stream[F, Int] number of files transfered
     */
   def transferTo[AA <: Authority, BB](dstStore: Store[F, AA, BB], srcUrl: Url[A], dstUrl: Url[AA]): F[Int] =
-    list(srcUrl, recursive = true)
+    store.list(srcUrl, recursive = true)
       .flatMap(p =>
-        get(srcUrl.replacePath(p), 4096)
+        store.get(srcUrl.replacePath(p), 4096)
           .through(dstStore.put(dstUrl.copy(path = p.plain)))
           .last
           .map(_.fold(0)(_ => 1))
@@ -110,19 +110,19 @@ private[blobstore] abstract class StoreOps[F[_]: Sync: ContextShift, A <: Author
   /** Remove all files from a store recursively, given a path
     */
   def removeAll(url: Url[A])(implicit F: FileSystemObject[B]): F[Int] = {
-    val isDir = stat(url).map {
+    val isDir = store.stat(url).map {
       case Some(d) => d.isDir
       case None    => url.path.show.endsWith("/")
     }
 
     isDir.flatMap { isDir =>
-      list(url)
+      store.list(url)
         .evalMap(p =>
           if (p.isDir) {
             removeAll(url / p.lastSegment)
           } else {
             val dp = if (isDir) url / p.lastSegment else url
-            remove(dp, recursive = false).as(1)
+            store.remove(dp, recursive = false).as(1)
           }
         )
         .compile

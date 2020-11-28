@@ -109,6 +109,35 @@ sealed trait Path[A] {
       lastNonEmpty.map(_ + slashSuffix)
     }
 
+  /** Goes one level "up" and looses any information about the underlying path representation
+    */
+  def up: Path.Plain = {
+    def dropLastSegment(segments: Chain[String], levels: Int): Chain[String] = segments.initLast match {
+      case Some((init, last)) => if (last.isEmpty && levels === 0) dropLastSegment(init, levels + 1) else init
+      case None               => segments
+    }
+    val upSegments     = dropLastSegment(segments, 0)
+    val representation = upSegments.mkString_("/")
+    plain match {
+      case AbsolutePath(_, _) => AbsolutePath(representation, upSegments)
+      case RootlessPath(_, _) => RootlessPath(representation, upSegments)
+    }
+  }
+
+  def parentPath: Path.Plain = up
+
+  def stripSlashSuffix: Path[A] = {
+    val newSegments = segments.initLast match {
+      case Some((init, "")) => init
+      case _                => segments
+    }
+
+    this match {
+      case AbsolutePath(representation, _) => AbsolutePath(representation, newSegments)
+      case RootlessPath(representation, _) => RootlessPath(representation, newSegments)
+    }
+  }
+
   def fullName(implicit B: FileSystemObject[A]): String                         = B.name(representation)
   def size(implicit B: FileSystemObject[A]): Option[Long]                       = B.size(representation)
   def isDir(implicit B: FileSystemObject[A]): Boolean                           = B.isDir(representation)

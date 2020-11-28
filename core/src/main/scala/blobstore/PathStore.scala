@@ -5,11 +5,11 @@ import java.nio.charset.StandardCharsets
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import blobstore.url.general.UniversalFileSystemObject
 import blobstore.Store.{BlobStore, UniversalStore}
+import cats.data.Validated
 import fs2.{Pipe, Stream}
+import cats.syntax.all._
 
 abstract class PathStore[F[_], BlobType] {
-
-  def authority: Authority
 
   /** List paths.
     *
@@ -28,7 +28,7 @@ abstract class PathStore[F[_], BlobType] {
     *          list(folder, recursive = true)  -> [a, b, c, d, e]
     *          list(folder, recursive = false) -> [a, b, c, sub-folder]
     */
-  def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[BlobType]]
+  def list[A](path: Path[A], recursive: Boolean): Stream[F, Path[BlobType]]
 
   /** Get bytes for the given Path.
     * @param path to get
@@ -99,19 +99,19 @@ abstract class PathStore[F[_], BlobType] {
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  def liftTo[A <: Authority, B](f: BlobType => B, g: Path.Plain => Path.Plain = identity): Store[F, A, B]
+  def liftTo[A <: Authority, B](f: BlobType => B, g: Url[A] => Validated[Throwable, Path.Plain]): Store[F, A, B]
 
   def liftToUniversal(implicit fso: FileSystemObject[BlobType]): UniversalStore[F] =
-    liftTo[Authority.Standard, UniversalFileSystemObject](fso.universal)
+    liftTo[Authority.Standard, UniversalFileSystemObject](fso.universal, _.path.valid)
 
   def liftToBlobStore: BlobStore[F, BlobType] =
-    liftTo[Authority.Bucket, BlobType](identity)
+    liftTo[Authority.Bucket, BlobType](identity, _.path.valid)
 
   def liftTo[AA <: Authority]: Store[F, AA, BlobType] =
-    liftTo[AA, BlobType](identity)
+    liftTo[AA, BlobType](identity, _.path.valid)
 
   def liftToStandard: Store[F, Authority.Standard, BlobType] =
-    liftTo[Authority.Standard, BlobType](identity)
+    liftTo[Authority.Standard, BlobType](identity, _.path.valid)
 
   def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
   fsb: FileSystemObject[B]): F[Int]

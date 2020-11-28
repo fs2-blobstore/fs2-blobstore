@@ -23,6 +23,8 @@ trait FileSystemObject[-A] {
 }
 
 object FileSystemObject {
+  type Aux[-A, R] = FileSystemObject[A] { type StorageClassType = R }
+
   def apply[A: FileSystemObject]: FileSystemObject[A] = implicitly[FileSystemObject[A]]
 
 }

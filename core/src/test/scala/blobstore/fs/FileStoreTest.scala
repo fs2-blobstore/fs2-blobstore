@@ -18,16 +18,18 @@ package fs
 
 import blobstore.url.{Authority, Path}
 import cats.effect.IO
+import cats.syntax.all._
 
 class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
 
   override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
 
-  override val fileSystemRoot: Path.Plain                    = testRunRoot
-  private val localStore: FileStore[IO]                      = FileStore[IO](blocker)
-  override val store: Store[IO, Authority.Standard, NioPath] = localStore.liftTo[Authority.Standard, NioPath](identity)
-  override val authority: Authority.Standard                 = Authority.Standard.localhost
-  override val scheme: String                                = "file"
+  override val fileSystemRoot: Path.Plain = testRunRoot
+  private val localStore: FileStore[IO]   = FileStore[IO](blocker)
+  override val store: Store[IO, Authority.Standard, NioPath] =
+    localStore.liftTo[Authority.Standard, NioPath](identity, _.path.valid)
+  override val authority: Authority.Standard = Authority.Standard.localhost
+  override val scheme: String                = "file"
 
   behavior of "FileStore.put"
   it should "not have side effects when creating a Sink" in {

@@ -182,6 +182,13 @@ class S3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Insid
     test.unsafeRunSync()
   }
 
+  it should "resolve type of storage class" in {
+    store.list(dirUrl("foo")).map { path =>
+      val sc: Option[StorageClass] = path.storageClass
+      sc mustBe None
+    }
+  }
+
   override def beforeAll(): Unit = {
     super.beforeAll()
     try {

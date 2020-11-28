@@ -156,6 +156,10 @@ object Authority {
 
   def parse(s: String): ValidatedNec[AuthorityParseError, Authority] = Standard.parse(s)
 
+  def standard(s: String): ValidatedNec[AuthorityParseError, Authority.Standard] = Standard.parse(s)
+
+  def bucket(s: String): ValidatedNec[BucketParseError, Authority.Bucket] = Bucket.parse(s)
+
   type AuthorityCoproduct = Either[Standard, Bucket]
 
   private val authorityToCoproduct: Authority => AuthorityCoproduct = {

@@ -23,7 +23,7 @@ import blobstore.fs.FileStore
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
-import cats.effect.{Blocker, ContextShift, IO}
+import cats.effect.{Blocker, ContextShift, IO, Timer}
 import cats.effect.laws.util.TestInstances
 import cats.implicits._
 import org.scalatest.flatspec.AnyFlatSpec
@@ -32,6 +32,7 @@ import fs2.Stream
 
 import scala.concurrent.ExecutionContext
 import scala.util.Random
+import scala.concurrent.duration._
 
 abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
   extends AnyFlatSpec
@@ -41,6 +42,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
   with Inside {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val timer: Timer[IO]     = IO.timer(ExecutionContext.global)
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
   val testRun: UUID = java.util.UUID.randomUUID()
@@ -118,8 +120,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
 
     store.listAll(dir).unsafeRunSync().map(_.show).toSet must be(exp)
 
-    val io: IO[List[Unit]] = paths.traverse(store.remove(_, recursive = false))
-    io.unsafeRunSync()
+    paths.parTraverse_(store.remove(_, recursive = false)).unsafeRunSync()
 
     store.listAll(dir).unsafeRunSync() mustBe Nil
   }
@@ -134,7 +135,7 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
       .map(i => s"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
-    val exp = paths.map(p => p.path.show).toSet
+    val exp = paths.map(p => p.path.relative.show).toSet
 
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
@@ -489,9 +490,13 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
   def contents(filename: String): String = s"file contents to upload: $filename"
 
   def writeFile(store: Store[IO, A, B], tmpDir: Path.Plain)(filename: String): Url[A] = {
+    def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
+      if (count < times) Timer[IO].sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
+    }
     val url = Url(scheme, authority, tmpDir / filename)
-    store.put(contents(filename), url).compile.drain.unsafeRunSync()
-    url
+
+    val writeContents = store.put(contents(filename), url).compile.drain.as(url)
+    retry(writeContents, 0, 5).unsafeRunSync()
   }
 
   def writeLocalFile(store: FileStore[IO], tmpDir: Path.Plain)(filename: String): Path.Plain = {

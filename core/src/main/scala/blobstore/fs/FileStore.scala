@@ -19,7 +19,7 @@ package fs
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
 import blobstore.url.{Authority, FileSystemObject, Path, Url}
-import blobstore.url.Path.Plain
+import cats.data.Validated
 
 import scala.jdk.CollectionConverters._
 import cats.syntax.all._
@@ -30,8 +30,6 @@ import fs2.{Hotswap, Pipe, Stream}
 import scala.util.Try
 
 class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]) extends PathStore[F, NioPath] {
-
-  override def authority: Authority = Authority.Standard.localhost
 
   override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[NioPath]] = {
     val isDir  = Stream.eval(F.delay(Files.isDirectory(path.nioPath)))
@@ -162,7 +160,10 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def liftTo[A <: Authority, B](f: NioPath => B, g: Plain => Plain): Store[F, A, B] =
+  override def liftTo[A <: Authority, B](
+    f: NioPath => B,
+    g: Url[A] => Validated[Throwable, Path.Plain]
+  ): Store[F, A, B] =
     new Store.DelegatingStore[F, NioPath, A, B](f, Right(this), g)
 
   def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit

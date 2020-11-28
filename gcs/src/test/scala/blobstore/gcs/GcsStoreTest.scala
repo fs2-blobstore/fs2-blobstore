@@ -1,14 +1,14 @@
 package blobstore
 package gcs
 
-import cats.syntax.all._
-import blobstore.url.Authority.Bucket
 import blobstore.url.{Path, Url}
+import blobstore.url.Authority.Bucket
 import blobstore.url.Path.Plain
 import cats.effect.IO
-import fs2.Stream
+import cats.syntax.all._
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
+import fs2.Stream
 import org.scalatest.Inside
 
 import scala.jdk.CollectionConverters._
@@ -108,5 +108,12 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
       .map(_.mkString)
 
     content.unsafeRunSync() must be(contents(filename))
+  }
+
+  it should "resolve type of storage class" in {
+    gcsStore.list(dirUrl("foo")).map { path =>
+      val sc: Option[StorageClass] = path.storageClass
+      sc mustBe None
+    }
   }
 }
