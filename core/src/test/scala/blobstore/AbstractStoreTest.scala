@@ -305,16 +305,18 @@ abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
     test.unsafeRunSync()
   }
 
-  it should "remove all files in a directory" in {
+  it should "remove files and directories recursively" in {
     val srcDir = dirUrl("rm-dir-to-dir-src")
 
     (1 to 10).toList
       .map(i => s"filename-$i.txt")
       .map(writeFile(store, srcDir.path))
 
+    (1 to 5).map(i => s"filename-$i.txt").map(writeFile(store, (srcDir / "sub").path))
+
     store.remove(srcDir, recursive = true).unsafeRunSync()
 
-    store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
+    store.list(srcDir).compile.toList.unsafeRunSync() mustBe Nil
   }
 
   it should "succeed on remove when path does not exist" in {
