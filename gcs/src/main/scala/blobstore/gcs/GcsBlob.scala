@@ -2,37 +2,27 @@ package blobstore.gcs
 
 import java.time.Instant
 
-import blobstore.url.FileSystemObject
-import blobstore.url.general.{GeneralStorageClass, UniversalFileSystemObject}
+import blobstore.url.{FsObject}
+import blobstore.url.general.{GeneralStorageClass}
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 
 // This type exists only to put the FileSystemObject instance on the default implicit search path
-case class GcsBlob(blob: BlobInfo) extends AnyVal
-object GcsBlob {
+case class GcsBlob(blob: BlobInfo) extends FsObject {
+  override def name: String = blob.getName
 
-  implicit val fileSystemObject: FileSystemObject.Aux[GcsBlob, StorageClass] = new FileSystemObject[GcsBlob] {
-    type StorageClassType = StorageClass
+  override type StorageClassType = StorageClass
 
-    override def name(a: GcsBlob): String = a.blob.getName
+  override def size: Option[Long] = Option(blob.getSize.toLong)
 
-    override def size(a: GcsBlob): Option[Long] = Option(a.blob.getSize.toLong)
+  override def isDir: Boolean = blob.isDirectory
 
-    override def isDir(a: GcsBlob): Boolean = a.blob.isDirectory
+  override def lastModified: Option[Instant] = Option(blob.getUpdateTime).map(Instant.ofEpochMilli(_))
 
-    override def lastModified(a: GcsBlob): Option[Instant] = Option(a.blob.getUpdateTime).map(Instant.ofEpochMilli(_))
+  override def storageClass: Option[StorageClass] = Option(blob.getStorageClass)
 
-    override def storageClass(a: GcsBlob): Option[StorageClassType] = Option(a.blob.getStorageClass)
-
-    override def universal(a: GcsBlob): UniversalFileSystemObject =
-      UniversalFileSystemObject(
-        name(a),
-        size(a),
-        isDir(a),
-        storageClass(a).map {
-          case StorageClass.COLDLINE | StorageClass.ARCHIVE => GeneralStorageClass.ColdStorage
-          case _                                            => GeneralStorageClass.Standard
-        },
-        lastModified(a)
-      )
-  }
+  override def generalStorageClass: Option[GeneralStorageClass] =
+    storageClass.map {
+      case StorageClass.COLDLINE | StorageClass.ARCHIVE => GeneralStorageClass.ColdStorage
+      case _                                            => GeneralStorageClass.Standard
+    }
 }

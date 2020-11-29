@@ -10,9 +10,6 @@ services:
 
     command: "blob:password:::sftp_tests"
 
-    ports:
-      - "2222:22"
-
   sftp-no-chroot:
     image: atmoz/sftp
 

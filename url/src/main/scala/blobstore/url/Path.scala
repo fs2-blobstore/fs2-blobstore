@@ -2,9 +2,9 @@ package blobstore.url
 
 import java.nio.file.Paths
 import java.time.Instant
+
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
-import blobstore.url.general.UniversalFileSystemObject
-import cats.{Functor, Show}
+import cats.Show
 import cats.data.Chain
 import cats.kernel.Order
 import cats.syntax.all._
@@ -19,7 +19,7 @@ import scala.annotation.tailrec
   *
   * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.3, Path
   */
-sealed trait Path[A] {
+sealed trait Path[+A] {
   def representation: A
   def segments: Chain[String]
   def value: String = Show[Path[A]].show(this)
@@ -48,7 +48,7 @@ sealed trait Path[A] {
     *
     * @see addSegment
     */
-  def /(segment: String)(implicit ev: String =:= A): Path[String] = {
+  def /(segment: String): Path[String] = {
     val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList: _*)
     val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList: _*)
 
@@ -60,21 +60,26 @@ sealed trait Path[A] {
 
     this match {
       case AbsolutePath(_, _) =>
-        AbsolutePath("/" + ev(newChain.mkString_("/")), newChain)
+        AbsolutePath("/" + newChain.mkString_("/"), newChain)
       case RootlessPath(_, _) =>
         RootlessPath(newChain.mkString_("/"), newChain)
     }
   }
 
-  def `//`(segment: Option[String])(implicit ev: String =:= A): Path[String] = segment match {
+  def /(segment: Option[String]): Path[String] = segment match {
+    case Some(s) => /(s)
+    case None    => this.plain
+  }
+
+  def `//`(segment: Option[String]): Path[String] = segment match {
     case Some(s) => `//`(s)
-    case None    => this.map(ev.flip)
+    case None    => this.plain
   }
 
   /** Ensure that path always is suffixed with '/'
     */
-  def `//`(segment: String)(implicit ev: String =:= A): Path[String] =
-    this / (if (segment.endsWith("/")) segment else segment + "/")
+  def `//`(segment: String): Path[String] =
+    /(if (segment.endsWith("/")) segment else segment + "/")
 
   def as[B](b: B): Path[B] = this match {
     case AbsolutePath(_, segments) => AbsolutePath(b, segments)
@@ -83,7 +88,7 @@ sealed trait Path[A] {
 
   /** Adds a segment to the path while ensuring that the segments and path representation are kept in sync
     *
-    * If you're just working with String paths, see [[/]]
+    * If you're just working with String paths, see `/`
     */
   def addSegment[B](segment: String, representation: B): Path[B] =
     (plain / segment).as(representation)
@@ -112,6 +117,7 @@ sealed trait Path[A] {
   /** Goes one level "up" and looses any information about the underlying path representation
     */
   def up: Path.Plain = {
+    @tailrec
     def dropLastSegment(segments: Chain[String], levels: Int): Chain[String] = segments.initLast match {
       case Some((init, last)) => if (last.isEmpty && levels === 0) dropLastSegment(init, levels + 1) else init
       case None               => segments
@@ -138,13 +144,13 @@ sealed trait Path[A] {
     }
   }
 
-  def fullName(implicit B: FileSystemObject[A]): String                         = B.name(representation)
-  def size(implicit B: FileSystemObject[A]): Option[Long]                       = B.size(representation)
-  def isDir(implicit B: FileSystemObject[A]): Boolean                           = B.isDir(representation)
-  def lastModified(implicit B: FileSystemObject[A]): Option[Instant]            = B.lastModified(representation)
-  def storageClass(implicit B: FileSystemObject[A]): Option[B.StorageClassType] = B.storageClass(representation)
-  def fileName(implicit B: FileSystemObject[A]): Option[String]                 = if (isDir) None else lastSegment
-  def dirName(implicit B: FileSystemObject[A]): Option[String]                  = if (!isDir) None else lastSegment
+  def fullName(implicit ev: A <:< FsObject): String                  = ev(representation).name
+  def size(implicit ev: A <:< FsObject): Option[Long]                = ev(representation).size
+  def isDir(implicit ev: A <:< FsObject): Boolean                    = ev(representation).isDir
+  def lastModified(implicit ev: A <:< FsObject): Option[Instant]     = ev(representation).lastModified
+  def storageClass[R](implicit ev: A <:< FsObject.Aux[R]): Option[R] = ev(representation).storageClass
+  def fileName(implicit ev: A <:< FsObject): Option[String]          = if (isDir) None else lastSegment
+  def dirName(implicit ev: A <:< FsObject): Option[String]           = if (!isDir) None else lastSegment
 
 }
 
@@ -157,12 +163,6 @@ object Path {
   type Plain         = Path[String]
   type AbsolutePlain = AbsolutePath[String]
   type RootlessPlain = RootlessPath[String]
-
-  /** A file system object represented with a "general" structure
-    *
-    * This is typically used in stores that abstracts multiple file systems
-    */
-  type GeneralObject = Path[UniversalFileSystemObject]
 
   case class AbsolutePath[A] private (representation: A, segments: Chain[String]) extends Path[A]
 
@@ -251,7 +251,7 @@ object Path {
 
   def of[B](path: String, b: B): Path[B] = Path(path).as(b)
 
-  def compare[A](one: Path[A], two: Path[A]): Int = {
+  def cmp[A](one: Path[A], two: Path[A]): Int = {
     one.show compare two.show
   }
 
@@ -260,18 +260,13 @@ object Path {
     case RootlessPath(representation, segments) => (p.show, representation, segments).some
   }
 
-  implicit def order[A: Order]: Order[Path[A]]          = compare
+  implicit def order[A: Order]: Order[Path[A]] = new Order[Path[A]] {
+    def compare(x: Path[A], y: Path[A]): Int = cmp(x, y)
+  }
   implicit def ordering[A: Ordering]: Ordering[Path[A]] = order[A](Order.fromOrdering[A]).toOrdering
   implicit def show[A]: Show[Path[A]] = {
     case a: AbsolutePath[A] => a.show
     case r: RootlessPath[A] => r.show
-  }
-
-  implicit val functor: Functor[Path] = new Functor[Path] {
-    override def map[A, B](fa: Path[A])(f: A => B): Path[B] = fa match {
-      case _: AbsolutePath[A] => AbsolutePath[B](f(fa.representation), fa.segments)
-      case p: RootlessPath[A] => RootlessPath(f(p.representation), p.segments)
-    }
   }
 
 }

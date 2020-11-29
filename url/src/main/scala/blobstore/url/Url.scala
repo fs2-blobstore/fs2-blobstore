@@ -1,6 +1,7 @@
 package blobstore.url
 
 import blobstore.url.exception.{MultipleUrlValidationException, UrlParseError}
+import blobstore.url.Authority.{Bucket, Standard}
 import blobstore.url.Path.AbsolutePath
 import cats.{ApplicativeError, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
@@ -28,7 +29,41 @@ case class Url[+A <: Authority](scheme: String, authority: A, path: Path.Plain) 
 
   def map[B <: Authority](f: A => B): Url[B] = copy(authority = f(authority))
 
-  override val toString: String = show"${scheme.stripSuffix("://")}://$authority/${path.show.stripPrefix("/")}"
+  /** Safe toString implementation.
+    *
+    * @return Outputs user segment if any, will not print passwords
+    */
+  override val toString: String = authority match {
+    case Standard(h, Some(u), Some(p)) =>
+      show"${scheme.stripSuffix("://")}://${u.user}@$h:$p/${path.show.stripPrefix("/")}"
+    case Standard(h, Some(u), None) => show"${scheme.stripSuffix("://")}://${u.user}@$h/${path.show.stripPrefix("/")}"
+    case Standard(h, None, Some(p)) => show"${scheme.stripSuffix("://")}://$h:$p/${path.show.stripPrefix("/")}"
+    case Standard(h, None, None)    => show"${scheme.stripSuffix("://")}://$h/${path.show.stripPrefix("/")}"
+    case Bucket(name, _)            => show"${scheme.stripSuffix("://")}://$name/${path.show.stripPrefix("/")}"
+  }
+
+  /** Safe toString implementation
+    *
+    * @return Outputs masked passwords
+    */
+  val toStringMasked: String = authority match {
+    case Standard(h, Some(u), Some(p)) => show"${scheme.stripSuffix("://")}://$u@$h:$p/${path.show.stripPrefix("/")}"
+    case Standard(h, Some(u), None)    => show"${scheme.stripSuffix("://")}://$u@$h/${path.show.stripPrefix("/")}"
+    case Standard(h, None, Some(p))    => show"${scheme.stripSuffix("://")}://$h:$p/${path.show.stripPrefix("/")}"
+    case Standard(h, None, None)       => show"${scheme.stripSuffix("://")}://$h/${path.show.stripPrefix("/")}"
+    case Bucket(name, _)               => show"${scheme.stripSuffix("://")}://$name/${path.show.stripPrefix("/")}"
+  }
+
+  def toStringWithPassword: String = authority match {
+    case Standard(h, Some(u), Some(p)) =>
+      show"${scheme.stripSuffix("://")}://${u.toStringWithPassword}@$h:$p/${path.show.stripPrefix("/")}"
+    case Standard(h, Some(u), None) =>
+      show"${scheme.stripSuffix("://")}://${u.toStringWithPassword}@$h/${path.show.stripPrefix("/")}"
+    case Standard(h, None, Some(p)) => show"${scheme.stripSuffix("://")}://$h:$p/${path.show.stripPrefix("/")}"
+    case Standard(h, None, None)    => show"${scheme.stripSuffix("://")}://$h/${path.show.stripPrefix("/")}"
+    case Bucket(name, _)            => show"${scheme.stripSuffix("://")}://$name/${path.show.stripPrefix("/")}"
+  }
+
 }
 
 object Url {

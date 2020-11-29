@@ -2,8 +2,8 @@ package blobstore.sftp
 
 import java.io.OutputStream
 
-import blobstore.{_writeAllToOutputStream1, putRotateBase, PathStore, Store}
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.{_writeAllToOutputStream1, defaultTransferTo, putRotateBase, PathStore, Store}
+import blobstore.url.{Authority, FsObject, Path, Url}
 import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
 import blobstore.Store.BlobStore
@@ -194,28 +194,20 @@ class SftpStore[F[_]] private (
       }
 
   override def liftToBlobStore: BlobStore[F, SftpFile] =
-    liftTo[Authority.Bucket, SftpFile](identity, _.path.relative.valid)
+    liftTo[Authority.Bucket]((u: Url[Authority.Bucket]) => u.path.relative.valid)
 
   override def liftTo[AA <: Authority]: Store[F, AA, SftpFile] =
-    liftTo[AA, SftpFile](identity, _.path.relative.valid)
+    liftTo[AA]((u: Url[AA]) => u.path.relative.valid)
 
   override def liftToStandard: Store[F, Authority.Standard, SftpFile] =
-    liftTo[Authority.Standard, SftpFile](identity, _.path.relative.valid)
+    liftTo[Authority.Standard]((u: Url[Authority.Standard]) => u.path.relative.valid)
 
-  override def liftTo[A <: Authority, B](f: SftpFile => B, g: Url[A] => Validated[Throwable, Plain]): Store[F, A, B] =
-    new Store.DelegatingStore[F, SftpFile, A, B](f, Right(this), g)
+  override def liftTo[A <: Authority](g: Url[A] => Validated[Throwable, Plain]): Store[F, A, SftpFile] =
+    new Store.DelegatingStore[F, A, SftpFile](Right(this), g)
 
   override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  fsb: FileSystemObject[B]): F[Int] =
-    list(srcPath, recursive = true)
-      .flatMap(p =>
-        get(p, 4096)
-          .through(dstStore.put(dstUrl.replacePath(p)))
-          .last
-          .map(_.fold(0)(_ => 1))
-      )
-      .fold(0)(_ + _)
-      .compile.last.map(_.getOrElse(0))
+  ev: B <:< FsObject): F[Int] =
+    defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
     get(path, chunkSize).through(fs2.text.utf8Decode).compile.string

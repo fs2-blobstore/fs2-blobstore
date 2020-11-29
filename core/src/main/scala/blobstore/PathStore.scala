@@ -2,12 +2,11 @@ package blobstore
 
 import java.nio.charset.StandardCharsets
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
-import blobstore.url.general.UniversalFileSystemObject
-import blobstore.Store.{BlobStore, UniversalStore}
+import blobstore.url.{Authority, FsObject, Path, Url}
+import blobstore.Store.BlobStore
 import cats.data.Validated
-import fs2.{Pipe, Stream}
 import cats.syntax.all._
+import fs2.{Pipe, Stream}
 
 abstract class PathStore[F[_], BlobType] {
 
@@ -99,22 +98,19 @@ abstract class PathStore[F[_], BlobType] {
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  def liftTo[A <: Authority, B](f: BlobType => B, g: Url[A] => Validated[Throwable, Path.Plain]): Store[F, A, B]
-
-  def liftToUniversal(implicit fso: FileSystemObject[BlobType]): UniversalStore[F] =
-    liftTo[Authority.Standard, UniversalFileSystemObject](fso.universal, _.path.valid)
+  def liftTo[A <: Authority](g: Url[A] => Validated[Throwable, Path.Plain]): Store[F, A, BlobType]
 
   def liftToBlobStore: BlobStore[F, BlobType] =
-    liftTo[Authority.Bucket, BlobType](identity, _.path.valid)
+    liftTo[Authority.Bucket]((u: Url[Authority.Bucket]) => u.path.valid)
 
   def liftTo[AA <: Authority]: Store[F, AA, BlobType] =
-    liftTo[AA, BlobType](identity, _.path.valid)
+    liftTo[AA]((u: Url[AA]) => u.path.valid)
 
   def liftToStandard: Store[F, Authority.Standard, BlobType] =
-    liftTo[Authority.Standard, BlobType](identity, _.path.valid)
+    liftTo[Authority.Standard]((u: Url[Authority.Standard]) => u.path.valid)
 
   def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  fsb: FileSystemObject[B]): F[Int]
+  ev: B <:< FsObject): F[Int]
 
   def stat[A](path: Path[A]): F[Option[Path[BlobType]]]
 

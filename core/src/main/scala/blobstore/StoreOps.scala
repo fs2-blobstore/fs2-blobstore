@@ -15,7 +15,7 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.all._
 import fs2.Pipe
@@ -109,8 +109,8 @@ class StoreOps[F[_]: Sync: ContextShift, A <: Authority, B](store: Store[F, A, B
 
   /** Remove all files from a store recursively, given a path
     */
-  def removeAll(url: Url[A])(implicit F: FileSystemObject[B]): F[Int] = {
-    val isDir = store.stat(url).map {
+  def removeAll(url: Url[A])(implicit ev: B <:< FsObject): F[Int] = {
+    val isDir = store.stat(url).compile.last.map {
       case Some(d) => d.isDir
       case None    => url.path.show.endsWith("/")
     }

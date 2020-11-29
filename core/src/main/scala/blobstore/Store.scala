@@ -17,11 +17,9 @@ package blobstore
 
 import java.nio.charset.StandardCharsets
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Authority.Bucket
 import blobstore.url.exception.MultipleUrlValidationException
-import blobstore.url.general.UniversalFileSystemObject
-import blobstore.Store.UniversalStore
 import cats.{ApplicativeError, MonadError}
 import cats.data.Validated
 import cats.effect.{ContextShift, Sync}
@@ -30,7 +28,7 @@ import fs2.{Pipe, Stream}
 
 import scala.util.{Failure, Success, Try}
 
-trait Store[F[_], A <: Authority, BlobType] {
+trait Store[F[_], A <: Authority, +BlobType] {
 
   /** @param url to list
     * @param recursive when true returned list would contain files at given path and all sub-folders but no folders,
@@ -109,9 +107,9 @@ trait Store[F[_], A <: Authority, BlobType] {
     */
   def putRotate(computePath: F[Url[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  def stat(url: Url[A]): F[Option[Path[BlobType]]]
+  def widen(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, BlobType]
 
-  def liftToUniversal: UniversalStore[F]
+  def stat(url: Url[A]): Stream[F, Path[BlobType]]
 }
 
 object Store {
@@ -124,14 +122,6 @@ object Store {
     */
   type BlobStore[F[_], B] = Store[F, Authority.Bucket, B]
 
-  /** UniversalStore abstracts over all other stores. It takes the widest input URLs and outputs a "least common
-    * denominator" type `blobstore.url.general.UniversalFileSystemObject`. This is useful if you want a common interface for all stores.
-    *
-    * @see [[Store.liftToUniversal]]
-    * @see [[PathStore.liftToUniversal]]
-    */
-  type UniversalStore[F[_]] = Store[F, Authority.Standard, UniversalFileSystemObject]
-
   /** Validates input URLs before delegating to underlying store. This allows different stores to be exposed
     * under a the same, and wider, interface. For instance, we can expose FileStore's with Path input as a
     * BlobStore with bucket input and which validates that the bucket equals the FileStore's authority.
@@ -139,16 +129,15 @@ object Store {
     * Use `transformPath` to control how paths retrieved from input URLs are converted to paths for FileStores
     */
   //
-  private[blobstore] class DelegatingStore[F[_]: Sync: ContextShift, Blob: FileSystemObject, AA <: Authority, BB](
-    liftBlob: Blob => BB,
+  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], AA <: Authority, Blob](
     underlying: Either[BlobStore[F, Blob], PathStore[F, Blob]],
     pathStoreValidate: Url[AA] => Validated[Throwable, Path.Plain] = (_: Url[AA]).path.valid[Throwable]
-  ) extends Store[F, AA, BB] {
+  ) extends Store[F, AA, Blob] {
 
-    override def list(url: Url[AA], recursive: Boolean): Stream[F, Path[BB]] =
-      validateAndInvoke[Stream[F, *], Path[BB]](url)(
-        _.list(_, recursive).map(_.map(liftBlob)),
-        _.list(_, recursive).map(_.map(liftBlob))
+    override def list(url: Url[AA], recursive: Boolean): Stream[F, Path[Blob]] =
+      validateAndInvoke[Stream[F, *], Path[Blob]](url)(
+        _.list(_, recursive),
+        _.list(_, recursive)
       )
 
     override def get(url: Url[AA], chunkSize: Int): Stream[F, Byte] =
@@ -200,10 +189,10 @@ object Store {
         _.remove(_, recursive)
       )
 
-    override def stat(url: Url[AA]): F[Option[Path[BB]]] =
-      validateAndInvoke[F, Option[Path[BB]]](url)(
-        _.stat(_).map(_.map(_.map(liftBlob))),
-        _.stat(_).map(_.map(_.map(liftBlob)))
+    override def stat(url: Url[AA]): Stream[F, Path[Blob]] =
+      validateAndInvoke[Stream[F, *], Path[Blob]](url)(
+        _.stat(_),
+        (a, b) => Stream.eval(a.stat(b)).unNone
       )
 
     override def putRotate(computePath: F[Url[AA]], limit: Long): Pipe[F, Byte, Unit] =
@@ -233,12 +222,12 @@ object Store {
         case Right(fileStore) => validateForFileStore[G](url).flatMap(g(fileStore, _))
       }
 
-    override def liftToUniversal: UniversalStore[F] =
+    override def widen(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, Blob] = {
       underlying match {
-        case Left(blobStore)  => blobStore.liftToUniversal
-        case Right(pathStore) => pathStore.liftToUniversal
+        case Left(blobStore)  => blobStore.widen(ME)
+        case Right(pathStore) => pathStore.liftToStandard
       }
-
+    }
   }
 
 }

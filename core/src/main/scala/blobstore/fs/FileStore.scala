@@ -18,7 +18,7 @@ package fs
 
 import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.data.Validated
 
 import scala.jdk.CollectionConverters._
@@ -163,28 +163,12 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def liftTo[A <: Authority, B](
-    f: NioPath => B,
-    g: Url[A] => Validated[Throwable, Path.Plain]
-  ): Store[F, A, B] =
-    new Store.DelegatingStore[F, NioPath, A, B](f, Right(this), g)
+  override def liftTo[A <: Authority](g: Url[A] => Validated[Throwable, Path.Plain]): Store[F, A, NioPath] =
+    new Store.DelegatingStore[F, A, NioPath](Right(this), g)
 
   def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  fsb: FileSystemObject[B]): F[Int] = {
-    dstStore.stat(dstUrl).map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
-      list(srcPath.plain)
-        .evalMap { p =>
-          if (p.isDir) {
-            transferTo(dstStore, p, dstUrl `//` p.lastSegment)
-          } else {
-            val dp = if (dstIsDir) dstUrl / p.lastSegment else dstUrl
-            get(p, 4096).through(dstStore.put(dp)).compile.drain.as(1)
-          }
-        }
-        .fold(0)(_ + _)
-        .compile.lastOrError
-    }
-  }
+  ev: B <:< FsObject): F[Int] =
+    defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
     get(path, chunkSize).through(fs2.text.utf8Decode).compile.string

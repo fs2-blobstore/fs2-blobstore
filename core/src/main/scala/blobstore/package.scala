@@ -14,9 +14,10 @@ Copyright 2018 LendUp Global, Inc.
    limitations under the License.
  */
 
+import blobstore.url.{Authority, FsObject, Path, Url}
+
 import java.io.OutputStream
 import java.nio.file.Files
-
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import fs2.{Chunk, Hotswap, Pipe, Pull, RaiseThrowable, Stream}
 import cats.implicits._
@@ -87,5 +88,24 @@ package object blobstore {
       case None => Pull.done
     }
   }
+
+  private[blobstore] def defaultTransferTo[F[_]: Sync, A <: Authority, B, P, C](
+    selfStore: PathStore[F, C],
+    dstStore: Store[F, A, B],
+    srcPath: Path[P],
+    dstUrl: Url[A]
+  )(implicit evB: B <:< FsObject, evC: C <:< FsObject): F[Int] =
+    dstStore.stat(dstUrl).last.map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+      selfStore.list(srcPath.plain, recursive = false)
+        .evalMap { p =>
+          if (p.isDir) {
+            defaultTransferTo(selfStore, dstStore, p, dstUrl `//` p.lastSegment)
+          } else {
+            val dp = if (dstIsDir) dstUrl / p.lastSegment else dstUrl
+            selfStore.get(p, 4096).through(dstStore.put(dp)).compile.drain.as(1)
+          }
+        }
+        .fold(0)(_ + _)
+    }.compile.lastOrError
 
 }

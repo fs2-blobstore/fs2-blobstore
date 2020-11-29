@@ -19,11 +19,11 @@ package s3
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
-import blobstore.Store.{BlobStore, UniversalStore}
-import blobstore.url.general.UniversalFileSystemObject
+import blobstore.url.{Authority, Path, Url}
+import blobstore.Store.{BlobStore, DelegatingStore}
 import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
 import cats.syntax.all._
+import cats.MonadError
 import fs2.{Chunk, Hotswap, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
@@ -121,7 +121,7 @@ class S3Store[F[_]](
     copy(src, dst) >> remove(src, recursive = false)
 
   override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] = {
-    stat(dst).flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
+    stat(dst).compile.last.flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
   }
 
   def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): F[Unit] = {
@@ -343,8 +343,8 @@ class S3Store[F[_]](
       }
       .stream
 
-  override def stat(url: Url[Authority.Bucket]): F[Option[Path[S3Blob]]] =
-    liftJavaFuture(
+  override def stat(url: Url[Authority.Bucket]): Stream[F, Path[S3Blob]] =
+    Stream.eval(liftJavaFuture(
       F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.bucket.show).key(url.path.relative.show).build()))
     ).map { resp =>
       Path.of(
@@ -358,13 +358,10 @@ class S3Store[F[_]](
             defaultTrailingSlashFiles
           )
           Path.of(url.path.show, S3Blob(url.bucket.show, url.path.relative.show, meta)).some
-      }
+      }).unNone
 
-  override def liftToUniversal: UniversalStore[F] =
-    new Store.DelegatingStore[F, S3Blob, Authority.Standard, UniversalFileSystemObject](
-      FileSystemObject[S3Blob].universal,
-      Left(this)
-    )
+  override def widen(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, S3Blob] =
+    new DelegatingStore[F, Authority.Standard, S3Blob](Left(this))
 }
 
 object S3Store {

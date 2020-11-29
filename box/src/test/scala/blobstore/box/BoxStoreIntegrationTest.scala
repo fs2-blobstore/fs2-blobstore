@@ -3,7 +3,6 @@ package box
 
 import java.io.{File, FileNotFoundException, FileReader}
 import java.time.{Instant, ZoneOffset}
-
 import blobstore.url.Authority
 import cats.effect.IO
 import cats.syntax.all._
@@ -96,10 +95,9 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxP
   it should "expose underlying metadata" in {
     val dirP = dirUrl("expose-underlying")
 
-    writeLocalFile(transferStore, dirP.path)("abc.txt")
-    val subFolderFile = writeLocalFile(transferStore, dirP.path / "subfolder")("cde.txt")
+    writeFile(store, dirP.path)("abc.txt")
+    val subFolderFile = writeFile(store, dirP.path / "subfolder")("cde.txt")
 
-    @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
     val paths = boxStore
       .listUnderlying(dirP.path, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS, recursive = false)
       .compile
@@ -107,10 +105,10 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxP
       .unsafeRunSync()
 
     paths.map(_.representation.fileOrFolder).foreach {
-      case Left(file)    => Option(file.getCommentCount) mustBe defined
-      case Right(folder) => Option(folder.getIsWatermarked) mustBe defined
+      case Left(file)    => Option(file.getCommentCount) mustBe a[Some[_]]
+      case Right(folder) => Option(folder.getIsWatermarked) mustBe a[Some[_]]
     }
-    (subFolderFile :: paths).map(boxStore.remove(_, false)).sequence.unsafeRunSync()
+    (subFolderFile.path :: paths.map(_.plain)).map(boxStore.remove(_, false)).sequence.unsafeRunSync()
   }
 
 }

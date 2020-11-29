@@ -27,7 +27,13 @@ object Authority {
     * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.2 Authority
     */
   case class Standard(host: Host, userInfo: Option[UserInfo], port: Option[Port]) extends Authority {
-    lazy val toBucket: ValidatedNec[BucketParseError, Bucket] = Bucket.parse(Show[Standard].show(this))
+    lazy val toBucket: ValidatedNec[BucketParseError, Bucket] = Bucket.parse(toStringWithPassword)
+
+    def toStringWithPassword: String = {
+      val p = port.fold("")(p => show":$p")
+      val u = userInfo.fold("")(u => show"${u.toStringWithPassword}@")
+      show"$u$host$p"
+    }
   }
 
   object Standard {
@@ -45,7 +51,6 @@ object Authority {
       */
     private val regex = "^(?:([^:@]+)(?::([^@]+))?@)?([^:/@]+)(?::([0-9]+))?$".r
 
-    def apply(candidate: String): ValidatedNec[AuthorityParseError, Standard] = parse(candidate)
     def unsafe(candidate: String): Standard = parse(candidate) match {
       case Valid(a)   => a
       case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok

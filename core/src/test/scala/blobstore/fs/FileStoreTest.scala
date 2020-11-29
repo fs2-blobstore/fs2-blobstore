@@ -16,7 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import blobstore.url.{Authority, Path}
+import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
 import cats.syntax.all._
 
@@ -27,7 +27,7 @@ class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
   override val fileSystemRoot: Path.Plain = testRunRoot
   private val localStore: FileStore[IO]   = FileStore[IO](blocker)
   override val store: Store[IO, Authority.Standard, NioPath] =
-    localStore.liftTo[Authority.Standard, NioPath](identity, _.path.valid)
+    localStore.liftTo[Authority.Standard]((u: Url[Authority.Standard]) => u.path.valid)
   override val authority: Authority.Standard = Authority.Standard.localhost
   override val scheme: String                = "file"
 

@@ -18,7 +18,7 @@ package box
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.{Blocker, Concurrent, ContextShift, ExitCase, Resource}
 import cats.syntax.all._
@@ -308,14 +308,11 @@ class BoxStore[F[_]](
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def liftTo[A <: Authority, B](
-    f: BoxPath => B,
-    g: Url[A] => Validated[Throwable, Path.Plain]
-  ): Store[F, A, B] =
-    new Store.DelegatingStore[F, BoxPath, A, B](f, Right(this), g)
+  override def liftTo[A <: Authority](g: Url[A] => Validated[Throwable, Path.Plain]): Store[F, A, BoxPath] =
+    new Store.DelegatingStore[F, A, BoxPath](Right(this), g)
 
   override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  fsb: FileSystemObject[B]): F[Int] = ???
+  ev: B <:< FsObject): F[Int] = defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
     get(path, chunkSize).through(fs2.text.utf8Decode).compile.string

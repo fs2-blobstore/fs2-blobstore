@@ -5,11 +5,12 @@ import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.temporal.ChronoUnit
 import java.util.function.{Function => JavaFunction}
-import blobstore.Store.{BlobStore, UniversalStore}
-import blobstore.url.general.UniversalFileSystemObject
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+
+import blobstore.Store.{BlobStore, DelegatingStore}
+import blobstore.url.{Authority, Path, Url}
 import cats.syntax.all._
-import cats.effect.{ConcurrentEffect, ContextShift, Resource}
+import cats.effect.{ConcurrentEffect, Resource}
+import cats.MonadError
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
 import com.azure.storage.blob.models.{BlobItemProperties, _}
@@ -45,7 +46,7 @@ class AzureStore[F[_]](
   blockSize: Int = 50 * 1024 * 1024,
   numBuffers: Int = 2,
   queueSize: Int = 32
-)(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
+)(implicit F: ConcurrentEffect[F])
   extends BlobStore[F, AzureBlob] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
 
@@ -175,24 +176,18 @@ class AzureStore[F[_]](
     putRotateBase(limit, openNewFile)(queue => bytes => queue.enqueue1(Some(bytes.toByteBuffer)))
   }
 
-  override def stat(url: Url[Authority.Bucket]): F[Option[Path[AzureBlob]]] = {
+  override def stat(url: Url[Authority.Bucket]): Stream[F, Path[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
-    liftJavaFuture(F.delay(mono.toFuture)).attempt.flatMap {
+    Stream.eval(liftJavaFuture(F.delay(mono.toFuture)).attempt).evalMap {
       case Right(props) =>
         val (bip, meta) = AzureStore.toBlobItemProperties(props)
         Path.of(blobName, AzureBlob(container, blobName, bip.some, meta)).some.pure[F]
       case Left(e: BlobStorageException) if e.getStatusCode == 404 =>
         none[Path[AzureBlob]].pure[F]
-      case Left(e) => e.raiseError
-    }
+      case Left(e) => e.raiseError[F, Option[Path[AzureBlob]]]
+    }.unNone
   }
-
-  override def liftToUniversal: UniversalStore[F] =
-    new Store.DelegatingStore[F, AzureBlob, Authority.Standard, UniversalFileSystemObject](
-      FileSystemObject[AzureBlob].universal,
-      Left(this)
-    )
 
   def listUnderlying(
     url: Url[Authority.Bucket],
@@ -213,6 +208,9 @@ class AzureStore[F[_]](
       .flatMap[Path[AzureBlob]](AzureStore.blobItemToPath(containerClient, expectTrailingSlashFiles, container))
     fromPublisher(flux)
   }
+
+  override def widen(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, AzureBlob] =
+    new DelegatingStore[F, Authority.Standard, AzureBlob](Left(this))
 }
 
 object AzureStore {
@@ -223,7 +221,7 @@ object AzureStore {
     blockSize: Int = 50 * 1024 * 1024,
     numBuffers: Int = 2,
     queueSize: Int = 32
-  )(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): F[AzureStore[F]] =
+  )(implicit F: ConcurrentEffect[F]): F[AzureStore[F]] =
     if (numBuffers < 2) new IllegalArgumentException(s"Number of buffers must be at least 2").raiseError
     else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize).pure[F]
 
@@ -299,10 +297,11 @@ object AzureStore {
           Mono.just(value)
         }
       properties.map[Path[AzureBlob]](new JavaFunction[MaybeBlobItemPropertiesMeta, Path[AzureBlob]] {
-        def apply(propMeta: MaybeBlobItemPropertiesMeta): Path[AzureBlob] =
-          Path(blobItem.getName).map { name =>
-            AzureBlob(container, name, propMeta.map(_._1), propMeta.fold(Map.empty[String, String])(_._2))
-          }
+        def apply(propMeta: MaybeBlobItemPropertiesMeta): Path[AzureBlob] = {
+          val blob =
+            AzureBlob(container, blobItem.getName, propMeta.map(_._1), propMeta.fold(Map.empty[String, String])(_._2))
+          Path(blobItem.getName).as(blob)
+        }
       })
     }
 

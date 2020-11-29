@@ -1,16 +1,14 @@
 package blobstore
 
-import java.nio.charset.Charset
+import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Files
-import java.time.Instant
 import java.util.concurrent.Executors
 
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Authority.Bucket
-import blobstore.Store.UniversalStore
-import blobstore.url.general.UniversalFileSystemObject
 import cats.effect.{Blocker, ContextShift, IO}
 import cats.effect.laws.util.TestInstances
+import cats.MonadError
 import fs2.{Pipe, Stream}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
@@ -22,29 +20,6 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
 
   implicit val cs = IO.contextShift(ExecutionContext.global)
   val blocker     = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
-
-  implicit val fso: FileSystemObject[String] = new FileSystemObject[String] {
-    override type StorageClassType = Nothing
-
-    override def name(a: String): String = ???
-
-    override def size(a: String): Option[Long] = ???
-
-    override def isDir(a: String): Boolean = ???
-
-    override def lastModified(a: String): Option[Instant] = ???
-
-    override def storageClass(a: String): Option[Nothing] = None
-
-    override def universal(a: String): UniversalFileSystemObject =
-      UniversalFileSystemObject(
-        name(a),
-        size(a),
-        isDir(a),
-        storageClass(a),
-        lastModified(a)
-      )
-  }
 
   behavior of "PutOps"
   it should "buffer contents and compute size before calling Store.put" in {
@@ -97,6 +72,18 @@ class StoreOpsTest extends AnyFlatSpec with Matchers with TestInstances {
       .drain
       .unsafeRunSync()
   }
+
+  it should "transferTo" in {
+    val u1   = Url.unsafe[Bucket]("gs://foo")
+    val from = DummyStore.withContents("foo")
+    val to   = DummyStore()
+
+    from.transferTo(to, u1, u1).unsafeRunSync()
+
+    val result = new String(to.buf.toArray, StandardCharsets.UTF_8)
+
+    result mustBe "foo"
+  }
 }
 
 final case class DummyStore()(implicit cs: ContextShift[IO]) extends Store[IO, Authority.Bucket, String] {
@@ -108,14 +95,23 @@ final case class DummyStore()(implicit cs: ContextShift[IO]) extends Store[IO, A
         Stream.emit(())
       }
   }
-  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[IO, Byte]                    = Stream.emits(buf)
-  override def list(url: Url[Authority.Bucket], recursive: Boolean = false): Stream[IO, Path.Plain] = ???
-  override def move(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                                   = ???
-  override def copy(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                                   = ???
-  override def remove(url: Url[Bucket], recursive: Boolean): IO[Unit]                               = ???
-  override def putRotate(computePath: IO[Url[Bucket]], limit: Long): Pipe[IO, Byte, Unit]           = ???
+  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[IO, Byte] = Stream.emits(buf)
+  override def list(url: Url[Authority.Bucket], recursive: Boolean = false): Stream[IO, Path.Plain] =
+    Stream.emits(List(Path("the-file.txt")))
+  override def move(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                         = ???
+  override def copy(src: Url[Bucket], dst: Url[Bucket]): IO[Unit]                         = ???
+  override def remove(url: Url[Bucket], recursive: Boolean): IO[Unit]                     = ???
+  override def putRotate(computePath: IO[Url[Bucket]], limit: Long): Pipe[IO, Byte, Unit] = ???
 
-  override def stat(url: Url[Bucket]): IO[Option[Path[String]]] = ???
+  override def stat(url: Url[Bucket]): Stream[IO, Path[String]] = ???
 
-  override def liftToUniversal: UniversalStore[IO] = ???
+  override def widen(implicit ME: MonadError[IO, Throwable]): Store[IO, Authority.Standard, String] = ???
+}
+
+object DummyStore {
+  def withContents(s: String)(implicit cs: ContextShift[IO]): DummyStore = {
+    val store = DummyStore()
+    store.buf.appendAll(s.getBytes(StandardCharsets.UTF_8))
+    store
+  }
 }

@@ -3,34 +3,16 @@ package blobstore.fs
 import java.nio.file.{Path => JPath}
 import java.time.Instant
 
-import blobstore.url.FileSystemObject
-import blobstore.url.general.UniversalFileSystemObject
+import blobstore.url.FsObject
+import blobstore.url.general.GeneralStorageClass
 
 // Cache lookups done on read
-case class NioPath(path: JPath, size: Option[Long], isDir: Boolean, lastModified: Option[Instant])
+case class NioPath(path: JPath, size: Option[Long], isDir: Boolean, lastModified: Option[Instant]) extends FsObject {
+  override type StorageClassType = Nothing
 
-object NioPath {
+  override def name: String = path.toString
 
-  implicit val filesystemObject: FileSystemObject.Aux[NioPath, Nothing] = new FileSystemObject[NioPath] {
-    type StorageClassType = Nothing
+  override def storageClass: Option[Nothing] = None
 
-    override def name(a: NioPath): String = a.path.toString.toString
-
-    override def size(a: NioPath): Option[Long] = a.size
-
-    override def isDir(a: NioPath): Boolean = a.isDir
-
-    override def lastModified(a: NioPath): Option[Instant] = a.lastModified
-
-    override def storageClass(a: NioPath): Option[StorageClassType] = None
-
-    override def universal(a: NioPath): UniversalFileSystemObject =
-      UniversalFileSystemObject(
-        name(a),
-        size(a),
-        isDir(a),
-        storageClass(a),
-        lastModified(a)
-      )
-  }
+  override def generalStorageClass: Option[GeneralStorageClass] = None
 }

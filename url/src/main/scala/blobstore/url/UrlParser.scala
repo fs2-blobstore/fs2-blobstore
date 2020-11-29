@@ -85,7 +85,7 @@ object UrlParser {
   }
 
   implicit val bucketParser: UrlParser[Authority.Bucket] = standardParser.parse(_).toEither match {
-    case Right(u)    => Bucket.parse(u.authority.show).map(a => u.copy(authority = a))
+    case Right(u)    => Bucket.parse(u.authority.toStringWithPassword).map(a => u.copy(authority = a))
     case Left(error) => error.invalid
   }
 }

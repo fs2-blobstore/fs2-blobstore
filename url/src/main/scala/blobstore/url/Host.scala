@@ -23,7 +23,7 @@ sealed trait Host
 
 object Host {
 
-  def parse(s: String): ValidatedNec[HostParseError, Host] = Hostname.parse(s).widen[Host].orElse(IpV4Address.parse(s))
+  def parse(s: String): ValidatedNec[HostParseError, Host] = IpV4Address.parse(s).widen[Host].orElse(Hostname.parse(s))
 
   def unsafe(s: String): Host = parse(s) match {
     case Valid(v)   => v

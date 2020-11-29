@@ -20,7 +20,7 @@ import java.nio.file.{Path => NioPath}
 import java.util.concurrent.Executors
 
 import blobstore.fs.FileStore
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
 import cats.effect.{Blocker, ContextShift, IO, Timer}
@@ -34,7 +34,7 @@ import scala.concurrent.ExecutionContext
 import scala.util.Random
 import scala.concurrent.duration._
 
-abstract class AbstractStoreTest[A <: Authority, B: FileSystemObject]
+abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   extends AnyFlatSpec
   with Matchers
   with BeforeAndAfterAll

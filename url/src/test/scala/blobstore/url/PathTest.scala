@@ -31,20 +31,39 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       "../foo/bar//"
     )
 
+    AbsolutePath.createFrom("").show mustBe "/"
+    AbsolutePath.parse("") mustBe None
+
+    RootlessPath.createFrom("/").show mustBe ""
+    RootlessPath.parse("/") mustBe None
+
     absolutePaths.foreach { s =>
-      val p = Path(s)
-      p mustBe a[AbsolutePath[_]]
-      p.value mustBe s
+      val ps = List(Path(s).some, Path.absolute(s), Path.AbsolutePath.createFrom(s).some)
+      ps.foreach { p =>
+        inside(p) {
+          case Some(p) =>
+            p mustBe a[AbsolutePath[_]]
+            p.value mustBe s
+        }
+      }
     }
 
     rootlessPaths.foreach { s =>
-      val p = Path(s)
-      p mustBe a[RootlessPath[_]]
-      p.value mustBe s
+      val ps = List(Path(s).some, Path.rootless(s), Path.RootlessPath.createFrom(s).some)
+      ps.foreach { p =>
+        inside(p) {
+          case Some(p) =>
+            p mustBe a[RootlessPath[_]]
+            p.value mustBe s
+        }
+      }
     }
   }
 
   it should "compose paths" in {
+    Path("/foo") / "bar" mustBe Path("/foo/bar")
+    Path("/foo") / Some("bar") mustBe Path("/foo/bar")
+    Path("/foo") / Some("/bar") mustBe Path("/foo/bar")
     Path("/foo") / "bar" mustBe Path("/foo/bar")
     Path("/foo/") / "bar" mustBe Path("/foo/bar")
     Path("/foo") / "/bar" mustBe Path("/foo/bar")
@@ -52,6 +71,8 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     Path("/foo") / "bar/" mustBe Path("/foo/bar/")
     Path("/foo") / "bar//" mustBe Path("/foo/bar//")
     Path("/foo") `//` "bar" mustBe Path("/foo/bar/")
+    Path("/foo") `//` Some("bar") mustBe Path("/foo/bar/")
+    Path("/foo") `//` Some("/bar") mustBe Path("/foo/bar/")
     Path("/foo/") `//` "bar" mustBe Path("/foo/bar/")
     Path("/foo//") `//` "bar" mustBe Path("/foo//bar/")
     Path("/foo//") `//` "/bar" mustBe Path("/foo//bar/")
@@ -144,5 +165,20 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
     relative mustBe Paths.get("foo", "bar")
     relative.toString mustBe "foo/bar"
     relative.getNameCount mustBe 2
+  }
+
+  it should "convert between paths" in {
+    Path("foo").absolute.show mustBe "/foo"
+    Path("/foo").absolute.show mustBe "/foo"
+    Path("foo").relative.show mustBe "foo"
+    Path("/foo").relative.show mustBe "foo"
+  }
+
+  it should "go up" in {
+    Path("/foo/bar/baz").up.show mustBe "/foo/bar"
+    Path("/foo/bar/baz/").up.show mustBe "/foo/bar"
+    Path("/foo").up.show mustBe "/"
+    Path("/").up.show mustBe "/"
+    Path("").up.show mustBe ""
   }
 }

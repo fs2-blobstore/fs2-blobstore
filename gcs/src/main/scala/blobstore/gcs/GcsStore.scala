@@ -4,12 +4,12 @@ import java.io.OutputStream
 import java.nio.channels.Channels
 
 import blobstore.{putRotateBase, Store, StoreOps}
-import blobstore.url.{Authority, FileSystemObject, Path, Url}
+import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Authority.Bucket
-import blobstore.Store.{BlobStore, UniversalStore}
-import blobstore.url.general.UniversalFileSystemObject
+import blobstore.Store.{BlobStore, DelegatingStore}
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
 import cats.syntax.all._
+import cats.MonadError
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
@@ -142,7 +142,7 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
             }
       }
     }
-  }.map(_.map(GcsBlob.apply))
+  }.map(p => p.as(GcsBlob(p.representation)))
 
   private def newOutputStream[A](
     url: Url[Bucket],
@@ -179,15 +179,13 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   override def copy(src: Url[Bucket], dst: Url[Bucket]): F[Unit] =
     blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
-  override def stat(url: Url[Bucket]): F[Option[Path[GcsBlob]]] =
-    blocker.delay(Option(storage.get(GcsStore.toBlobId(url))))
-      .map(b => b.map(b => Path.of(b.getName, GcsBlob(b))))
+  override def stat(url: Url[Bucket]): Stream[F, Path[GcsBlob]] =
+    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(url)))))
+      .unNone
+      .map(b => Path.of(b.getName, GcsBlob(b)))
 
-  override def liftToUniversal: UniversalStore[F] =
-    new Store.DelegatingStore[F, GcsBlob, Authority.Standard, UniversalFileSystemObject](
-      FileSystemObject[GcsBlob].universal,
-      Left(this)
-    )
+  override def widen(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, GcsBlob] =
+    new DelegatingStore[F, Authority.Standard, GcsBlob](Left(this))
 }
 
 object GcsStore {
