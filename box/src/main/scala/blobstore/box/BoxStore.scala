@@ -141,9 +141,12 @@ class BoxStore[F[_]](
   }
 
   override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
-    boxFileAtPath(path).flatMap {
-      case Some(bf) => blocker.delay(bf.delete())
-      case None     => ().pure
+    boxInfoAtPath(path).flatMap {
+      case Some(p) => p.representation.fileOrFolder.fold(
+          file => blocker.delay(new BoxFile(api, file.getID).delete()),
+          folder => blocker.delay(new BoxFolder(api, folder.getID).delete(recursive))
+        )
+      case None => ().pure
     }
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
