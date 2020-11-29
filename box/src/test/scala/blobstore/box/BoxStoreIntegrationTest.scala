@@ -10,7 +10,7 @@ import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnectio
 import org.slf4j.LoggerFactory
 
 import scala.jdk.CollectionConverters._
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 /** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
   * See AbstractStoreTest to see what operations performed here.
@@ -23,13 +23,12 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxP
   val BoxAppKey   = "BOX_TEST_BOX_APP_KEY"
   val BoxDevToken = "BOX_TEST_BOX_DEV_TOKEN"
 
-  private lazy val boxStore: BoxStore[IO]                         = BoxStore[IO](api, blocker)
-  override lazy val store: Store[IO, Authority.Standard, BoxPath] = boxStore.liftTo[Authority.Standard]
-
   override val scheme = "https"
-
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val authority: Authority.Standard = Authority.Standard.unsafe("foo")
+
+  private lazy val boxStore: BoxStore[IO]                        = BoxStore[IO](api, blocker)
+  override def mkStore(): Store[IO, Authority.Standard, BoxPath] = boxStore.liftTo[Authority.Standard]
 
   val rootFolderName = "BoxStoreTest"
 
@@ -50,12 +49,10 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxP
       .map(new BoxAPIConnection(_))
       .flatTap(_ => Try(log.info("Authenticated with dev token")))
 
-    devToken
-      .orElse(fileCredentials)
-      .adaptError {
-        case t => new Exception(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey", t)
-      }
-      .get // scalafix:ok
+    devToken.orElse(fileCredentials) match {
+      case Failure(e) => cancel(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey", e)
+      case Success(c) => c
+    }
   }
 
   lazy val rootFolder: BoxFolder#Info = {
@@ -70,7 +67,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxP
     }
   }
 
-  override protected def beforeAll(): Unit = {
+  override def beforeAll(): Unit = {
     super.beforeAll()
     val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
 
