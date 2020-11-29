@@ -97,11 +97,14 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
     createParentDir(dst.plain) >> F.delay(Files.copy(src.nioPath, dst.nioPath)).void
 
   override def remove[A](path: Path[A], recursive: Boolean = false): F[Unit] =
-    if (recursive)
-      fs2.io.file.directoryStream(blocker, path.nioPath).parEvalMap(maxConcurrent = 20)(p =>
-        blocker.delay(Files.deleteIfExists(p))
-      ).compile.drain
-    else blocker.delay(Files.deleteIfExists(path.nioPath)).void
+    if (recursive) {
+      def recurse(path: JPath): Stream[F, JPath] =
+        fs2.io.file.directoryStream(blocker, path).flatMap {
+          p =>
+            (if (Files.isDirectory(p)) recurse(p) else Stream.empty) ++ Stream.emit(p)
+        }
+      recurse(path.nioPath).evalMap(p => blocker.delay(Files.deleteIfExists(p))).compile.drain
+    } else blocker.delay(Files.deleteIfExists(path.nioPath)).void
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
     val openNewFile: Resource[F, FileHandle[F]] =
