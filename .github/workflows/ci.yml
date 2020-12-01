@@ -30,7 +30,7 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Checks
-        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafix --check'
+        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafixCheck'
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -63,7 +63,7 @@ jobs:
       - uses: coursier/cache-action@v5
 
       - name: Checks
-        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafix --check'
+        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafixCheck'
 
       - name: Create tmp directory
         run: mkdir tmp
