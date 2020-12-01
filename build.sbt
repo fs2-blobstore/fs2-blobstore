@@ -26,7 +26,8 @@ inThisBuild(
         case x if x >= 10 => Seq("-source", s"$x", "-target", s"$x")
       }
     }
-  )
+  ) ++
+    addCommandAlias("scalafixCheck", "scalafix --check")
 )
 
 lazy val fs2blobstore = project
@@ -36,7 +37,6 @@ lazy val fs2blobstore = project
     skip in publish := true
   )
   .aggregate(url, core, s3, sftp, gcs, azure, box)
-  .enablePlugins(Workflows)
 
 lazy val url = project
 
@@ -61,5 +61,5 @@ lazy val docs = (project in file("project-docs"))
     Compile / scalacOptions -= "-Ywarn-dead-code",
     mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94
   )
-  .dependsOn(gcs, sftp, s3, core % "compile->test") //, box, azure)
+  .dependsOn(gcs, sftp, s3, box, azure, core % "compile->test")
   .enablePlugins(MdocPlugin)
