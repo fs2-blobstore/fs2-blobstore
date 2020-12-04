@@ -16,63 +16,78 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import java.util.UUID
-import java.nio.file.{Paths, Path => NioPath}
+import java.nio.file.{Path => NioPath}
 import java.util.concurrent.Executors
 
 import blobstore.fs.FileStore
+import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.effect.concurrent.Ref
-import org.scalatest.BeforeAndAfterAll
-import cats.effect.{Blocker, ContextShift, IO}
+import org.scalatest.{BeforeAndAfterAll, Inside}
+import cats.effect.{Blocker, ContextShift, IO, Timer}
 import cats.effect.laws.util.TestInstances
 import cats.implicits._
-import implicits._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import fs2.Stream
 
 import scala.concurrent.ExecutionContext
 import scala.util.Random
+import scala.concurrent.duration._
 
-trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll with TestInstances {
+abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
+  extends AnyFlatSpec
+  with Matchers
+  with BeforeAndAfterAll
+  with TestInstances
+  with Inside {
 
   implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+  implicit val timer: Timer[IO]     = IO.timer(ExecutionContext.global)
   val blocker: Blocker              = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
-  val transferStoreRootDir: NioPath = Paths.get("tmp/transfer-store-root/")
-  val transferStore: Store[IO]      = new FileStore[IO](transferStoreRootDir, blocker)
+  val testRun: UUID = java.util.UUID.randomUUID()
 
-  val store: Store[IO]
-  val root: String
+  val transferStoreRootDir: Path.Plain = Path(s"tmp/transfer-store-root/$testRun")
+  val transferStore: FileStore[IO]     = new FileStore[IO](blocker)
 
-  val testRun: UUID            = java.util.UUID.randomUUID()
-  lazy val rootTestRun: String = s"$root/test-$testRun"
+  val store: Store[IO, A, B]
+  val scheme: String
+  val authority: A
+
+  // This path used for testing root level listing. Can be overridden by tests for stores that doesn't allow access
+  // to the real root. No writing is done to this path.
+  val fileSystemRoot: Path.Plain = Path("/")
+
+  // All testdata goes under this path
+  lazy val testRunRoot: Path.Plain = Path(s"test-$testRun")
 
   behavior of "all stores"
+
   it should "put, list, get, remove keys" in {
-    val dir: Path = dirPath("all")
+    val dir = dirPath("all")
 
     // put a random file
     val filename = s"test-${System.currentTimeMillis}.txt"
-    val path     = writeFile(store, dir)(filename)
+    val url      = writeFile(store, dir)(filename)
 
     // list to make sure file is present
-    val found = store.listAll(path).unsafeRunSync()
+    val found = store.listAll(url).unsafeRunSync()
     found.size must be(1)
-    found.head.toString must be(path.toString)
+    found.head.toString mustBe url.path.toString
 
     // check contents of file
-    store.getContents(path).unsafeRunSync() must be(contents(filename))
+    store.getContents(url).unsafeRunSync() must be(contents(filename))
 
     // check remove works
-    store.remove(path).unsafeRunSync()
-    val notFound = store.listAll(path).unsafeRunSync()
-    notFound.isEmpty must be(true)
+    store.remove(url).unsafeRunSync()
+    val notFound = store.listAll(url).unsafeRunSync()
+    notFound mustBe Nil
   }
 
   it should "move keys" in {
-    val dir: Path = dirPath("move-keys")
-    val src       = writeFile(store, dir)(s"src/${System.currentTimeMillis}.txt")
-    val dst       = dir / s"dst/${System.currentTimeMillis}.txt"
+    val dir: Url[A] = dirUrl("move-keys")
+    val src         = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
+    val dst         = dir / s"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
       l1 <- store.listAll(src)
@@ -80,7 +95,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       _  <- store.move(src, dst)
       l3 <- store.listAll(src)
       l4 <- store.listAll(dst)
-      _  <- store.remove(dst)
+      _  <- store.remove(dst, recursive = false)
     } yield {
       l1.isEmpty must be(false)
       l2.isEmpty must be(true)
@@ -95,20 +110,19 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   it should "list multiple keys" in {
     import cats.implicits._
 
-    val dir: Path = dirPath("list-many")
+    val dir: Url[A] = dirUrl("list-many")
 
     val paths = (1 to 10).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, dir))
+      .map(writeFile(store, dir.path))
 
-    val exp = paths.map(_.filePath).toSet
+    val exp = paths.map(_.path.show).toSet
 
-    store.listAll(dir).unsafeRunSync().map(_.filePath).toSet must be(exp)
+    store.listAll(dir).unsafeRunSync().map(_.show).toSet must be(exp)
 
-    val io: IO[List[Unit]] = paths.map(store.remove).sequence
-    io.unsafeRunSync()
+    paths.parTraverse_(store.remove(_, recursive = false)).unsafeRunSync()
 
-    store.listAll(dir).unsafeRunSync().isEmpty must be(true)
+    store.listAll(dir).unsafeRunSync() mustBe Nil
   }
 
   // We've had some bugs involving directories at the root level, since it is a bit of an edge case.
@@ -116,39 +130,45 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   // any problems that there might be with operating on a root level file/directory.
   it should "listAll lists files in a root level directory" in {
     import cats.implicits._
-    val rootDir = Path(root)
+    val rootDir = fileSystemRoot
     val paths = (1 to 2).toList
       .map(i => s"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
-    val exp = paths.map(p => s"${p.filePath}").toSet
+    val exp = paths.map(p => p.path.relative.show).toSet
 
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
-    val pathsListed = store.listAll(rootDir).unsafeRunSync().map(_.filePath).toSet.toString()
+    val pathsListed =
+      store.listAll(Url(scheme, authority, rootDir)).unsafeRunSync().map(_.show).toSet.toString()
     exp.foreach(s => pathsListed must include(s))
 
-    val io: IO[List[Unit]] = paths.map(store.remove).sequence
+    val io: IO[List[Unit]] = paths.traverse(store.remove(_))
     io.unsafeRunSync()
   }
 
   it should "list files and directories correctly" in {
-    val dir: Path = dirPath("list-dirs")
-    val paths     = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
-    val exp       = paths.map(_.filePath.replaceFirst("/file-1.txt", "")).toSet
+    val dir: Url[A] = dirUrl("list-dirs")
+    val paths       = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
+    val exp         = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
 
     val ls = store.listAll(dir).unsafeRunSync()
-    ls.map(_.filePath).toSet must be(exp)
-    ls.find(_.isDir.getOrElse(false)).map(_.lastSegment) must be(Some("subdir/"))
+    ls.map(_.show.stripSuffix("/")).toSet must be(exp)
+    val option    = ls.find(_.isDir)
+    val dirString = option.flatMap(_.lastSegment)
+    inside(dirString) {
+      case Some(dir) => dir must fullyMatch regex "subdir/?"
+    }
 
-    val io: IO[List[Unit]] = paths.map(store.remove).sequence
+    val io: IO[List[Unit]] = paths.parTraverse(store.remove(_))
     io.unsafeRunSync()
   }
 
   it should "transfer individual file to a directory from one store to another" in {
-    val srcPath = writeFile(transferStore, dirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
+    val srcPath =
+      writeLocalFile(transferStore, localDirPath("transfer-single-file-to-dir-src"))("transfer-filename.txt")
 
-    val dstDir  = dirPath("transfer-single-file-to-dir-dst")
+    val dstDir  = dirUrl("transfer-single-file-to-dir-dst")
     val dstPath = dstDir / srcPath.lastSegment
 
     val test = for {
@@ -157,8 +177,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
         .getContents(srcPath)
         .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
       c2 <- store.getContents(dstPath).handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-      _  <- transferStore.remove(srcPath).handleError(_ => ())
-      _  <- store.remove(dstPath).handleError(_ => ())
+      _  <- transferStore.remove(srcPath, recursive = false).handleError(_ => ())
+      _  <- store.remove(dstPath, recursive = false).handleError(_ => ())
     } yield {
       i must be(1)
       c1 must be(c2)
@@ -168,9 +188,9 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "transfer individual file to a file path from one store to another" in {
-    val srcPath = writeFile(transferStore, dirPath("transfer-file-to-file-src"))("src-filename.txt")
+    val srcPath = writeLocalFile(transferStore, localDirPath("transfer-file-to-file-src"))("src-filename.txt")
 
-    val dstPath = dirPath("transfer-file-to-file-dst") / "dst-file-name.txt"
+    val dstPath = dirUrl("transfer-file-to-file-dst") / "dst-file-name.txt"
 
     val test = for {
       i <- transferStore.transferTo(store, srcPath, dstPath)
@@ -180,8 +200,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       c2 <- store
         .getContents(dstPath)
         .handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
-      _ <- transferStore.remove(srcPath).handleError(_ => ())
-      _ <- store.remove(dstPath).handleError(_ => ())
+      _ <- transferStore.remove(srcPath, recursive = false).handleError(_ => ())
+      _ <- store.remove(dstPath, recursive = false).handleError(_ => ())
     } yield {
       i must be(1)
       c1 must be(c2)
@@ -191,54 +211,54 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "transfer directory to a directory path from one store to another" in {
-    val srcDir = dirPath("transfer-dir-to-dir-src")
-    val dstDir = dirPath("transfer-dir-to-dir-dst")
+    val srcDir = localDirPath("transfer-dir-to-dir-src")
+    val dstDir = dirUrl("transfer-dir-to-dir-dst")
 
-    val paths = (1 to 10).toList
+    val paths = (1 until 10).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(transferStore, srcDir))
+      .map(writeLocalFile(transferStore, srcDir))
 
     val test = for {
       i <- transferStore.transferTo(store, srcDir, dstDir)
-      c1 <- paths.map { p =>
+      c1 <- paths.traverse { p =>
         transferStore
           .getContents(p)
           .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
-      }.sequence
-      c2 <- paths.map { p =>
+      }
+      c2 <- paths.traverse { p =>
         store
           .getContents(dstDir / p.lastSegment)
           .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
-      }.sequence
-      _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
-      _ <- paths.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence
+      }
+      _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ()))
+      _ <- paths.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ()))
     } yield {
-      i must be(10)
-      c1 must be(c2)
+      i must be(paths.length)
+      c2 must be(c1)
     }
 
     test.unsafeRunSync()
   }
 
   it should "transfer directories recursively from one store to another" in {
-    val srcDir = dirPath("transfer-dir-rec-src")
-    val dstDir = dirPath("transfer-dir-rec-dst")
+    val srcDir = localDirPath("transfer-dir-rec-src")
+    val dstDir = dirUrl("transfer-dir-rec-dst")
 
     val paths1 = (1 to 5).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(transferStore, srcDir))
+      .map(writeLocalFile(transferStore, srcDir))
 
-    val paths2 = (6 to 10).toList
+    val paths2 = (6 until 10).toList
       .map(i => s"subdir/filename-$i.txt")
-      .map(writeFile(transferStore, srcDir))
+      .map(writeLocalFile(transferStore, srcDir))
 
     val paths = paths1 ++ paths2
 
     val test = for {
       i <- transferStore.transferTo(store, srcDir, dstDir)
-      c1 <- paths.map { p =>
+      c1 <- paths.traverse { p =>
         transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
-      }.sequence
+      }
       c2 <- {
         paths1.map { p =>
           store
@@ -251,11 +271,11 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
               .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
           }
       }.sequence
-      _ <- paths.map(transferStore.remove(_).handleError(_ => ())).sequence
-      _ <- paths1.map(p => store.remove(dstDir / p.lastSegment).handleError(_ => ())).sequence
-      _ <- paths2.map(p => store.remove(dstDir / "subdir" / p.lastSegment).handleError(_ => ())).sequence
+      _ <- paths.traverse(transferStore.remove(_, recursive = false).handleError(_ => ()))
+      _ <- paths1.traverse(p => store.remove(dstDir / p.lastSegment, recursive = false).handleError(_ => ()))
+      _ <- paths2.traverse(p => store.remove(dstDir / "subdir" / p.lastSegment, recursive = false).handleError(_ => ()))
     } yield {
-      i must be(10)
+      i must be(9)
       c1.mkString("\n") must be(c2.mkString("\n"))
     }
 
@@ -263,10 +283,10 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "copy files in a store from one directory to another" in {
-    val srcDir = dirPath("copy-dir-to-dir-src")
-    val dstDir = dirPath("copy-dir-to-dir-dst")
+    val srcDir = dirUrl("copy-dir-to-dir-src")
+    val dstDir = dirUrl("copy-dir-to-dir-dst")
 
-    writeFile(store, srcDir)("filename.txt")
+    writeFile(store, srcDir.path)("filename.txt")
 
     val test = for {
       _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
@@ -279,45 +299,45 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       _ <- store.remove(dstDir / "filename.txt")
       _ <- store.remove(srcDir / "filename.txt")
     } yield {
-      c1.mkString("\n") must be(c2.mkString("\n"))
+      c1 mustBe c2
     }
 
     test.unsafeRunSync()
   }
 
-  // TODO this doesn't test recursive directories. Once listRecursively() is implemented we can fix this
-  it should "remove all should remove all files in a directory" in {
-    val srcDir = dirPath("rm-dir-to-dir-src")
+  it should "remove files and directories recursively" in {
+    val srcDir = dirUrl("rm-dir-to-dir-src")
 
     (1 to 10).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, srcDir))
+      .map(writeFile(store, srcDir.path))
 
-    store.removeAll(srcDir).unsafeRunSync()
+    (1 to 5).map(i => s"filename-$i.txt").map(writeFile(store, (srcDir / "sub").path))
 
-    store.list(srcDir).compile.drain.unsafeRunSync().isEmpty must be(true)
+    store.remove(srcDir, recursive = true).unsafeRunSync()
+
+    store.list(srcDir).compile.toList.unsafeRunSync() mustBe Nil
   }
 
   it should "succeed on remove when path does not exist" in {
-    val dir  = dirPath("remove-nonexistent-path")
+    val dir  = dirUrl("remove-nonexistent-path")
     val path = dir / "no-file.txt"
     store.remove(path).unsafeRunSync()
   }
 
   it should "support putting content with no size" in {
-    val dir: Path = dirPath("put-no-size")
-    val path      = dir / "no-size.txt"
-    val exp       = contents("put without size")
+    val dir: Url[A] = dirUrl("put-no-size")
+    val path        = dir / "no-size.txt"
+    val exp         = contents("put without size")
     val test = for {
       _ <- fs2
         .Stream(exp)
         .covary[IO]
         .through(fs2.text.utf8Encode)
         .through(store.put(path))
-        .compile
-        .drain
+        .compile.drain
       res <- store.getContents(path)
-      _   <- store.remove(path)
+      _   <- store.remove(path, recursive = false)
     } yield res must be(exp)
 
     test.unsafeRunSync()
@@ -325,15 +345,15 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 
   it should "return failed stream when getting non-existing file" in {
     val test = for {
-      res <- store.get(dirPath("foo") / "doesnt-exists.txt").attempt.compile.lastOrError
+      res <- store.get(dirUrl("foo") / "doesnt-exists.txt", 4096).attempt.compile.lastOrError
     } yield res mustBe a[Left[_, _]]
 
     test.unsafeRunSync()
   }
 
   it should "overwrite existing file on put with overwrite" in {
-    val dir: Path = dirPath("overwrite-existing")
-    val path      = writeFile(store, dir)("existing.txt")
+    val dir  = dirUrl("overwrite-existing")
+    val path = writeFile(store, dir.path)("existing.txt")
 
     fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -353,8 +373,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "fail on put to Path with existing file without overwrite" in {
-    val dir: Path = dirPath("fail-no-overwrite")
-    val path      = writeFile(store, dir)("existing.txt")
+    val dir  = dirUrl("fail-no-overwrite")
+    val path = writeFile(store, dir.path)("existing.txt")
 
     val result = fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -368,8 +388,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "put to new Path without overwrite" in {
-    val dir: Path = dirPath("no-overwrite")
-    val path      = dir / "new.txt"
+    val dir  = dirUrl("no-overwrite")
+    val path = dir / "new.txt"
 
     fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -390,20 +410,19 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "support paths with spaces" in {
-    val dir: Path = dirPath("path spaces")
-    val path      = writeFile(store, dir)("file with spaces")
+    val dir = dirUrl("path spaces")
+    val url = writeFile(store, dir.path)("file with spaces")
     val result = for {
       list <- store
-        .list(path)
-        .map(_.withSize(None, reset = false).withLastModified(None, reset = false))
+        .list(url)
         .compile
         .toList
-      get    <- store.get(path, 1024).compile.drain.attempt
-      remove <- store.remove(path).attempt
+      get    <- store.get(url, 1024).compile.drain.attempt
+      remove <- store.remove(url, recursive = false).attempt
     } yield {
-      list must contain only path
+      list.map(_.show) must contain only url.path.show
       list.headOption.flatMap(_.fileName) must contain("file with spaces")
-      list.headOption.flatMap(_.pathFromRoot.lastOption) must contain("path spaces")
+      list.headOption.map(_.segments.toList.init.last) must contain("path spaces")
       get mustBe a[Right[_, _]]
       remove mustBe a[Right[_, _]]
     }
@@ -411,8 +430,8 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   it should "be able to list recursively" in {
-    val dir: Path = dirPath("list-recursively")
-    val files     = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
+    val dir   = dirUrl("list-recursively")
+    val files = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
     val result = for {
       _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
       paths <- store.list(dir, recursive = true).compile.toList
@@ -420,7 +439,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
       paths must have size 8
       paths.flatMap(_.fileName) must contain theSameElementsAs List("a", "b", "c", "d", "e", "x", "y", "z")
       paths.foreach { p =>
-        p.isDir must contain(false)
+        p.isDir mustBe false
         p.size must contain(1L)
       }
     }
@@ -431,14 +450,14 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     val fileCount      = 5L
     val fileLength     = 20
     val lastFileLength = 10
-    val dir: Path      = dirPath("put-rotating")
+    val dir            = dirUrl("put-rotating")
     val bytes          = randomBA(fileLength)
     val lastFileBytes  = randomBA(lastFileLength)
     val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
       Stream.emits(lastFileBytes.toIndexedSeq)
 
     // Check overwrite
-    writeFile(store, dir)("3")
+    writeFile(store, dir.path)("3")
 
     val test = for {
       counter <- Ref.of[IO, Int](0)
@@ -446,13 +465,13 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
         .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
         .compile
         .drain
-      files        <- store.listAll(dir)
-      fileContents <- files.traverse(p => store.get(p, fileLength).compile.to(Array).map(p -> _))
+      files        <- store.list(dir).compile.toList
+      fileContents <- files.traverse(p => store.get(dir.replacePath(p), fileLength).compile.to(Array).map(p -> _))
     } yield {
       files must have size (fileCount + 1)
       files.flatMap(_.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
       files.foreach { p =>
-        p.isDir must contain(false)
+        p.isDir mustBe false
         p.size must contain(if (p.fileName.contains(fileCount.toString)) lastFileLength else fileLength)
       }
       fileContents.foreach {
@@ -464,14 +483,28 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
     test.unsafeRunSync()
   }
 
-  def dirPath(name: String): Path = Path(s"$rootTestRun/$name/").withIsDir(Some(true), reset = false)
+  def dirUrl(name: String): Url[A] = Url(scheme, authority, testRunRoot `//` name)
+
+  def dirPath(name: String): Path.Plain = testRunRoot `//` name
+
+  def localDirPath(name: String): Path.Plain = transferStoreRootDir / name
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
-  def writeFile(store: Store[IO], tmpDir: Path)(filename: String): Path = {
-    val path = (tmpDir / filename).withIsDir(Some(false), reset = false)
-    store.put(contents(filename), path).unsafeRunSync()
-    path
+  def writeFile(store: Store[IO, A, B], tmpDir: Path.Plain)(filename: String): Url[A] = {
+    def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
+      if (count < times) Timer[IO].sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
+    }
+    val url = Url(scheme, authority, tmpDir / filename)
+
+    val writeContents = store.put(contents(filename), url).compile.drain.as(url)
+    retry(writeContents, 0, 5).unsafeRunSync()
+  }
+
+  def writeLocalFile(store: FileStore[IO], tmpDir: Path.Plain)(filename: String): Path.Plain = {
+    val url = tmpDir / filename
+    store.put(contents(filename), url, overwrite = true).compile.drain.unsafeRunSync()
+    url
   }
 
   def randomBA(length: Int): Array[Byte] = {
@@ -481,7 +514,7 @@ trait AbstractStoreTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
   }
 
   // remove dirs created by AbstractStoreTest
-  override def afterAll(): Unit = cleanup(transferStoreRootDir.resolve(rootTestRun))
+  override def afterAll(): Unit = cleanup(transferStoreRootDir.nioPath.resolve(testRunRoot.nioPath))
 
   def cleanup(root: NioPath): Unit = {
 

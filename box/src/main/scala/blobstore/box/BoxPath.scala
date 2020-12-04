@@ -1,43 +1,46 @@
-package blobstore
-package box
+package blobstore.box
 
 import java.time.Instant
 
-import cats.data.Chain
-import com.box.sdk.{BoxFile, BoxFolder}
+import blobstore.url.{FsObject, Path}
+import blobstore.url.general.GeneralStorageClass
+import cats.syntax.option._
+import com.box.sdk.{BoxFile, BoxFolder, BoxItem}
 
-import scala.jdk.CollectionConverters._
+case class BoxPath(fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]) extends FsObject {
+  def file: Option[BoxFile#Info]     = fileOrFolder.swap.toOption
+  def folder: Option[BoxFolder#Info] = fileOrFolder.toOption
 
-class BoxPath private[box] (
-  val root: Option[String],
-  private[box] val rootId: Option[String],
-  val fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]
-) extends Path {
-  val pathFromRoot: Chain[String] = {
-    val withRoot = fileOrFolder.fold(_.getPathCollection, _.getPathCollection).asScala
-    val pathToSelf =
-      Chain.fromSeq(
-        withRoot.drop(withRoot.lastIndexWhere(info => rootId.contains(info.getID)) + 1).toIndexedSeq
-      )
-    fileOrFolder.fold(_ => pathToSelf, folder => pathToSelf.append(folder)).map(_.getName)
+  def lub: BoxItem#Info = fileOrFolder.fold[BoxItem#Info](identity, identity)
+
+  override type StorageClassType = Nothing
+
+  override def name: String = fileOrFolder match {
+    case Left(file)    => file.getName
+    case Right(folder) => folder.getName
   }
-  val fileName: Option[String]      = fileOrFolder.fold(file => Some(file.getName), _ => None)
-  val size: Option[Long]            = fileOrFolder.fold(file => Option(file.getSize), _ => None)
-  val isDir: Option[Boolean]        = Some(fileOrFolder.isRight)
-  val lastModified: Option[Instant] = Option(fileOrFolder.fold(_.getModifiedAt, _.getModifiedAt)).map(_.toInstant)
+
+  override def size: Option[Long] = fileOrFolder match {
+    case Left(file)    => file.getSize.some
+    case Right(folder) => folder.getSize.some
+  }
+
+  override def isDir: Boolean = fileOrFolder.isRight
+
+  override def lastModified: Option[Instant] = fileOrFolder match {
+    case Left(file)    => file.getModifiedAt.toInstant.some
+    case Right(folder) => folder.getModifiedAt.toInstant.some
+  }
+
+  override def storageClass: Option[Nothing] = None
+
+  override def generalStorageClass: Option[GeneralStorageClass] = None
+
 }
 
 object BoxPath {
-  def narrow(p: Path): Option[BoxPath] = p match {
-    case bp: BoxPath => Some(bp)
+  def narrow[A](p: Path[A]): Option[Path[BoxPath]] = p.representation match {
+    case bp: BoxPath => p.as(bp: BoxPath).some
     case _           => None
   }
-
-  private[box] def rootFilePath(p: Path): List[String] = {
-    val withRoot = p.root.fold(p.pathFromRoot)(p.pathFromRoot.prepend)
-    p.fileName.fold(withRoot)(withRoot.append).filter(_.nonEmpty).toList
-  }
-
-  private[box] def parentPath(path: Path): List[String] =
-    rootFilePath(path).dropRight(1)
 }

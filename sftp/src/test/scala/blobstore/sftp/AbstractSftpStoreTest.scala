@@ -18,77 +18,77 @@ package sftp
 
 import java.nio.file.Paths
 
+import blobstore.url.{Authority, Path}
 import cats.effect.IO
 import cats.effect.concurrent.MVar
 import com.jcraft.jsch.{ChannelSftp, Session, SftpException}
 
-import blobstore.implicits._
-import cats.implicits._
-
-abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
+abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standard, SftpFile] {
 
   def session: IO[Session]
+  override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
+  override val fileSystemRoot               = Path("sftp_tests")
 
   private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
   protected val mVar  = MVar.empty[IO, ChannelSftp].unsafeRunSync()
-  override lazy val store: SftpStore[IO] =
-    SftpStore[IO]("", session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
+  lazy val sftpStore: SftpStore[IO] =
+    SftpStore[IO](session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
+  override lazy val store: Store[IO, Authority.Standard, SftpFile] = sftpStore.liftTo[Authority.Standard]
 
-  override val root: String = "sftp_tests"
+  val scheme = "sftp"
 
   // remove dirs created by AbstractStoreTest
   override def afterAll(): Unit = {
     super.afterAll()
 
     try {
-      store.session.disconnect()
+      sftpStore.session.disconnect()
     } catch {
       case _: Throwable =>
     }
 
-    cleanup(rootDir.resolve(s"$root/test-$testRun"))
+    cleanup(rootDir.resolve(s"$authority/test-$testRun"))
 
   }
 
   behavior of "Sftp store"
 
   it should "list files in current directory" in {
-    val store: Store[IO] =
-      SftpStore[IO]("", session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
+    val store =
+      SftpStore[IO](session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
     val path = Path(".")
 
     val p = store.list(path).compile.toList
 
     val result = p.unsafeRunSync()
-    result.map(_.filePath) must contain theSameElementsInOrderAs List("sftp_tests")
+    result.map(_.lastSegment.getOrElse("")) must contain theSameElementsInOrderAs List("sftp_tests/")
   }
 
   it should "list more than 64 (default queue/buffer size) keys" in {
 
-    val dir: Path = dirPath("list-more-than-64")
+    val dir = dirUrl("list-more-than-64")
 
     val paths = (1 to 256).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, dir))
+      .map(writeFile(store, dir.path))
 
-    val exp = paths.map(_.filePath).toSet
+    val exp = paths.map(_.path.lastSegment).toSet
 
-    store.listAll(dir).unsafeRunSync().map(_.filePath).toSet must be(exp)
+    store.list(dir).compile.toList.unsafeRunSync().map(_.lastSegment).toSet mustBe exp
 
-    val io: IO[List[Unit]] = paths.map(store.remove).sequence
-    io.unsafeRunSync()
+    store.remove(dir, recursive = true).unsafeRunSync()
 
-    store.listAll(dir).unsafeRunSync().isEmpty must be(true)
+    store.list(dir).compile.toList.unsafeRunSync().isEmpty mustBe true
   }
 
   it should "be able to remove a directory if it is empty" in {
-    val dir      = dirPath("some-dir")
+    val dir      = dirUrl("some-dir")
     val filename = "some-filename"
 
     val result = for {
-      file  <- IO(writeFile(store, dir)(filename))
-      _     <- store.remove(file)
-      _     <- store.remove(dir)
+      file  <- IO(writeFile(store, dir.path)(filename))
+      _     <- store.remove(file, recursive = false)
+      _     <- store.remove(dir, recursive = false)
       files <- store.list(dir).compile.toList
     } yield files
 
@@ -96,12 +96,12 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest with PathOps {
   }
 
   it should "not be able to remove a directory if it is not empty" in {
-    val dir      = dirPath("some-dir")
+    val dir      = dirUrl("some-dir")
     val filename = "some-filename"
 
     val failedRemove = for {
-      _     <- IO(writeFile(store, dir)(filename))
-      _     <- store.remove(dir)
+      _     <- IO(writeFile(store, dir.path)(filename))
+      _     <- store.remove(dir, recursive = false)
       files <- store.list(dir).compile.toList
     } yield files
 
