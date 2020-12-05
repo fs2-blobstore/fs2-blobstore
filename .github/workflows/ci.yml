@@ -3,14 +3,17 @@ name: CI
 on:
   pull_request:
     branches: ['*']
+  push:
+    branches: [ master ]
+    paths-ignore: [ README.md ]
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   local-test:
-    name: Checks and local tests
-    if: github.event.pull_request.head.repo.full_name != github.repository
+    name: Checks & local tests
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -42,8 +45,8 @@ jobs:
           flags: unit-scala-${{ matrix.scala }}
 
   all-test:
-    name: Checks and all tests
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    name: Checks & all tests
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
       matrix:
         os: [ubuntu-latest]
