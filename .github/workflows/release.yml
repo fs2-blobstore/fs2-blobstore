@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+  release:
+    types:
+      - published
+
+jobs:
+  publish:
+    name: Publish artifacts
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.12.12, 2.13.4]
+        java: ['adopt:11']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v2
+
+      - uses: laughedelic/coursier-setup@v1
+        with:
+          jvm: ${{ matrix.java }}
+
+      - uses: coursier/cache-action@v5
+
+      - uses: olafurpg/setup-gpg@v3
+
+      - name: CI Release
+        env:
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+        run: sbtn ++${{ matrix.scala }}! ci-release
+
+  readme:
+    name: Update Readme
+    if: github.event_name == 'push'
+    needs: [publish]
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.12.12]
+        java: ['adopt:11']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v2
+
+      - uses: laughedelic/coursier-setup@v1
+        with:
+          jvm: ${{ matrix.java }}
+
+      - uses: coursier/cache-action@v5
+
+      - name: Generate updated README.md
+        run: sbtn ++${{ matrix.scala }}! 'docs/mdoc --out .'
+
+      - uses: EndBug/add-and-commit@v5
+        with:
+          message: Update readme for released version
+          add: README.md
+          ref: master

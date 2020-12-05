@@ -1,2 +1,19 @@
+codecov:
+  require_ci_to_pass: no
+  notify:
+    wait_for_ci: no
+
+# https://docs.codecov.io/docs/commit-status
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+        if_ci_failed: success
+    patch:
+      default:
+        informational: true
+        if_ci_failed: success
+
 ignore:
   - "**/S3MetaInfo.scala"

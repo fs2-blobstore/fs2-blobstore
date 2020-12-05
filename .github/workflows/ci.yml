@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ['*']
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  local-test:
+    name: Checks and local tests
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.12.12, 2.13.4]
+        java: ['adopt:11']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v2
+
+      - uses: laughedelic/coursier-setup@v1
+        with:
+          jvm: ${{ matrix.java }}
+
+      - uses: coursier/cache-action@v5
+
+      - name: Checks
+        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafixCheck'
+
+      - name: Create tmp directory
+        run: mkdir tmp
+
+      - name: Test
+        run: sbtn ++${{ matrix.scala }}! 'coverage; testOnly * -- -l blobstore.IntegrationTest; coverageAggregate'
+
+      - name: Upload code coverage to codecov
+        uses: codecov/codecov-action@v1
+        with:
+          flags: unit-scala-${{ matrix.scala }}
+
+  all-test:
+    name: Checks and all tests
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        scala: [2.12.12, 2.13.4]
+        java: ['adopt:11']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout current branch (fast)
+        uses: actions/checkout@v2
+
+      - uses: laughedelic/coursier-setup@v1
+        with:
+          jvm: ${{ matrix.java }}
+
+      - uses: coursier/cache-action@v5
+
+      - name: Checks
+        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafixCheck'
+
+      - name: Create tmp directory
+        run: mkdir tmp
+
+      - name: Decrypt Box App Key
+        run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
+
+      - name: Test
+        run: sbtn ++${{ matrix.scala }}! 'coverage; test; coverageAggregate'
+
+      - name: Upload code coverage to codecov
+        uses: codecov/codecov-action@v1
+        with:
+          flags: all-scala-${{ matrix.scala }}
