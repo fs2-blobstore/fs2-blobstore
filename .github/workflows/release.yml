@@ -19,8 +19,10 @@ jobs:
         java: ['adopt:11']
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout current branch (fast)
+      - name: Checkout current branch
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
       - uses: laughedelic/coursier-setup@v1
         with:
