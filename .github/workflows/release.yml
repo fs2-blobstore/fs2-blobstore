@@ -39,7 +39,7 @@ jobs:
 
   readme:
     name: Update Readme
-    if: github.event_name == 'push'
+    if: github.event_name == 'release'
     needs: [publish]
     strategy:
       matrix:
