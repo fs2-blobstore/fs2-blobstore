@@ -17,30 +17,38 @@ package blobstore
 package sftp
 
 import java.nio.file.Paths
-
-import blobstore.url.{Authority, Path}
+import blobstore.url.{Authority, Host, Path, Port}
 import cats.effect.IO
-import cats.effect.concurrent.MVar
+import cats.effect.concurrent.{MVar, MVar2}
+import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{ChannelSftp, Session, SftpException}
 
 abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standard, SftpFile] {
 
+  def container: GenericContainer
   def session: IO[Session]
-  override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
-  override val fileSystemRoot               = Path("sftp_tests")
 
-  private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
-  protected val mVar  = MVar.empty[IO, ChannelSftp].unsafeRunSync()
+  override val scheme = "sftp"
+  override def authority: Authority.Standard =
+    Authority.Standard(Host.unsafe(container.containerIpAddress), None, Some(Port(container.mappedPort(22))))
+
+  override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
+  override val fileSystemRoot: Path.Plain   = Path("sftp_tests")
+
+  private val rootDir                        = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
+  protected val mVar: MVar2[IO, ChannelSftp] = MVar.empty[IO, ChannelSftp].unsafeRunSync()
+
   lazy val sftpStore: SftpStore[IO] =
     SftpStore[IO](session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
-  override lazy val store: Store[IO, Authority.Standard, SftpFile] = sftpStore.liftTo[Authority.Standard]
 
-  val scheme = "sftp"
+  def mkStore(): Store[IO, Authority.Standard, SftpFile] = sftpStore.liftTo[Authority.Standard]
 
-  // remove dirs created by AbstractStoreTest
+  override def beforeAll(): Unit = {
+    container.start()
+    super.beforeAll()
+  }
+
   override def afterAll(): Unit = {
-    super.afterAll()
-
     try {
       sftpStore.session.disconnect()
     } catch {
@@ -48,17 +56,16 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
     }
 
     cleanup(rootDir.resolve(s"$authority/test-$testRun"))
-
+    container.stop()
+    super.afterAll()
   }
 
   behavior of "Sftp store"
 
   it should "list files in current directory" in {
-    val store =
-      SftpStore[IO](session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
     val path = Path(".")
 
-    val p = store.list(path).compile.toList
+    val p = sftpStore.list(path).compile.toList
 
     val result = p.unsafeRunSync()
     result.map(_.lastSegment.getOrElse("")) must contain theSameElementsInOrderAs List("sftp_tests/")
@@ -87,8 +94,8 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
     val result = for {
       file  <- IO(writeFile(store, dir.path)(filename))
-      _     <- store.remove(file, recursive = false)
-      _     <- store.remove(dir, recursive = false)
+      _     <- store.remove(file)
+      _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
     } yield files
 
@@ -101,7 +108,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
     val failedRemove = for {
       _     <- IO(writeFile(store, dir.path)(filename))
-      _     <- store.remove(dir, recursive = false)
+      _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
     } yield files
 

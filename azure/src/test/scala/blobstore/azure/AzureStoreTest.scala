@@ -1,7 +1,6 @@
 package blobstore
 package azure
 
-import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import blobstore.url.Authority.Bucket
 import blobstore.url.Path.Plain
@@ -11,30 +10,45 @@ import fs2.Stream
 import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
+import com.dimafeng.testcontainers.GenericContainer
 import org.scalatest.Inside
-import reactor.core.publisher.Mono
 
 class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
+
+  val container: GenericContainer = GenericContainer(
+    dockerImage = "mcr.microsoft.com/azure-storage/azurite",
+    exposedPorts = List(10000),
+    command = List("azurite-blob", "--blobHost", "0.0.0.0", "--loose")
+  )
+
   override val scheme: String        = "https"
   override val authority: Bucket     = Bucket.unsafe("container")
   override val fileSystemRoot: Plain = Path("")
 
   val options = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
 
-  // TODO: Remove this once version of azure-storage-blob containing https://github.com/Azure/azure-sdk-for-java/pull/9123 is released
-  val azuriteContainerIp: String = InetAddress.getByName("azurite-container").getHostAddress
-
-  val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
+  lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
     .connectionString(
-      s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://$azuriteContainerIp:10000/devstoreaccount1;"
+      s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${container.containerIpAddress}:${container.mappedPort(10000)}/devstoreaccount1;"
     )
     .retryOptions(options)
     .buildAsyncClient()
 
-  val azureStore: AzureStore[IO] = new AzureStore(azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
+  override def mkStore(): Store[IO, Bucket, AzureBlob] =
+    new AzureStore(azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
 
-  override val store: Store[IO, Bucket, AzureBlob] =
-    azureStore
+  def azureStore: AzureStore[IO] = store.asInstanceOf[AzureStore[IO]] // scalafix:ok
+
+  override def beforeAll(): Unit = {
+    container.start()
+    azure.createBlobContainer(authority.host.toString).toFuture.get(1, TimeUnit.MINUTES)
+    super.beforeAll()
+  }
+
+  override def afterAll(): Unit = {
+    container.stop()
+    super.afterAll()
+  }
 
   behavior of "AzureStore"
 
@@ -77,7 +91,6 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
     val at                    = AccessTier.COOL
     val properties            = new BlobItemProperties().setAccessTier(at).setContentType(ct)
     val filePath: Url[Bucket] = dirUrl("set-underlying") / "file"
-//      new AzurePath(authority, s"test-$testRun/set-underlying/file", Some(properties), )
     Stream("data".getBytes.toIndexedSeq: _*).through(azureStore.put(
       filePath,
       overwrite = true,
@@ -103,17 +116,6 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
       val sc: Option[AccessTier] = path.storageClass
       sc mustBe None
     }
-  }
-
-  override def beforeAll(): Unit = {
-    super.beforeAll()
-    val delete: Mono[Void] = azure
-      .deleteBlobContainer(authority.host.toString)
-      .onErrorResume(_ => Mono.empty())
-    val create: Mono[Void]   = azure.createBlobContainer(authority.host.toString).flatMap(_ => Mono.empty())
-    def recreate: Mono[Void] = delete.`then`(create).onErrorResume(_ => recreate)
-    recreate.toFuture.get(1, TimeUnit.MINUTES)
-    ()
   }
 
 }

@@ -9,4 +9,8 @@ object Tests extends AutoPlugin {
       "org.scalatest" %% "scalatest" % "3.2.3" % Test
     )
   )
+
+  override def projectSettings: Seq[Def.Setting[_]] = Seq(
+    Test / fork := true
+  )
 }

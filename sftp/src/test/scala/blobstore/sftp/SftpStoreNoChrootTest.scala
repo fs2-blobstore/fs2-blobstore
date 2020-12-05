@@ -1,23 +1,25 @@
 package blobstore.sftp
 
 import java.util.Properties
-
-import blobstore.url.Authority
 import cats.effect.IO
+import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{JSch, Session}
+import org.testcontainers.containers.BindMode
 
 /** sftp-no-chroot-container doesn't map user's home directory to "/". User's instead land in "/home/<username>/"
   */
 class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
-  val sftpHost: String = Option(System.getenv("SFTP_HOST")).getOrElse("sftp-no-chroot")
-  val sftpPort: String = Option(System.getenv("SFTP_NO_CHROOT_PORT")).getOrElse("22")
-
-  override val authority: Authority.Standard = Authority.Standard.unsafe(sftpHost)
+  override val container: GenericContainer = GenericContainer(
+    "atmoz/sftp",
+    exposedPorts = List(22),
+    command = List("blob:password:::sftp_tests"),
+    classpathResourceMapping = List(("sshd_config", "/etc/ssh/sshd_config", BindMode.READ_ONLY))
+  )
 
   override val session: IO[Session] = IO {
     val jsch = new JSch()
 
-    val session = jsch.getSession("blob", sftpHost, sftpPort.toInt)
+    val session = jsch.getSession("blob", container.containerIpAddress, container.mappedPort(22))
     session.setTimeout(10000)
     session.setPassword("password")
 
@@ -26,5 +28,4 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
     session.setConfig(config)
     session // Let the store connect this session
   }
-
 }

@@ -118,7 +118,7 @@ class S3Store[F[_]](
     }
 
   override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
-    copy(src, dst) >> remove(src, recursive = false)
+    copy(src, dst) >> remove(src)
 
   override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] = {
     stat(dst).compile.last.flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
@@ -186,21 +186,22 @@ class S3Store[F[_]](
       builder.build()
     }
     s3.listObjectsV2Paginator(request).toStream.flatMap { ol =>
-      val fDirs = ol.commonPrefixes().asScala.toList.traverse[F, Path[S3Blob]] { cp =>
-        if (expectTrailingSlashFiles) {
-          liftJavaFuture(
-            F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(cp.prefix()).build()))
-          ).map { resp =>
-            Path(cp.prefix()).as(S3Blob(bucket, cp.prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some))
-          }
-            .recover {
-              case _: NoSuchKeyException =>
-                Path(cp.prefix()).as(S3Blob(bucket, cp.prefix(), None))
+      val fDirs =
+        ol.commonPrefixes().asScala.toList.flatMap(cp => Option(cp.prefix())).traverse[F, Path[S3Blob]] { prefix =>
+          if (expectTrailingSlashFiles) {
+            liftJavaFuture(
+              F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(prefix).build()))
+            ).map { resp =>
+              Path(prefix).as(S3Blob(bucket, prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some))
             }
-        } else {
-          Path(cp.prefix()).as(S3Blob(bucket, cp.prefix(), None)).pure[F]
+              .recover {
+                case _: NoSuchKeyException =>
+                  Path(prefix).as(S3Blob(bucket, prefix, None))
+              }
+          } else {
+            Path(prefix).as(S3Blob(bucket, prefix, None)).pure[F]
+          }
         }
-      }
 
       val fFiles = ol.contents().asScala.toList.traverse[F, Path[S3Blob]] { s3Object =>
         if (fullMetadata) {
