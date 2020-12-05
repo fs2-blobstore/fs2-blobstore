@@ -8,8 +8,8 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  unit-test:
-    name: Static checks and tests
+  local-test:
+    name: Checks and local tests
     if: github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       matrix:
@@ -42,7 +42,7 @@ jobs:
           flags: unit-scala-${{ matrix.scala }}
 
   all-test:
-    name: Static checks and tests
+    name: Checks and all tests
     if: github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       matrix:
