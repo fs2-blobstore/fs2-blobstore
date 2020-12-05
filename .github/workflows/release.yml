@@ -1,8 +1,12 @@
 name: Release
 
 on:
+  push:
+    branches:
+      - master
   release:
-    types: [published]
+    types:
+      - published
 
 jobs:
   publish:
@@ -35,6 +39,7 @@ jobs:
 
   readme:
     name: Update Readme
+    if: github.event_name == 'push'
     needs: [publish]
     strategy:
       matrix:

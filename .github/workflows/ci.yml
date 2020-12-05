@@ -3,8 +3,6 @@ name: CI
 on:
   pull_request:
     branches: ['*']
-  push:
-    branches: ['*']
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -12,7 +10,7 @@ env:
 jobs:
   unit-test:
     name: Static checks and tests
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    if: github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -45,7 +43,7 @@ jobs:
 
   all-test:
     name: Static checks and tests
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -78,32 +76,3 @@ jobs:
         uses: codecov/codecov-action@v1
         with:
           flags: all-scala-${{ matrix.scala }}
-
-  publish:
-    name: Publish artifacts
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        scala: [2.12.12, 2.13.4]
-        java: ['adopt:11']
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout current branch (fast)
-        uses: actions/checkout@v2
-
-      - uses: laughedelic/coursier-setup@v1
-        with:
-          jvm: ${{ matrix.java }}
-
-      - uses: coursier/cache-action@v5
-
-      - uses: olafurpg/setup-gpg@v3
-
-      - name: CI Release
-        env:
-          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
-          PGP_SECRET: ${{ secrets.PGP_SECRET }}
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: sbtn ++${{ matrix.scala }}! ci-release
