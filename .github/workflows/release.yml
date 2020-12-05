@@ -5,7 +5,9 @@ on:
     types: [published]
   push:
     branches: [ master ]
-    paths-ignore: [ README.md ]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
 
 jobs:
   publish:
