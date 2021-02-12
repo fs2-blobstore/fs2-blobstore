@@ -2,5 +2,5 @@ name := "sftp"
 
 libraryDependencies ++= Seq(
   "com.jcraft"    % "jsch"                      % "0.1.55",
-  "com.dimafeng" %% "testcontainers-scala-core" % "0.38.9" % Test
+  "com.dimafeng" %% "testcontainers-scala-core" % "0.39.0" % Test
 )
