@@ -13,7 +13,7 @@ inThisBuild(
     homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
     addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
-    addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.11.2" cross CrossVersion.full),
+    addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.11.3" cross CrossVersion.full),
     javacOptions ++= {
       val javaVersion: Int = {
         var sysVersion = System.getProperty("java.version")
