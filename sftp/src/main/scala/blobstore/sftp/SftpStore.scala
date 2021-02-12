@@ -59,12 +59,15 @@ class SftpStore[F[_]] private (
       channel <- Stream.resource(channelResource)
       entry <- q.dequeue.unNoneTerminate
         .filter(e => e.getFilename != "." && e.getFilename != "..")
-        .concurrently(
-          Stream.eval {
+        .concurrently {
+          // JSch hits index out of bounds on empty string, needs explicit handling
+          val resolveEmptyPath = if (path.show.isEmpty) blocker.delay(channel.pwd()) else path.show.pure[F]
+          val performList = resolveEmptyPath.flatMap { path =>
             val es = entrySelector(e => Effect[F].runAsync(q.enqueue1(Some(e)))(_ => IO.unit).unsafeRunSync())
             blocker.delay(channel.ls(path.show, es)).attempt.flatMap(_ => q.enqueue1(None))
           }
-        )
+          Stream.eval(performList)
+        }
     } yield {
       val isDir   = Option(entry.getAttrs.isDir)
       val element = SftpFile(entry.getLongname, entry.getAttrs)
