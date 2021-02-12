@@ -62,13 +62,18 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
 
   behavior of "Sftp store"
 
-  it should "list files in current directory" in {
-    val path = Path(".")
+  it should "list files in current working directory" in {
+    val empty = Path("")
+    val dot   = Path(".")
 
-    val p = sftpStore.list(path).compile.toList
+    val emptyList = sftpStore.list(empty).compile.toList
+    val dotList   = sftpStore.list(dot).compile.toList
 
-    val result = p.unsafeRunSync()
-    result.map(_.lastSegment.getOrElse("")) must contain theSameElementsInOrderAs List("sftp_tests/")
+    val emptyResult = emptyList.unsafeRunSync()
+    val dotResult   = dotList.unsafeRunSync()
+
+    emptyResult.map(_.lastSegment.getOrElse("")) must contain theSameElementsInOrderAs List("sftp_tests/")
+    dotResult.map(_.lastSegment.getOrElse("")) must contain theSameElementsInOrderAs List("sftp_tests/")
   }
 
   it should "list more than 64 (default queue/buffer size) keys" in {
