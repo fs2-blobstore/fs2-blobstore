@@ -1,8 +1,7 @@
 package blobstore.s3
 
 import blobstore.AbstractStoreTest
-import blobstore.url.Authority.Bucket
-import blobstore.url.{Authority, Path}
+import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
 import cats.effect.concurrent.Ref
 import cats.syntax.all._
@@ -12,13 +11,13 @@ import org.scalatest.{Assertion, Inside}
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.{CreateBucketRequest, StorageClass}
 
-abstract class AbstractS3StoreTest extends AbstractStoreTest[Authority.Bucket, S3Blob] with Inside {
+abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside {
   def container: GenericContainer
   def client: S3AsyncClient
 
-  override val scheme: String              = "s3"
-  override val authority: Authority.Bucket = Bucket.unsafe("blobstore-test-bucket")
-  override val fileSystemRoot: Path.Plain  = Path("")
+  override val scheme: String             = "s3"
+  override val authority: Authority       = Authority.unsafe("blobstore-test-bucket")
+  override val fileSystemRoot: Path.Plain = Path("")
 
   override def mkStore(): S3Store[IO] =
     new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
@@ -63,7 +62,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[Authority.Bucket, S
         .compile
         .to(Array)
       path = Path(s"$authority/test-$testRun/multipart-upload/") / name
-      url  = authority.s3 / path
+      url  = Url("s3", authority, path)
       _         <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(url, size = None)).compile.drain
       readBytes <- store.get(url, 4096).compile.to(Array)
       _         <- store.remove(url)
@@ -97,7 +96,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[Authority.Bucket, S
         .compile
         .drain
       files        <- store.list(dir, recursive = true).compile.toList
-      fileContents <- files.traverse(p => store.get(authority.s3 / p, 1024).compile.to(Array))
+      fileContents <- files.traverse(p => store.get(Url("s3", authority, p.plain), 1024).compile.to(Array))
     } yield {
       files must have size 2
       files.flatMap(_.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)

@@ -1,8 +1,7 @@
 package blobstore
 package gcs
 
-import blobstore.url.{Path, Url}
-import blobstore.url.Authority.Bucket
+import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Path.Plain
 import cats.effect.IO
 import cats.syntax.all._
@@ -13,10 +12,10 @@ import org.scalatest.Inside
 
 import scala.jdk.CollectionConverters._
 
-class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
+class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
   override val scheme: String        = "gs"
-  override val authority: Bucket     = Bucket.unsafe("bucket")
+  override val authority: Authority  = Authority.unsafe("bucket")
   override val fileSystemRoot: Plain = Path("")
 
   val gcsStore: GcsStore[IO] = GcsStore[IO](
@@ -36,8 +35,8 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   // Keys with trailing slashes are perfectly legal in GCS.
   // https://cloud.google.com/storage/docs/naming
   it should "handle files with trailing / in name" in {
-    val dir: Url[Bucket] = dirUrl("trailing-slash")
-    val filePath         = dir / "file-with-slash/"
+    val dir: Url = dirUrl("trailing-slash")
+    val filePath = dir / "file-with-slash/"
 
     store.put("test", filePath).compile.drain.unsafeRunSync()
 
@@ -95,9 +94,9 @@ class GcsStoreTest extends AbstractStoreTest[Bucket, GcsBlob] with Inside {
   }
 
   it should "support direct download" in {
-    val dir: Url[Bucket] = dirUrl("direct-download")
-    val filename         = s"test-${System.currentTimeMillis}.txt"
-    val path             = writeFile(store, dir.path)(filename)
+    val dir: Url = dirUrl("direct-download")
+    val filename = s"test-${System.currentTimeMillis}.txt"
+    val path     = writeFile(store, dir.path)(filename)
 
     val content = gcsStore
       .getUnderlying(path, 4096, direct = true, maxChunksInFlight = None)
