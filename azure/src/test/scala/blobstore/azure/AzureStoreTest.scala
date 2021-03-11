@@ -12,9 +12,12 @@ import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
 import org.scalatest.Inside
+import org.scalatestplus.scalacheck.Checkers
 
-class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
+class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside with Checkers {
 
+
+  override implicit val generatorDrivenConfig: PropertyCheckConfiguration = PropertyCheckConfiguration().copy(minSuccessful = 1000)
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
     exposedPorts = List(10000),
@@ -51,6 +54,22 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
   }
 
   behavior of "AzureStore"
+
+  it should "put and get should yield symmetric results" in {
+    check[List[Byte], Int, Boolean] { case (bytes: List[Byte], n: Int) =>
+      val dir = dirUrl("read-write")
+      val filePath = dir / s"file-$n"
+      val blob = Stream.emits(bytes)
+
+      def prg =
+        for {
+          _ <- blob.through(store.put(filePath)).compile.drain
+          contents <- store.get(filePath, 1024).compile.toList
+        } yield contents
+
+      prg.unsafeRunSync() == bytes
+    }
+  }
 
   it should "handle files with trailing / in name" in {
     val dir      = dirUrl("trailing-slash")
