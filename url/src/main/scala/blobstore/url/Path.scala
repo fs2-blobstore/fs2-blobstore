@@ -2,14 +2,13 @@ package blobstore.url
 
 import java.nio.file.Paths
 import java.time.Instant
-
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import cats.Show
 import cats.data.Chain
 import cats.kernel.Order
 import cats.syntax.all._
 
-import scala.annotation.tailrec
+import scala.annotation.{nowarn, tailrec}
 
 /** The path segment of a URI. It is parameterized on the type representing the path. This can be a plain String, or a
   * storage provider specific type.
@@ -260,9 +259,8 @@ object Path {
     case RootlessPath(representation, segments) => (p.show, representation, segments).some
   }
 
-  implicit def order[A: Order]: Order[Path[A]] = new Order[Path[A]] {
-    def compare(x: Path[A], y: Path[A]): Int = cmp(x, y)
-  }
+  @nowarn
+  implicit def order[A: Order]: Order[Path[A]]          = (x: Path[A], y: Path[A]) => cmp(x, y)
   implicit def ordering[A: Ordering]: Ordering[Path[A]] = order[A](Order.fromOrdering[A]).toOrdering
   implicit def show[A]: Show[Path[A]] = {
     case a: AbsolutePath[A] => a.show
