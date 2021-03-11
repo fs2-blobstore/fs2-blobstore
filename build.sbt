@@ -1,7 +1,7 @@
 inThisBuild(
   Seq(
-    scalaVersion := "2.13.4",
-    crossScalaVersions := Seq("2.12.12", "2.13.4"),
+    scalaVersion := "2.13.5",
+    crossScalaVersions := Seq("2.12.12", "2.13.5"),
     organization := "com.github.fs2-blobstore",
     licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(

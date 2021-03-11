@@ -14,6 +14,7 @@ object Scalafix extends AutoPlugin {
       "-Yrangepos", // required by SemanticDB compiler plugin
       "-P:semanticdb:synthetics:on"
     ),
+    semanticdbVersion := scalafixSemanticdb.revision,
     scalafixDependencies += "com.github.vovapolu" %% "scaluzzi" % "0.1.18"
   )
 }
