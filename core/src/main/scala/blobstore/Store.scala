@@ -53,11 +53,7 @@ trait Store[F[_], A <: Authority, +BlobType] {
     */
   def get(url: Url[A], chunkSize: Int): Stream[F, Byte]
 
-  /** It is highly recommended to provide `Path.size` when writing as it allows for optimizations in some store.
-    * Specifically, S3Store will behave very poorly if no size is provided as it will load all bytes in memory before
-    * writing content to S3 server.
-    *
-    * @param url to put
+  /** @param url to put
     * @param overwrite when true putting to path with pre-existing file would overwrite the content, otherwise – fail with error.
     * @return sink of bytes
     */
