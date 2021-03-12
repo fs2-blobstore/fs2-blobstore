@@ -16,8 +16,8 @@ import org.scalatestplus.scalacheck.Checkers
 
 class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside with Checkers {
 
-
-  override implicit val generatorDrivenConfig: PropertyCheckConfiguration = PropertyCheckConfiguration().copy(minSuccessful = 1000)
+  override implicit val generatorDrivenConfig: PropertyCheckConfiguration =
+    PropertyCheckConfiguration().copy(minSuccessful = 1000)
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
     exposedPorts = List(10000),
@@ -57,13 +57,13 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside wi
 
   it should "put and get should yield symmetric results" in {
     check[List[Byte], Int, Boolean] { case (bytes: List[Byte], n: Int) =>
-      val dir = dirUrl("read-write")
+      val dir      = dirUrl("read-write")
       val filePath = dir / s"file-$n"
-      val blob = Stream.emits(bytes)
+      val blob     = Stream.emits(bytes)
 
       def prg =
         for {
-          _ <- blob.through(store.put(filePath)).compile.drain
+          _        <- blob.through(store.put(filePath)).compile.drain
           contents <- store.get(filePath, 1024).compile.toList
         } yield contents
 
