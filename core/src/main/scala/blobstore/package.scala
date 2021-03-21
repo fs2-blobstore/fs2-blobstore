@@ -14,13 +14,13 @@ Copyright 2018 LendUp Global, Inc.
    limitations under the License.
  */
 
-import blobstore.url.{Authority, FsObject, Path, Url}
+import blobstore.url.{FsObject, Path, Url}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
+import cats.implicits._
+import fs2.{Chunk, Hotswap, Pipe, Pull, RaiseThrowable, Stream}
 
 import java.io.OutputStream
 import java.nio.file.Files
-import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
-import fs2.{Chunk, Hotswap, Pipe, Pull, RaiseThrowable, Stream}
-import cats.implicits._
 
 package object blobstore {
   protected[blobstore] def _writeAllToOutputStream1[F[_]](in: Stream[F, Byte], out: OutputStream, blocker: Blocker)(
@@ -89,11 +89,11 @@ package object blobstore {
     }
   }
 
-  private[blobstore] def defaultTransferTo[F[_]: Sync, A <: Authority, B, P, C](
+  private[blobstore] def defaultTransferTo[F[_]: Sync, B, P, C](
     selfStore: PathStore[F, C],
-    dstStore: Store[F, A, B],
+    dstStore: Store[F, B],
     srcPath: Path[P],
-    dstUrl: Url[A]
+    dstUrl: Url
   )(implicit evB: B <:< FsObject, evC: C <:< FsObject): F[Int] =
     dstStore.stat(dstUrl).last.map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
       selfStore.list(srcPath.plain, recursive = false)

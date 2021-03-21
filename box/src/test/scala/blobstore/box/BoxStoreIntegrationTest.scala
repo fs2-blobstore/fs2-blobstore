@@ -16,7 +16,7 @@ import scala.util.{Failure, Success, Try}
   * See AbstractStoreTest to see what operations performed here.
   */
 @IntegrationTest
-class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxPath] {
+class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
 
   private val log = LoggerFactory.getLogger(getClass)
 
@@ -25,10 +25,10 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[Authority.Standard, BoxP
 
   override val scheme = "https"
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
-  override val authority: Authority.Standard = Authority.Standard.unsafe("foo")
+  override val authority: Authority = Authority.unsafe("foo")
 
-  private lazy val boxStore: BoxStore[IO]                        = BoxStore[IO](api, blocker)
-  override def mkStore(): Store[IO, Authority.Standard, BoxPath] = boxStore.liftTo[Authority.Standard]
+  private lazy val boxStore: BoxStore[IO]    = BoxStore[IO](api, blocker)
+  override def mkStore(): Store[IO, BoxPath] = boxStore.lift
 
   val rootFolderName = "BoxStoreTest"
 

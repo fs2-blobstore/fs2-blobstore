@@ -2,9 +2,8 @@ package blobstore
 package azure
 
 import java.util.concurrent.TimeUnit
-import blobstore.url.Authority.Bucket
 import blobstore.url.Path.Plain
-import blobstore.url.{Path, Url}
+import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
 import fs2.Stream
 import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
@@ -13,7 +12,7 @@ import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
 import org.scalatest.Inside
 
-class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
+class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
 
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
@@ -22,7 +21,7 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
   )
 
   override val scheme: String        = "https"
-  override val authority: Bucket     = Bucket.unsafe("container")
+  override val authority: Authority  = Authority.unsafe("container")
   override val fileSystemRoot: Plain = Path("")
 
   val options = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
@@ -34,7 +33,7 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
     .retryOptions(options)
     .buildAsyncClient()
 
-  override def mkStore(): Store[IO, Bucket, AzureBlob] =
+  override def mkStore(): Store[IO, AzureBlob] =
     new AzureStore(azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
 
   def azureStore: AzureStore[IO] = store.asInstanceOf[AzureStore[IO]] // scalafix:ok
@@ -87,10 +86,10 @@ class AzureStoreTest extends AbstractStoreTest[Bucket, AzureBlob] with Inside {
   }
 
   it should "set underlying metadata on write" in {
-    val ct                    = "text/plain"
-    val at                    = AccessTier.COOL
-    val properties            = new BlobItemProperties().setAccessTier(at).setContentType(ct)
-    val filePath: Url[Bucket] = dirUrl("set-underlying") / "file"
+    val ct            = "text/plain"
+    val at            = AccessTier.COOL
+    val properties    = new BlobItemProperties().setAccessTier(at).setContentType(ct)
+    val filePath: Url = dirUrl("set-underlying") / "file"
     Stream("data".getBytes.toIndexedSeq: _*).through(azureStore.put(
       filePath,
       overwrite = true,
