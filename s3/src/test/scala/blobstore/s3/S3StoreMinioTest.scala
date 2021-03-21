@@ -1,6 +1,6 @@
 package blobstore.s3
 
-import blobstore.url.Path
+import blobstore.url.{Path, Url}
 import cats.effect.IO
 import com.dimafeng.testcontainers.GenericContainer
 import fs2.{Chunk, Stream}
@@ -40,9 +40,9 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
 
     val filePath = Path(s"test-$testRun/set-underlying/file1")
     Stream("data".getBytes.toIndexedSeq: _*).through(
-      s3Store.put(authority.s3 / filePath, overwrite = true, size = None, meta = Some(s3Meta))
+      s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta))
     ).compile.drain.unsafeRunSync()
-    val entities = s3Store.list(authority.s3 / filePath).compile.toList.unsafeRunSync()
+    val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
       inside(s3Path.representation.meta) {
@@ -64,12 +64,12 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
       .random[IO]
       .flatMap(n => Stream.chunk(Chunk.bytes(n.toString.getBytes())))
       .take(6 * 1024 * 1024)
-      .through(s3Store.put(authority.s3 / filePath, overwrite = true, size = None, meta = Some(s3Meta)))
+      .through(s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta)))
       .compile
       .drain
       .unsafeRunSync()
 
-    val entities = s3Store.list(authority.s3 / filePath).compile.toList.unsafeRunSync()
+    val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
 
     entities.foreach { s3Path =>
       inside(s3Path.representation.meta) {

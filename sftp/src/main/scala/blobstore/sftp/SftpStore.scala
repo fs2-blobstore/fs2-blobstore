@@ -1,20 +1,18 @@
 package blobstore.sftp
 
-import java.io.OutputStream
-
 import blobstore.{_writeAllToOutputStream1, defaultTransferTo, putRotateBase, PathStore, Store}
 import blobstore.url.{Authority, FsObject, Path, Url}
 import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
 import blobstore.url.exception.MultipleUrlValidationException
-import blobstore.Store.BlobStore
 import cats.data.Validated
-import com.jcraft.jsch._
-import cats.syntax.all._
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, IO, Resource}
 import cats.effect.concurrent.{MVar, MVar2, Semaphore}
+import cats.syntax.all._
+import com.jcraft.jsch._
 import fs2.{Pipe, Stream}
 import fs2.concurrent.Queue
 
+import java.io.OutputStream
 import scala.util.Try
 
 class SftpStore[F[_]] private (
@@ -196,19 +194,13 @@ class SftpStore[F[_]] private (
         case e                                                           => e.raiseError[F, Option[Path[SftpFile]]]
       }
 
-  override def liftToBlobStore: BlobStore[F, SftpFile] =
-    liftTo[Authority.Bucket]((u: Url[Authority.Bucket]) => u.path.relative.valid)
+  override def lift: Store[F, SftpFile] =
+    lift((u: Url) => u.path.relative.valid)
 
-  override def liftTo[AA <: Authority]: Store[F, AA, SftpFile] =
-    liftTo[AA]((u: Url[AA]) => u.path.relative.valid)
+  override def lift(g: Url => Validated[Throwable, Plain]): Store[F, SftpFile] =
+    new Store.DelegatingStore[F, SftpFile](this, g)
 
-  override def liftToStandard: Store[F, Authority.Standard, SftpFile] =
-    liftTo[Authority.Standard]((u: Url[Authority.Standard]) => u.path.relative.valid)
-
-  override def liftTo[A <: Authority](g: Url[A] => Validated[Throwable, Plain]): Store[F, A, SftpFile] =
-    new Store.DelegatingStore[F, A, SftpFile](Right(this), g)
-
-  override def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
+  override def transferTo[B, P](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url)(implicit
   ev: B <:< FsObject): F[Int] =
     defaultTransferTo(this, dstStore, srcPath, dstUrl)
 

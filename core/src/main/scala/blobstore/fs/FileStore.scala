@@ -16,17 +16,15 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
-import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
-
-import blobstore.url.{Authority, FsObject, Path, Url}
+import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
-
-import scala.jdk.CollectionConverters._
-import cats.syntax.all._
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
-import fs2.io.file.{FileHandle, WriteCursor}
+import cats.syntax.all._
 import fs2.{Hotswap, Pipe, Stream}
+import fs2.io.file.{FileHandle, WriteCursor}
 
+import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
+import scala.jdk.CollectionConverters._
 import scala.util.Try
 
 class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextShift[F]) extends PathStore[F, NioPath] {
@@ -163,11 +161,10 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def liftTo[A <: Authority](g: Url[A] => Validated[Throwable, Path.Plain]): Store[F, A, NioPath] =
-    new Store.DelegatingStore[F, A, NioPath](Right(this), g)
+  override def lift(g: Url => Validated[Throwable, Path.Plain]): Store[F, NioPath] =
+    new Store.DelegatingStore[F, NioPath](this, g)
 
-  def transferTo[A <: Authority, B, P](dstStore: Store[F, A, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  ev: B <:< FsObject): F[Int] =
+  def transferTo[B, P](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url)(implicit ev: B <:< FsObject): F[Int] =
     defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
