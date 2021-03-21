@@ -1,6 +1,5 @@
 package blobstore.url
 
-import blobstore.url.Authority.Bucket
 import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
@@ -13,7 +12,7 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
     val valid = List(
       "foo",
       "foo_bar.baz-bam42"
-    ).traverse(Bucket.parse)
+    ).traverse(Authority.parse)
 
     val invalid = List(
       "",
@@ -24,7 +23,7 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
       (1 until 64).toList.as("a").mkString,
       "a",
       "aa"
-    ).traverse(Bucket.parse)
+    ).traverse(Authority.parse)
 
     inside(valid) {
       case Valid(_) => // ok

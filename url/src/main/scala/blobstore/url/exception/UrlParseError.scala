@@ -1,7 +1,5 @@
 package blobstore.url.exception
 
-import blobstore.url.{Host, Port, Url, UserInfo}
-import cats.data.NonEmptyChain
 import cats.syntax.all._
 import cats.Show
 import cats.kernel.Semigroup
@@ -36,21 +34,6 @@ object SchemeError {
 
   case class InvalidScheme(scheme: String) extends SchemeError { val error = show"Invalid scheme, got $scheme" }
 
-}
-
-sealed trait BucketParseError extends UrlParseError
-object BucketParseError {
-  case class InvalidAuthority(authorityParseError: NonEmptyChain[AuthorityParseError]) extends BucketParseError {
-    val error = show"Invalid authority: ${authorityParseError.toList.mkString("\n  ", "\n  ", "")}"
-  }
-  case class PortNotSupported(c: Port) extends BucketParseError {
-    val error = show"Buckets may not have port numbers: $c"
-  }
-  case class UserInfoNotSupported(u: UserInfo) extends BucketParseError {
-    val error = show"Bucket may not have userinfo segments: $u"
-  }
-  case class HostnameRequired(c: Host)          extends BucketParseError { val error = show"Expected hostname, but got $c" }
-  case class NotValidBucketUrl(u: Url.Standard) extends BucketParseError { val error = show"Not a valid bucket url $u"     }
 }
 
 sealed trait AuthorityParseError extends UrlParseError
