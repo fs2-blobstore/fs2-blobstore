@@ -6,10 +6,6 @@ import cats.{ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
 import cats.syntax.all._
-import shapeless.{Const, Sized}
-import shapeless.nat._
-import shapeless.HList._
-import shapeless.PolyDefns.~>
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -46,7 +42,7 @@ object Host {
 }
 
 case class IpV4Address(octet1: Byte, octet2: Byte, octet3: Byte, octet4: Byte) extends Host {
-  val bytes: Sized[IndexedSeq[Byte], _4] = Sized(octet1, octet2, octet3, octet4)
+  val bytes = (octet1, octet2, octet3, octet4)
 
   override def toString: String = s"${octet1 & 0xff}.${octet2 & 0xff}.${octet3 & 0xff}.${octet4 & 0xff}"
 }
@@ -71,12 +67,8 @@ object IpV4Address {
     case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
-  private object compareBytes extends (Const[(Byte, Byte)]#λ ~> Const[Int]#λ) {
-    override def apply[T](f: (Byte, Byte)): Int = (f._1 & 0xff) compare (f._2 & 0xff)
-  }
-
   def compare(x: IpV4Address, y: IpV4Address): Int =
-    x.bytes.toHList.zip(y.bytes.toHList).foldMap(0)(IpV4Address.compareBytes)(_ + _)
+    x.bytes.toList.zip(y.bytes.toList).map(((_: Byte) - (_: Byte)).tupled).find(_ != 0).getOrElse(0)
 
   implicit val ordering: Ordering[IpV4Address] = compare
   implicit val order: Order[IpV4Address]       = Order.fromOrdering[IpV4Address]

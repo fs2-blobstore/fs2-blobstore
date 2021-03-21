@@ -32,7 +32,7 @@ import fs2.Stream
 import scala.util.Random
 import scala.concurrent.duration._
 
-abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
+abstract class AbstractStoreTest[B <: FsObject]
   extends AnyFlatSpec
   with Matchers
   with BeforeAndAfterAll
@@ -41,9 +41,9 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   with IOTest {
 
   // Override this
-  def mkStore(): Store[IO, A, B]
+  def mkStore(): Store[IO, B]
   def scheme: String
-  def authority: A
+  def authority: Authority
 
   val testRun: UUID = java.util.UUID.randomUUID()
 
@@ -58,7 +58,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   lazy val testRunRoot: Path.Plain = Path(s"test-$testRun")
 
   // Store being tested
-  protected final var store: Store[IO, A, B] = _ // scalafix:ok
+  protected final var store: Store[IO, B] = _ // scalafix:ok
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -95,9 +95,9 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   }
 
   it should "move keys" in {
-    val dir: Url[A] = dirUrl("move-keys")
-    val src         = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
-    val dst         = dir / s"dst/${System.currentTimeMillis}.txt"
+    val dir: Url = dirUrl("move-keys")
+    val src      = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
+    val dst      = dir / s"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
       l1 <- store.listAll(src)
@@ -120,7 +120,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   it should "list multiple keys" in {
     import cats.implicits._
 
-    val dir: Url[A] = dirUrl("list-many")
+    val dir: Url = dirUrl("list-many")
 
     val paths = (1 to 10).toList
       .map(i => s"filename-$i.txt")
@@ -158,9 +158,9 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   }
 
   it should "list files and directories correctly" in {
-    val dir: Url[A] = dirUrl("list-dirs")
-    val paths       = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
-    val exp         = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
+    val dir: Url = dirUrl("list-dirs")
+    val paths    = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
+    val exp      = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
 
     val ls = store.listAll(dir).unsafeRunSync()
     ls.map(_.show.stripSuffix("/")).toSet must be(exp)
@@ -336,9 +336,9 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
   }
 
   it should "support putting content with no size" in {
-    val dir: Url[A] = dirUrl("put-no-size")
-    val path        = dir / "no-size.txt"
-    val exp         = contents("put without size")
+    val dir: Url = dirUrl("put-no-size")
+    val path     = dir / "no-size.txt"
+    val exp      = contents("put without size")
     val test = for {
       _ <- fs2
         .Stream(exp)
@@ -493,7 +493,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
     test.unsafeRunSync()
   }
 
-  def dirUrl(name: String): Url[A] = Url(scheme, authority, testRunRoot `//` name)
+  def dirUrl(name: String): Url = Url(scheme, authority, testRunRoot `//` name)
 
   def dirPath(name: String): Path.Plain = testRunRoot `//` name
 
@@ -501,7 +501,7 @@ abstract class AbstractStoreTest[A <: Authority, B <: FsObject]
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
-  def writeFile(store: Store[IO, A, B], tmpDir: Path.Plain)(filename: String): Url[A] = {
+  def writeFile(store: Store[IO, B], tmpDir: Path.Plain)(filename: String): Url = {
     def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
       if (count < times) timer.sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
     }

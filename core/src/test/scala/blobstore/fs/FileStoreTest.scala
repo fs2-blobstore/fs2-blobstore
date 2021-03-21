@@ -20,15 +20,15 @@ import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
 import cats.syntax.all._
 
-class FileStoreTest extends AbstractStoreTest[Authority.Standard, NioPath] {
+class FileStoreTest extends AbstractStoreTest[NioPath] {
 
   private val localStore: FileStore[IO] = FileStore[IO](blocker)
 
-  override def mkStore(): Store[IO, Authority.Standard, NioPath] =
-    localStore.liftTo[Authority.Standard]((u: Url[Authority.Standard]) => u.path.valid)
+  override def mkStore(): Store[IO, NioPath] =
+    localStore.lift((u: Url) => u.path.valid)
 
-  override val scheme: String                = "file"
-  override val authority: Authority.Standard = Authority.Standard.localhost
+  override val scheme: String       = "file"
+  override val authority: Authority = Authority.localhost
 
   override val fileSystemRoot: Path.Plain   = testRunRoot
   override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")

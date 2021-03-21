@@ -16,21 +16,18 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package s3
 
-import java.nio.ByteBuffer
-import java.util.concurrent.CompletableFuture
-
-import blobstore.url.{Authority, Path, Url}
-import blobstore.Store.{BlobStore, DelegatingStore}
+import blobstore.url.{Path, Url}
+import blobstore.util.liftJavaFuture
 import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
 import cats.syntax.all._
-import cats.MonadError
 import fs2.{Chunk, Hotswap, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model._
-import util.liftJavaFuture
 
+import java.nio.ByteBuffer
+import java.util.concurrent.CompletableFuture
 import scala.jdk.CollectionConverters._
 
 /** @param s3 - S3 Async Client
@@ -55,19 +52,19 @@ class S3Store[F[_]](
   bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
   queueSize: Int = 32
 )(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
-  extends BlobStore[F, S3Blob] {
+  extends Store[F, S3Blob] {
   require(
     bufferSize >= S3Store.multiUploadMinimumPartSize,
     s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}"
   )
 
-  override def list(url: Url[Authority.Bucket], recursive: Boolean = false): Stream[F, Path[S3Blob]] =
+  override def list(url: Url, recursive: Boolean = false): Stream[F, Path[S3Blob]] =
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
-  override def get(url: Url[Authority.Bucket], chunkSize: Int): Stream[F, Byte] = get(url, None)
+  override def get(url: Url, chunkSize: Int): Stream[F, Byte] = get(url, None)
 
-  def get(url: Url[Authority.Bucket], meta: Option[S3MetaInfo]): Stream[F, Byte] = {
-    val bucket = url.bucket.show
+  def get(url: Url, meta: Option[S3MetaInfo]): Stream[F, Byte] = {
+    val bucket = url.authority.show
     val key    = url.path.relative.show
 
     val request: GetObjectRequest =
@@ -89,17 +86,17 @@ class S3Store[F[_]](
     Stream.eval(liftJavaFuture(F.delay(s3.getObject[Stream[F, Byte]](request, transformer)))).flatten
   }
 
-  def put(url: Url[Authority.Bucket], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
+  def put(url: Url, overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
     put(url, overwrite, size, None)
 
   def put(
-    url: Url[Authority.Bucket],
+    url: Url,
     overwrite: Boolean,
     size: Option[Long],
     meta: Option[S3MetaInfo]
   ): Pipe[F, Byte, Unit] =
     in => {
-      val bucket = url.bucket.show
+      val bucket = url.authority.show
       val key    = url.path.relative.show
 
       val checkOverwrite =
@@ -117,18 +114,18 @@ class S3Store[F[_]](
         size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
     }
 
-  override def move(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] =
+  override def move(src: Url, dst: Url): F[Unit] =
     copy(src, dst) >> remove(src)
 
-  override def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket]): F[Unit] = {
+  override def copy(src: Url, dst: Url): F[Unit] = {
     stat(dst).compile.last.flatMap(s => copy(src, dst, s.flatMap(_.representation.meta)))
   }
 
-  def copy(src: Url[Authority.Bucket], dst: Url[Authority.Bucket], dstMeta: Option[S3MetaInfo]): F[Unit] = {
+  def copy(src: Url, dst: Url, dstMeta: Option[S3MetaInfo]): F[Unit] = {
     val request = {
-      val srcBucket = src.bucket.show
+      val srcBucket = src.authority.show
       val srcKey    = src.path.relative.show
-      val dstBucket = dst.bucket.show
+      val dstBucket = dst.authority.show
       val dstKey    = dst.path.relative.show
 
       val builder = CopyObjectRequest.builder()
@@ -144,16 +141,16 @@ class S3Store[F[_]](
     liftJavaFuture(F.delay(s3.copyObject(request))).void
   }
 
-  override def remove(url: Url[Authority.Bucket], recursive: Boolean = false): F[Unit] = {
-    val bucket = url.bucket.show
+  override def remove(url: Url, recursive: Boolean = false): F[Unit] = {
+    val bucket = url.authority.show
     val key    = url.path.relative.show
     val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
-    if (recursive) new StoreOps[F, Authority.Bucket, S3Blob](this).removeAll(url).void
+    if (recursive) new StoreOps[F, S3Blob](this).removeAll(url).void
     else liftJavaFuture(F.delay(s3.deleteObject(req))).void
   }
 
-  override def putRotate(computePath: F[Url[Authority.Bucket]], limit: Long): Pipe[F, Byte, Unit] =
+  override def putRotate(computePath: F[Url], limit: Long): Pipe[F, Byte, Unit] =
     if (limit <= bufferSize.toLong) {
       _.chunkN(limit.toInt)
         .flatMap(chunk => Stream.eval(computePath).flatMap(path => Stream.chunk(chunk).through(put(path))))
@@ -170,7 +167,7 @@ class S3Store[F[_]](
     }
 
   def listUnderlying(
-    url: Url[Authority.Bucket],
+    url: Url,
     fullMetadata: Boolean,
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
@@ -344,13 +341,13 @@ class S3Store[F[_]](
       }
       .stream
 
-  override def stat(url: Url[Authority.Bucket]): Stream[F, Path[S3Blob]] =
+  override def stat(url: Url): Stream[F, Path[S3Blob]] =
     Stream.eval(liftJavaFuture(
-      F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.bucket.show).key(url.path.relative.show).build()))
+      F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.authority.show).key(url.path.relative.show).build()))
     ).map { resp =>
       Path.of(
         url.path.show,
-        S3Blob(url.bucket.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
+        S3Blob(url.authority.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
       ).some
     }
       .recover {
@@ -358,11 +355,9 @@ class S3Store[F[_]](
           val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ =>
             defaultTrailingSlashFiles
           )
-          Path.of(url.path.show, S3Blob(url.bucket.show, url.path.relative.show, meta)).some
+          Path.of(url.path.show, S3Blob(url.authority.show, url.path.relative.show, meta)).some
       }).unNone
 
-  override def widen(implicit ME: MonadError[F, Throwable]): Store[F, Authority.Standard, S3Blob] =
-    new DelegatingStore[F, Authority.Standard, S3Blob](Left(this))
 }
 
 object S3Store {

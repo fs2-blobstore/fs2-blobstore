@@ -23,14 +23,14 @@ import cats.effect.concurrent.{MVar, MVar2}
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{ChannelSftp, Session, SftpException}
 
-abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standard, SftpFile] {
+abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
   def container: GenericContainer
   def session: IO[Session]
 
   override val scheme = "sftp"
-  override def authority: Authority.Standard =
-    Authority.Standard(Host.unsafe(container.containerIpAddress), None, Some(Port(container.mappedPort(22))))
+  override def authority: Authority =
+    Authority(Host.unsafe(container.containerIpAddress), None, Some(Port(container.mappedPort(22))))
 
   override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
   override val fileSystemRoot: Path.Plain   = Path("sftp_tests")
@@ -41,7 +41,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[Authority.Standar
   lazy val sftpStore: SftpStore[IO] =
     SftpStore[IO](session, blocker).compile.resource.lastOrError.allocated.map(_._1).unsafeRunSync()
 
-  def mkStore(): Store[IO, Authority.Standard, SftpFile] = sftpStore.liftTo[Authority.Standard]
+  def mkStore(): Store[IO, SftpFile] = sftpStore.lift
 
   override def beforeAll(): Unit = {
     container.start()
