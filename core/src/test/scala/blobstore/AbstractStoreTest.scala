@@ -17,7 +17,6 @@ package blobstore
 
 import java.util.UUID
 import java.nio.file.{Path => NioPath}
-
 import blobstore.fs.FileStore
 import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.effect.concurrent.Ref
@@ -28,6 +27,7 @@ import cats.implicits._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import fs2.Stream
+import org.scalatestplus.scalacheck.Checkers
 
 import scala.util.Random
 import scala.concurrent.duration._
@@ -38,12 +38,15 @@ abstract class AbstractStoreTest[B <: FsObject]
   with BeforeAndAfterAll
   with TestInstances
   with Inside
-  with IOTest {
+  with IOTest
+  with Checkers {
 
   // Override this
   def mkStore(): Store[IO, B]
   def scheme: String
   def authority: Authority
+  override implicit val generatorDrivenConfig: PropertyCheckConfiguration =
+    PropertyCheckConfiguration().copy(minSuccessful = 100)
 
   val testRun: UUID = java.util.UUID.randomUUID()
 
@@ -491,6 +494,36 @@ abstract class AbstractStoreTest[B <: FsObject]
 
     }
     test.unsafeRunSync()
+  }
+
+  it should "be able to put empty (zero-byte) files" in {
+    val dir  = dirUrl("empty-file")
+    val file = dir / "file"
+    val test = for {
+      _      <- Stream.empty.through(store.put(file)).compile.drain
+      result <- store.get(file, 1024).compile.toList
+    } yield {
+      result mustBe empty
+    }
+
+    test.unsafeRunSync()
+  }
+
+  it should "read same data that was written" in {
+    check[List[Byte], Int, Boolean] { case (bytes: List[Byte], n: Int) =>
+      val dir      = dirUrl("read-write")
+      val filePath = dir / s"file-$n"
+      val blob     = Stream.emits(bytes)
+
+      def test =
+        for {
+          _        <- blob.through(store.put(filePath)).compile.drain
+          contents <- store.get(filePath, 1024).compile.toList
+        } yield {
+          contents == bytes
+        }
+      test.unsafeRunSync()
+    }
   }
 
   def dirUrl(name: String): Url = Url(scheme, authority, testRunRoot `//` name)
