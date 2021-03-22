@@ -134,7 +134,7 @@ class SftpStore[F[_]] private (
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
       for {
-        p       <- Resource.liftF(computePath)
+        p       <- Resource.eval(computePath)
         channel <- channelResource
         os      <- outputStreamResource(channel, p)
       } yield os

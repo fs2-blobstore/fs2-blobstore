@@ -158,9 +158,9 @@ class AzureStore[F[_]](
 
   override def putRotate(computePath: F[Url], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile = for {
-      computed <- Resource.liftF(computePath)
+      computed <- Resource.eval(computePath)
       (container, blob) = AzureStore.urlToContainerAndBlob(computed)
-      queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[ByteBuffer]](queueSize))
+      queue <- Resource.eval(fs2.concurrent.Queue.bounded[F, Option[ByteBuffer]](queueSize))
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)

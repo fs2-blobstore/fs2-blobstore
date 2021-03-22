@@ -156,8 +156,8 @@ class S3Store[F[_]](
         .flatMap(chunk => Stream.eval(computePath).flatMap(path => Stream.chunk(chunk).through(put(path))))
     } else {
       val newFile = for {
-        path  <- Resource.liftF(computePath)
-        queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
+        path  <- Resource.eval(computePath)
+        queue <- Resource.eval(fs2.concurrent.Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
         _ <- Resource.make(
           F.start(queue.dequeue.unNoneTerminate.flatMap(Stream.chunk).through(put(path)).compile.drain)
         )(_.join)

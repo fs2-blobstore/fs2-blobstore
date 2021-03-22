@@ -150,13 +150,13 @@ class BoxStore[F[_]](
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] = for {
-      p <- Resource.liftF(computePath)
-      name <- Resource.liftF(
+      p <- Resource.eval(computePath)
+      name <- Resource.eval(
         F.fromEither(p.lastSegment.filter(s => !s.endsWith("/")).toRight(new IllegalArgumentException(
           s"Specified path '$p' doesn't point to a file."
         )))
       )
-      fileOrFolder <- Resource.liftF(boxFileAtPath(p).flatMap {
+      fileOrFolder <- Resource.eval(boxFileAtPath(p).flatMap {
         case None       => putFolderAtPath(rootFolder, p.up.segments.toList).map(_.asRight[BoxFile])
         case Some(file) => file.asLeft[BoxFolder].pure[F]
       })

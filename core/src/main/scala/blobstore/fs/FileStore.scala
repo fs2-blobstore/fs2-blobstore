@@ -107,8 +107,8 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = { in =>
     val openNewFile: Resource[F, FileHandle[F]] =
       Resource
-        .liftF(computePath)
-        .flatTap(p => Resource.liftF(createParentDir(p.plain)))
+        .eval(computePath)
+        .flatTap(p => Resource.eval(createParentDir(p.plain)))
         .flatMap { p =>
           FileHandle.fromPath(
             path = p.nioPath,
