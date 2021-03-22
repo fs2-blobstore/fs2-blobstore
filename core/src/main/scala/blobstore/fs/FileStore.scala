@@ -16,6 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package fs
 
+import blobstore.url.Path.Plain
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
@@ -155,20 +156,20 @@ class FileStore[F[_]](blocker: Blocker)(implicit F: Concurrent[F], CS: ContextSh
   // The local file system can't have file names ending with slash
   private def isDir[A](path: Path[A]): Boolean = path.show.endsWith("/")
 
-  /** Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
+  /** Lifts this FileStore to a Store accepting URLs and exposing blobs of type `B`. You must provide
     * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
     *
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def lift(g: Url => Validated[Throwable, Path.Plain]): Store[F, NioPath] =
+  override def lift(g: Url[String] => Validated[Throwable, Plain]): Store[F, NioPath] =
     new Store.DelegatingStore[F, NioPath](this, g)
-
-  def transferTo[B, P](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url)(implicit ev: B <:< FsObject): F[Int] =
-    defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
     get(path, chunkSize).through(fs2.text.utf8Decode).compile.string
+
+  override def transferTo[B, P, U](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[U])(implicit
+  ev: B <:< FsObject): F[Int] = defaultTransferTo(this, dstStore, srcPath, dstUrl)
 }
 
 object FileStore {

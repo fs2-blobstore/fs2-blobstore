@@ -35,18 +35,18 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   // Keys with trailing slashes are perfectly legal in GCS.
   // https://cloud.google.com/storage/docs/naming
   it should "handle files with trailing / in name" in {
-    val dir: Url = dirUrl("trailing-slash")
+    val dir      = dirUrl("trailing-slash")
     val filePath = dir / "file-with-slash/"
 
-    store.put("test", filePath).compile.drain.unsafeRunSync()
+    store.putContent(filePath, "test").unsafeRunSync()
 
     // Note
     val entities = store.list(dir).compile.toList.unsafeRunSync()
     entities must not be Nil
 
-    entities.foreach { listedPath =>
-      listedPath.fileName mustBe Some("file-with-slash/")
-      listedPath.isDir mustBe false
+    entities.foreach { listedUrl =>
+      listedUrl.path.fileName mustBe Some("file-with-slash/")
+      listedUrl.path.isDir mustBe false
     }
 
     store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
@@ -58,13 +58,13 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
   it should "expose underlying metadata" in {
     val dir  = dirUrl("expose-underlying")
-    val path = writeFile(store, dir.path)("abc.txt")
+    val path = writeFile(store, dir)("abc.txt")
 
     val entities = store.list(path).compile.toList.unsafeRunSync()
 
-    entities.foreach { gcsPath =>
+    entities.foreach { gcsUrl =>
       // Note: LocalStorageHelper doesn't automatically set other fields like storageClass, md5, etc.
-      gcsPath.representation.blob.getGeneration mustBe 1
+      gcsUrl.path.representation.blob.getGeneration mustBe 1
     }
   }
 
@@ -85,18 +85,18 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
     ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()
 
-    entities.foreach { gcsPath =>
-      gcsPath.representation.blob.getContentType mustBe ct
-      gcsPath.representation.blob.getStorageClass mustBe sc
-      gcsPath.representation.blob.getMetadata must contain key "key"
-      gcsPath.representation.blob.getMetadata.get("key") mustBe "value"
+    entities.foreach { gcsUrl =>
+      gcsUrl.path.representation.blob.getContentType mustBe ct
+      gcsUrl.path.representation.blob.getStorageClass mustBe sc
+      gcsUrl.path.representation.blob.getMetadata must contain key "key"
+      gcsUrl.path.representation.blob.getMetadata.get("key") mustBe "value"
     }
   }
 
   it should "support direct download" in {
-    val dir: Url = dirUrl("direct-download")
+    val dir      = dirUrl("direct-download")
     val filename = s"test-${System.currentTimeMillis}.txt"
-    val path     = writeFile(store, dir.path)(filename)
+    val path     = writeFile(store, dir)(filename)
 
     val content = gcsStore
       .getUnderlying(path, 4096, direct = true, maxChunksInFlight = None)
@@ -109,8 +109,8 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   }
 
   it should "resolve type of storage class" in {
-    gcsStore.list(dirUrl("foo")).map { path =>
-      val sc: Option[StorageClass] = path.storageClass
+    gcsStore.list(dirUrl("foo")).map { u =>
+      val sc: Option[StorageClass] = u.path.storageClass
       sc mustBe None
     }
   }

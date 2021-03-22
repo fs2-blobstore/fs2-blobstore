@@ -11,21 +11,21 @@ import cats.syntax.all._
 
 import scala.util.Try
 
-case class Url(scheme: String, authority: Authority, path: Path.Plain) {
-  def replacePath[AA](p: Path[AA]): Url = copy(path = p.plain)
-  def /[AA](path: Path[AA]): Url        = copy(path = this.path./(path.show))
-  def /(segment: String): Url           = copy(path = path./(segment))
-  def /(segment: Option[String]): Url = segment match {
+case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
+  def replacePath[AA](p: Path[AA]): Url[String] = copy(path = p.plain)
+  def /[AA](path: Path[AA]): Url[String]        = copy(path = this.path./(path.show))
+  def /(segment: String): Url[String]           = copy(path = path./(segment))
+  def /(segment: Option[String]): Url[String] = segment match {
     case Some(s) => /(s)
-    case None    => this
+    case None    => copy(path = path.plain)
   }
 
   /** Ensure that path always is suffixed with '/'
     */
-  def `//`(segment: String): Url = copy(path = path.`//`(segment))
-  def `//`(segment: Option[String]): Url = segment match {
+  def `//`(segment: String): Url[String] = copy(path = path.`//`(segment))
+  def `//`(segment: Option[String]): Url[String] = segment match {
     case Some(s) => `//`(s)
-    case None    => this
+    case None    => copy(path = path.plain)
   }
 
   /** Safe toString implementation.
@@ -76,21 +76,21 @@ case class Url(scheme: String, authority: Authority, path: Path.Plain) {
 
 object Url {
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url] =
+  def parseF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url[String]] =
     parse(c).leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
-  def unsafe(c: String): Url = parse(c) match {
+  def unsafe(c: String): Url[String] = parse(c) match {
     case Valid(u)   => u
     case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
-  def parse(c: String): ValidatedNec[UrlParseError, Url] = {
+  def parse(c: String): ValidatedNec[UrlParseError, Url[String]] = {
     val regex = "^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?".r
 
     // Treat `m.group` as unsafe, since it really is
     def tryOpt[A](a: => A): Try[Option[A]] = Try(a).map(Option.apply)
 
-    def parseFileUrl(u: String): ValidatedNec[UrlParseError, Url] = {
+    def parseFileUrl(u: String): ValidatedNec[UrlParseError, Url[String]] = {
       val fileRegex = "file:/([^:]+)".r
       fileRegex.findFirstMatchIn(u).map { m =>
         val matchRegex = tryOpt(m.group(1)).toEither.leftMap(_ => InvalidFileUrl(show"Not a valid file uri: $u"))
@@ -125,9 +125,9 @@ object Url {
     if (c.startsWith("file")) parseFileUrl(c) else parseNonFile
   }
 
-  implicit val ordering: Ordering[Url] = _.show compare _.show
-  implicit val order: Order[Url]       = Order.fromOrdering
-  implicit val show: Show[Url] = u => {
+  implicit def ordering[A]: Ordering[Url[A]] = _.show compare _.show
+  implicit def order[A]: Order[Url[A]]       = Order.fromOrdering
+  implicit def show[A]: Show[Url[A]] = u => {
     val pathString = u.path match {
       case a @ AbsolutePath(_, _) => a.show.stripPrefix("/")
       case a                      => a.show

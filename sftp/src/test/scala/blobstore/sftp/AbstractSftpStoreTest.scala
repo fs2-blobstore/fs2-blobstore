@@ -80,13 +80,13 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
     val dir = dirUrl("list-more-than-64")
 
-    val paths = (1 to 256).toList
+    val urls = (1 to 256).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, dir.path))
+      .map(writeFile(store, dir))
 
-    val exp = paths.map(_.path.lastSegment).toSet
+    val exp = urls.map(_.path.lastSegment).toSet
 
-    store.list(dir).compile.toList.unsafeRunSync().map(_.lastSegment).toSet mustBe exp
+    store.list(dir).compile.toList.unsafeRunSync().map(_.path.lastSegment).toSet mustBe exp
 
     store.remove(dir, recursive = true).unsafeRunSync()
 
@@ -98,7 +98,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
     val filename = "some-filename"
 
     val result = for {
-      file  <- IO(writeFile(store, dir.path)(filename))
+      file  <- IO(writeFile(store, dir)(filename))
       _     <- store.remove(file)
       _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
@@ -112,7 +112,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
     val filename = "some-filename"
 
     val failedRemove = for {
-      _     <- IO(writeFile(store, dir.path)(filename))
+      _     <- IO(writeFile(store, dir)(filename))
       _     <- store.remove(dir)
       files <- store.list(dir).compile.toList
     } yield files

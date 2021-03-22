@@ -138,7 +138,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
       Path("/foo/")
     )
 
-    val candidates: List[Option[(String, Url)]] = cross.map {
+    val candidates: List[Option[(String, Url[String])]] = cross.map {
       case (User(u), User(_)) =>
         val v   = show"https://$u@example.com/foo/"
         val url = Url("https", Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), None), Path("/foo/"))

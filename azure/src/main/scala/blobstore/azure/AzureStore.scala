@@ -47,17 +47,17 @@ class AzureStore[F[_]](
   extends Store[F, AzureBlob] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
 
-  override def list(url: Url, recursive: Boolean): Stream[F, Path[AzureBlob]] =
+  override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[AzureBlob]] =
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
-  override def get(url: Url, chunkSize: Int): Stream[F, Byte] = {
+  override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).download())
       .flatMap(byteBuffer => Stream.chunk(Chunk.byteBuffer(byteBuffer)))
   }
 
-  override def put(
-    url: Url,
+  override def put[A](
+    url: Url[A],
     overwrite: Boolean = true,
     size: Option[Long] = None
   ): Pipe[F, Byte, Unit] =
@@ -68,8 +68,8 @@ class AzureStore[F[_]](
       Map.empty
     )
 
-  def put(
-    url: Url,
+  def put[A](
+    url: Url[A],
     overwrite: Boolean,
     properties: Option[BlobItemProperties],
     meta: Map[String, String]
@@ -105,13 +105,13 @@ class AzureStore[F[_]](
     Stream.eval(liftJavaFuture(F.delay(upload.toFuture)).void)
   }
 
-  override def move(src: Url, dst: Url): F[Unit] =
+  override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     copy(src, dst) >> remove(
       src,
       recursive = true
     ) // TODO: Copied recursive = true from gcs store. Does it make sense??
 
-  override def copy(src: Url, dst: Url): F[Unit] = {
+  override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] = {
     val (srcContainer, srcBlob) = AzureStore.urlToContainerAndBlob(src)
     val (dstContainer, dstBlob) = AzureStore.urlToContainerAndBlob(dst)
     val srcUrl = azure
@@ -125,7 +125,7 @@ class AzureStore[F[_]](
     liftJavaFuture(F.delay(copy.next().flatMap(_.getFinalResult).toFuture)).void
   }
 
-  override def remove(url: Url, recursive: Boolean = false): F[Unit] = {
+  override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
     val (container, blobOrPrefix) = AzureStore.urlToContainerAndBlob(url)
     def recoverNotFound(m: Mono[Void]): Mono[Void] = m.onErrorResume(
       (t: Throwable) =>
@@ -156,9 +156,9 @@ class AzureStore[F[_]](
     liftJavaFuture(F.delay(mono.toFuture)).void
   }
 
-  override def putRotate(computePath: F[Url], limit: Long): Pipe[F, Byte, Unit] = {
+  override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile = for {
-      computed <- Resource.liftF(computePath)
+      computed <- Resource.liftF(computeUrl)
       (container, blob) = AzureStore.urlToContainerAndBlob(computed)
       queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[ByteBuffer]](queueSize))
       blobClient = azure
@@ -173,7 +173,7 @@ class AzureStore[F[_]](
     putRotateBase(limit, openNewFile)(queue => bytes => queue.enqueue1(Some(bytes.toByteBuffer)))
   }
 
-  override def stat(url: Url): Stream[F, Path[AzureBlob]] = {
+  override def stat[A](url: Url[A]): Stream[F, Path[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
     Stream.eval(liftJavaFuture(F.delay(mono.toFuture)).attempt).evalMap {
@@ -186,12 +186,12 @@ class AzureStore[F[_]](
     }.unNone
   }
 
-  def listUnderlying(
-    url: Url,
+  def listUnderlying[A](
+    url: Url[A],
     fullMetadata: Boolean,
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
-  ): Stream[F, Path[AzureBlob]] = {
+  ): Stream[F, Url[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val options = new ListBlobsOptions()
       .setPrefix(if (blobName == "/") "" else blobName)
@@ -203,6 +203,9 @@ class AzureStore[F[_]](
     val flux = blobPagedFlux
       .filter(bi => Option(bi.isDeleted).forall(deleted => !deleted))
       .flatMap[Path[AzureBlob]](AzureStore.blobItemToPath(containerClient, expectTrailingSlashFiles, container))
+      .map[Url[AzureBlob]](new JavaFunction[Path[AzureBlob], Url[AzureBlob]] {
+        def apply(p: Path[AzureBlob]): Url[AzureBlob] = url.copy(path = p)
+      })
     fromPublisher(flux)
   }
 }
@@ -219,7 +222,7 @@ object AzureStore {
     if (numBuffers < 2) new IllegalArgumentException(s"Number of buffers must be at least 2").raiseError
     else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize).pure[F]
 
-  private def urlToContainerAndBlob(url: Url): (String, String) =
+  private def urlToContainerAndBlob[A](url: Url[A]): (String, String) =
     (url.authority.show, url.path.show.stripPrefix("/"))
 
   private def toBlobItemProperties(bp: BlobProperties): (BlobItemProperties, Map[String, String]) = {

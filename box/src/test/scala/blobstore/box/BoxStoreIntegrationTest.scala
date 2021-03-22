@@ -92,8 +92,8 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   it should "expose underlying metadata" in {
     val dirP = dirUrl("expose-underlying")
 
-    writeFile(store, dirP.path)("abc.txt")
-    val subFolderFile = writeFile(store, dirP.path / "subfolder")("cde.txt")
+    writeFile(store, dirP)("abc.txt")
+    val subFolderFile = writeFile(store, dirP / "subfolder")("cde.txt")
 
     val paths = boxStore
       .listUnderlying(dirP.path, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS, recursive = false)

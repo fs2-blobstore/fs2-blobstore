@@ -39,12 +39,12 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
 
   it should "expose underlying metadata" in {
     val dir  = dirUrl("expose-underlying")
-    val path = writeFile(store, dir.path)("abc.txt")
+    val path = writeFile(store, dir)("abc.txt")
 
     val entities = store.list(path).compile.toList.unsafeRunSync()
 
-    entities.foreach { s3Path =>
-      inside(s3Path.representation.meta) {
+    entities.foreach { s3Url =>
+      inside(s3Url.path.representation.meta) {
         case Some(metaInfo) =>
           // Note: defaultFullMetadata = true in S3Store constructor.
           metaInfo.contentType mustBe a[Some[_]]
@@ -96,10 +96,10 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
         .compile
         .drain
       files        <- store.list(dir, recursive = true).compile.toList
-      fileContents <- files.traverse(p => store.get(Url("s3", authority, p.plain), 1024).compile.to(Array))
+      fileContents <- files.traverse(u => store.get(u, 1024).compile.to(Array))
     } yield {
       files must have size 2
-      files.flatMap(_.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)
+      files.flatMap(_.path.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)
       fileContents.flatten mustBe content.toList
     }
 
@@ -107,8 +107,8 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
   }
 
   it should "resolve type of storage class" in {
-    store.list(dirUrl("foo")).map { path =>
-      val sc: Option[StorageClass] = path.storageClass
+    store.list(dirUrl("foo")).map { url =>
+      val sc: Option[StorageClass] = url.path.storageClass
       sc mustBe None
     }
   }

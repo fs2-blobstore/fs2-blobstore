@@ -44,8 +44,8 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
     ).compile.drain.unsafeRunSync()
     val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
 
-    entities.foreach { s3Path =>
-      inside(s3Path.representation.meta) {
+    entities.foreach { s3Url =>
+      inside(s3Url.path.representation.meta) {
         case Some(meta) =>
           meta.storageClass must contain(sc)
           meta.contentType must contain(ct)
@@ -71,8 +71,8 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
 
     val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
 
-    entities.foreach { s3Path =>
-      inside(s3Path.representation.meta) {
+    entities.foreach { s3Url =>
+      inside(s3Url.path.representation.meta) {
         case Some(meta) =>
           meta.storageClass must contain(sc)
           meta.contentType must contain(ct)
