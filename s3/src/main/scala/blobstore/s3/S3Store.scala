@@ -20,7 +20,7 @@ import blobstore.url.{Path, Url}
 import blobstore.util.liftJavaFuture
 import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
 import cats.syntax.all._
-import fs2.{Chunk, Hotswap, Pipe, Pull, Stream}
+import fs2.{Chunk, Hotswap, INothing, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
@@ -235,6 +235,17 @@ class S3Store[F[_]](
     Stream.eval(liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
   }
 
+  private def putSingleChunk(
+    bucket: String,
+    key: String,
+    meta: Option[S3MetaInfo],
+    chunk: Chunk[Byte]
+  ): Pull[F, INothing, Unit] =
+    Pull.eval(liftJavaFuture(F.delay(s3.putObject(
+      S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, chunk.size.toLong),
+      AsyncRequestBody.fromByteBuffer(chunk.toByteBuffer)
+    ))).void)
+
   private def putUnknownSize(
     bucket: String,
     key: String,
@@ -244,11 +255,10 @@ class S3Store[F[_]](
     in.pull
       .unconsN(bufferSize, allowFewer = true)
       .flatMap {
-        case None => Pull.done
+        case None =>
+          putSingleChunk(bucket, key, meta, Chunk.empty)
         case Some((chunk, _)) if chunk.size < bufferSize =>
-          val request     = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, chunk.size.toLong)
-          val requestBody = AsyncRequestBody.fromByteBuffer(chunk.toByteBuffer)
-          Pull.eval(liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
+          putSingleChunk(bucket, key, meta, chunk)
         case Some((chunk, rest)) =>
           val request: CreateMultipartUploadRequest = {
             val builder = CreateMultipartUploadRequest.builder()
