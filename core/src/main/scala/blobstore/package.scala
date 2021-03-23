@@ -89,11 +89,11 @@ package object blobstore {
     }
   }
 
-  private[blobstore] def defaultTransferTo[F[_]: Sync, B, P, C](
+  private[blobstore] def defaultTransferTo[F[_]: Sync, B, P, C, A](
     selfStore: PathStore[F, C],
     dstStore: Store[F, B],
     srcPath: Path[P],
-    dstUrl: Url
+    dstUrl: Url[A]
   )(implicit evB: B <:< FsObject, evC: C <:< FsObject): F[Int] =
     dstStore.stat(dstUrl).last.map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
       selfStore.list(srcPath.plain, recursive = false)
@@ -101,8 +101,8 @@ package object blobstore {
           if (p.isDir) {
             defaultTransferTo(selfStore, dstStore, p, dstUrl `//` p.lastSegment)
           } else {
-            val dp = if (dstIsDir) dstUrl / p.lastSegment else dstUrl
-            selfStore.get(p, 4096).through(dstStore.put(dp)).compile.drain.as(1)
+            val dUrl: Url[String] = if (dstIsDir) dstUrl / p.lastSegment else dstUrl.replacePath(dstUrl.path)
+            selfStore.get(p, 4096).through(dstStore.put(dUrl)).compile.drain.as(1)
           }
         }
         .fold(0)(_ + _)

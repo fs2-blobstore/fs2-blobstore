@@ -41,7 +41,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
       .bracket(IO(Files.createTempFile("test-file", ".bin"))) { p => IO(p.toFile.delete).void }
       .flatMap { p =>
         Stream.emits(bytes).covary[IO].through(fs2.io.file.writeAll(p, blocker)).drain ++
-          Stream.eval(store.put(p, Url.unsafe("foo://bucket/path/to/file.txt"), true, blocker))
+          Stream.eval(store.putFromNio(p, Url.unsafe("foo://bucket/path/to/file.txt"), true, blocker))
       }
       .compile
       .drain
@@ -58,7 +58,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     Stream
       .bracket(IO(Files.createTempFile("test-file", ".bin")))(p => IO(p.toFile.delete).void)
       .flatMap { nioPath =>
-        Stream.eval(store.get(path, nioPath, 4096, blocker)) >> Stream.eval {
+        Stream.eval(store.getToNio(path, nioPath, 4096, blocker)) >> Stream.eval {
           IO {
             Files.readAllBytes(nioPath) mustBe bytes
           }
@@ -84,22 +84,22 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
 
 final case class DummyStore()(implicit cs: ContextShift[IO]) extends Store[IO, String] {
   val buf = new ArrayBuffer[Byte]()
-  override def put(url: Url, overwrite: Boolean, size: Option[Long] = None): Pipe[IO, Byte, Unit] = {
+  override def put[A](url: Url[A], overwrite: Boolean, size: Option[Long] = None): Pipe[IO, Byte, Unit] = {
     in =>
       {
         buf.appendAll(in.compile.toVector.unsafeRunSync())
         Stream.emit(())
       }
   }
-  override def get(url: Url, chunkSize: Int): Stream[IO, Byte] = Stream.emits(buf)
-  override def list(url: Url, recursive: Boolean = false): Stream[IO, Path.Plain] =
-    Stream.emits(List(Path("the-file.txt")))
-  override def move(src: Url, dst: Url): IO[Unit]                                 = ???
-  override def copy(src: Url, dst: Url): IO[Unit]                                 = ???
-  override def remove(url: Url, recursive: Boolean): IO[Unit]                     = ???
-  override def putRotate(computePath: IO[Url], limit: Long): Pipe[IO, Byte, Unit] = ???
+  override def get[A](url: Url[A], chunkSize: Int): Stream[IO, Byte] = Stream.emits(buf)
+  override def list[A](url: Url[A], recursive: Boolean = false): Stream[IO, Url[String]] =
+    Stream.emits(List(url.replacePath(Path("the-file.txt"))))
+  override def move[A, B](src: Url[A], dst: Url[B]): IO[Unit]                          = ???
+  override def copy[A, B](src: Url[A], dst: Url[B]): IO[Unit]                          = ???
+  override def remove[A](url: Url[A], recursive: Boolean): IO[Unit]                    = ???
+  override def putRotate[A](computeUrl: IO[Url[A]], limit: Long): Pipe[IO, Byte, Unit] = ???
 
-  override def stat(url: Url): Stream[IO, Path[String]] = ???
+  override def stat[A](url: Url[A]): Stream[IO, Path[String]] = ???
 }
 
 object DummyStore {

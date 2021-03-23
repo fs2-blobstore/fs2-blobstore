@@ -195,12 +195,12 @@ class SftpStore[F[_]] private (
       }
 
   override def lift: Store[F, SftpFile] =
-    lift((u: Url) => u.path.relative.valid)
+    lift((u: Url[String]) => u.path.relative.valid)
 
-  override def lift(g: Url => Validated[Throwable, Plain]): Store[F, SftpFile] =
+  override def lift(g: Url[String] => Validated[Throwable, Plain]): Store[F, SftpFile] =
     new Store.DelegatingStore[F, SftpFile](this, g)
 
-  override def transferTo[B, P](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url)(implicit
+  override def transferTo[B, P, A](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[A])(implicit
   ev: B <:< FsObject): F[Int] =
     defaultTransferTo(this, dstStore, srcPath, dstUrl)
 

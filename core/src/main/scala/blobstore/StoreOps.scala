@@ -15,10 +15,12 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-import blobstore.url.{FsObject, Path, Url}
+import blobstore.url.{FsObject, Url}
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.all._
 import fs2.Pipe
+
+import java.nio.charset.StandardCharsets
 
 /** This object contains shared implementations of functions that requires additional capabilities from the effect type
   */
@@ -29,7 +31,7 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     * @param dst Path to write to
     * @return F[Unit]
     */
-  def put(src: java.nio.file.Path, dst: Url, overwrite: Boolean, blocker: Blocker): F[Unit] =
+  def putFromNio[A](src: java.nio.file.Path, dst: Url[A], overwrite: Boolean, blocker: Blocker): F[Unit] =
     Sync[F].delay(Option(src.toFile.length)).map(_.filter(_ > 0)).flatMap { size =>
       fs2.io.file
         .readAll(src, blocker, 4096)
@@ -44,7 +46,7 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     * @param url Path to write to
     * @return Sink[F, Byte] buffered sink
     */
-  def bufferedPut(url: Url, overwrite: Boolean, chunkSize: Int, blocker: Blocker): Pipe[F, Byte, Unit] =
+  def bufferedPut[A](url: Url[A], overwrite: Boolean, chunkSize: Int, blocker: Blocker): Pipe[F, Byte, Unit] =
     _.through(bufferToDisk[F](chunkSize, blocker)).flatMap {
       case (n, s) =>
         s.through(store.put(url, overwrite, Option(n)))
@@ -55,14 +57,23 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     * @param dst local file to write contents to
     * @return F[Unit]
     */
-  def get(src: Url, dst: java.nio.file.Path, chunkSize: Int, blocker: Blocker): F[Unit] =
+  def getToNio[A](src: Url[A], dst: java.nio.file.Path, chunkSize: Int, blocker: Blocker): F[Unit] =
     store.get(src, chunkSize).through(fs2.io.file.writeAll[F](dst, blocker)).compile.drain
+
+  def putContent[A](url: Url[A], content: String): F[Unit] = {
+    val bytes = content.getBytes(StandardCharsets.UTF_8)
+    fs2.Stream
+      .emits(bytes)
+      .covary[F]
+      .through(store.put(url, size = Some(bytes.length.toLong)))
+      .compile.drain
+  }
 
   /** getContents with default UTF8 decoder
     * @param url Path to get
     * @return F[String] with file contents
     */
-  def getContents(url: Url, chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
+  def getContents[A](url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
 
   /** Decode get bytes from path into a string using decoder and return concatenated string.
     *
@@ -72,14 +83,14 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     * @param decoder Pipe[F, Byte, String]
     * @return F[String] with file contents
     */
-  def getContents(url: Url, chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
+  def getContents[A](url: Url[A], chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
     store.get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
 
   /** Collect all list results in the same order as the original list Stream
     * @param url Path to list
     * @return F\[List\[Path\]\] with all items in the result
     */
-  def listAll(url: Url): F[List[Path[B]]] =
+  def listAll[A](url: Url[A]): F[List[Url[B]]] =
     store.list(url).compile.toList
 
   /** Copy value of the given path in this store to the destination store.
@@ -96,11 +107,11 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     *                make sure that dstPath.isDir == true, otherwise all files will override destination.
     * @return Stream[F, Int] number of files transfered
     */
-  def transferTo[BB](dstStore: Store[F, BB], srcUrl: Url, dstUrl: Url): F[Int] =
+  def transferTo[BB, A, C](dstStore: Store[F, BB], srcUrl: Url[A], dstUrl: Url[C]): F[Int] =
     store.list(srcUrl, recursive = true)
-      .flatMap(p =>
-        store.get(srcUrl.replacePath(p), 4096)
-          .through(dstStore.put(dstUrl.copy(path = p.plain)))
+      .flatMap(u =>
+        store.get(u, 4096)
+          .through(dstStore.put(dstUrl))
           .last
           .map(_.fold(0)(_ => 1))
       )
@@ -109,7 +120,7 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
 
   /** Remove all files from a store recursively, given a path
     */
-  def removeAll(url: Url)(implicit ev: B <:< FsObject): F[Int] = {
+  def removeAll[A](url: Url[A])(implicit ev: B <:< FsObject): F[Int] = {
     val isDir = store.stat(url).compile.last.map {
       case Some(d) => d.isDir
       case None    => url.path.show.endsWith("/")
@@ -117,12 +128,12 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
 
     isDir.flatMap { isDir =>
       store.list(url)
-        .evalMap(p =>
-          if (p.isDir) {
-            removeAll(url / p.lastSegment)
+        .evalMap(u =>
+          if (u.path.isDir) {
+            removeAll(url / u.path.lastSegment)
           } else {
-            val dp = if (isDir) url / p.lastSegment else url
-            store.remove(dp, recursive = false).as(1)
+            val dUrl: Url[String] = if (isDir) url / u.path.lastSegment else url.replacePath(url.path)
+            store.remove(dUrl, recursive = false).as(1)
           }
         )
         .compile

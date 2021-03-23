@@ -69,17 +69,17 @@ abstract class PathStore[F[_], BlobType] {
     * @param url to remove
     * @return F[Unit]
     */
-  def remove[A](url: Path[A], recursive: Boolean = false): F[Unit]
+  def remove[A](path: Path[A], recursive: Boolean = false): F[Unit]
 
   /** Writes all data to a sequence of blobs/files, each limited in size to `limit`.
     *
-    * The `computePath` operation is used to compute the path of the first file
+    * The `computeUrl` operation is used to compute the path of the first file
     * and every subsequent file. Typically, the next file should be determined
     * by analyzing the current state of the filesystem -- e.g., by looking at all
     * files in a directory and generating a unique name.
     *
-    * @note Put of all files uses overwrite semantic, i.e. if path returned by computePath already exists content will be overwritten.
-    *       If that doesn't suit your use case use computePath to guard against overwriting existing files.
+    * @note Put of all files uses overwrite semantic, i.e. if path returned by computeUrl already exists content will be overwritten.
+    *       If that doesn't suit your use case use computeUrl to guard against overwriting existing files.
     *
     * @param computePath operation to compute the path of the first file and all subsequent files.
     * @param limit maximum size in bytes for each file.
@@ -87,18 +87,17 @@ abstract class PathStore[F[_], BlobType] {
     */
   def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  /** Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
-    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+  /** Lifts this FileStore to a Store accepting URLs and exposing blobs of type `BlobType`. You may provide a function `g` for controlling input paths to this store.
     *
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  def lift(g: Url => Validated[Throwable, Path.Plain]): Store[F, BlobType] // TODO add parameter for Path => Url
+  def lift(g: Url[String] => Validated[Throwable, Path.Plain]): Store[F, BlobType]
 
   def lift: Store[F, BlobType] =
-    lift((u: Url) => u.path.valid)
+    lift((u: Url[String]) => u.path.valid.map(_.plain))
 
-  def transferTo[B, P](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url)(implicit ev: B <:< FsObject): F[Int]
+  def transferTo[B, P, A](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[A])(implicit ev: B <:< FsObject): F[Int]
 
   def stat[A](path: Path[A]): F[Option[Path[BlobType]]]
 

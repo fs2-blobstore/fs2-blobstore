@@ -75,7 +75,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   behavior of "all stores"
 
   it should "put, list, get, remove keys" in {
-    val dir = dirPath("all")
+    val dir = dirUrl("all")
 
     // put a random file
     val filename = s"test-${System.currentTimeMillis}.txt"
@@ -84,7 +84,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     // list to make sure file is present
     val found = store.listAll(url).unsafeRunSync()
     found.size must be(1)
-    found.head.toString mustBe url.path.toString
+    found.head.toString mustBe url.toString
 
     // check contents of file
     store.getContents(url).unsafeRunSync() must be(contents(filename))
@@ -96,9 +96,9 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "move keys" in {
-    val dir: Url = dirUrl("move-keys")
-    val src      = writeFile(store, dir.path)(s"src/${System.currentTimeMillis}.txt")
-    val dst      = dir / s"dst/${System.currentTimeMillis}.txt"
+    val dir = dirUrl("move-keys")
+    val src = writeFile(store, dir)(s"src/${System.currentTimeMillis}.txt")
+    val dst = dir / s"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
       l1 <- store.listAll(src)
@@ -121,17 +121,17 @@ abstract class AbstractStoreTest[B <: FsObject]
   it should "list multiple keys" in {
     import cats.implicits._
 
-    val dir: Url = dirUrl("list-many")
+    val dir = dirUrl("list-many")
 
-    val paths = (1 to 10).toList
+    val urls = (1 to 10).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, dir.path))
+      .map(writeFile(store, dir))
 
-    val exp = paths.map(_.path.show).toSet
+    val exp = urls.map(_.show).toSet
 
     store.listAll(dir).unsafeRunSync().map(_.show).toSet must be(exp)
 
-    paths.parTraverse_(store.remove(_)).unsafeRunSync()
+    urls.parTraverse_(store.remove(_)).unsafeRunSync()
 
     store.listAll(dir).unsafeRunSync() mustBe Nil
   }
@@ -141,32 +141,33 @@ abstract class AbstractStoreTest[B <: FsObject]
   // any problems that there might be with operating on a root level file/directory.
   it should "listAll lists files in a root level directory" in {
     import cats.implicits._
-    val rootDir = fileSystemRoot
-    val paths = (1 to 2).toList
+    val rootDir = Url(scheme, authority, fileSystemRoot)
+    val urls = (1 to 2).toList
       .map(i => s"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
-    val exp = paths.map(p => p.path.relative.show).toSet
+    val exp = urls.map(u => u.path.relative.show).toSet
 
     // Not doing equals comparison because this directory contains files from other tests.
     // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
     val pathsListed =
-      store.listAll(Url(scheme, authority, rootDir)).unsafeRunSync().map(_.show).toSet.toString()
+      store.listAll(rootDir).unsafeRunSync().map(_.show).toSet.toString()
+
     exp.foreach(s => pathsListed must include(s))
 
-    val io: IO[List[Unit]] = paths.traverse(store.remove(_))
+    val io: IO[List[Unit]] = urls.traverse(store.remove(_))
     io.unsafeRunSync()
   }
 
   it should "list files and directories correctly" in {
-    val dir: Url = dirUrl("list-dirs")
-    val paths    = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir.path))
-    val exp      = paths.map(_.path.show.replaceFirst("/file-1.txt", "")).toSet
+    val dir   = dirUrl("list-dirs")
+    val paths = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
+    val exp   = paths.map(_.show.replaceFirst("/file-1.txt", "")).toSet
 
     val ls = store.listAll(dir).unsafeRunSync()
     ls.map(_.show.stripSuffix("/")).toSet must be(exp)
-    val option    = ls.find(_.isDir)
-    val dirString = option.flatMap(_.lastSegment)
+    val option    = ls.find(_.path.isDir)
+    val dirString = option.flatMap(_.path.lastSegment)
     inside(dirString) {
       case Some(dir) => dir must fullyMatch regex "subdir/?"
     }
@@ -297,7 +298,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val srcDir = dirUrl("copy-dir-to-dir-src")
     val dstDir = dirUrl("copy-dir-to-dir-dst")
 
-    writeFile(store, srcDir.path)("filename.txt")
+    writeFile(store, srcDir)("filename.txt")
 
     val test = for {
       _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
@@ -321,9 +322,9 @@ abstract class AbstractStoreTest[B <: FsObject]
 
     (1 to 10).toList
       .map(i => s"filename-$i.txt")
-      .map(writeFile(store, srcDir.path))
+      .map(writeFile(store, srcDir))
 
-    (1 to 5).map(i => s"filename-$i.txt").map(writeFile(store, (srcDir / "sub").path))
+    (1 to 5).map(i => s"filename-$i.txt").map(writeFile(store, srcDir / "sub"))
 
     store.remove(srcDir, recursive = true).unsafeRunSync()
 
@@ -337,9 +338,9 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "support putting content with no size" in {
-    val dir: Url = dirUrl("put-no-size")
-    val path     = dir / "no-size.txt"
-    val exp      = contents("put without size")
+    val dir  = dirUrl("put-no-size")
+    val path = dir / "no-size.txt"
+    val exp  = contents("put without size")
     val test = for {
       _ <- fs2
         .Stream(exp)
@@ -364,7 +365,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   it should "overwrite existing file on put with overwrite" in {
     val dir  = dirUrl("overwrite-existing")
-    val path = writeFile(store, dir.path)("existing.txt")
+    val path = writeFile(store, dir)("existing.txt")
 
     fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -385,7 +386,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   it should "fail on put to Path with existing file without overwrite" in {
     val dir  = dirUrl("fail-no-overwrite")
-    val path = writeFile(store, dir.path)("existing.txt")
+    val path = writeFile(store, dir)("existing.txt")
 
     val result = fs2
       .Stream("new content".getBytes().toIndexedSeq: _*)
@@ -422,7 +423,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   it should "support paths with spaces" in {
     val dir = dirUrl("path spaces")
-    val url = writeFile(store, dir.path)("file with spaces")
+    val url = writeFile(store, dir)("file with spaces")
     val result = for {
       list <- store
         .list(url)
@@ -431,9 +432,9 @@ abstract class AbstractStoreTest[B <: FsObject]
       get    <- store.get(url, 1024).compile.drain.attempt
       remove <- store.remove(url).attempt
     } yield {
-      list.map(_.show) must contain only url.path.show
-      list.headOption.flatMap(_.fileName) must contain("file with spaces")
-      list.headOption.map(_.segments.toList.init.last) must contain("path spaces")
+      list.map(_.show) must contain only url.show
+      list.headOption.flatMap(_.path.fileName) must contain("file with spaces")
+      list.headOption.map(_.path.segments.toList.init.last) must contain("path spaces")
       get mustBe a[Right[_, _]]
       remove mustBe a[Right[_, _]]
     }
@@ -444,14 +445,14 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dir   = dirUrl("list-recursively")
     val files = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
     val result = for {
-      _     <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
-      paths <- store.list(dir, recursive = true).compile.toList
+      _    <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
+      urls <- store.list(dir, recursive = true).compile.toList
     } yield {
-      paths must have size 8
-      paths.flatMap(_.fileName) must contain theSameElementsAs List("a", "b", "c", "d", "e", "x", "y", "z")
-      paths.foreach { p =>
-        p.isDir mustBe false
-        p.size must contain(1L)
+      urls must have size 8
+      urls.flatMap(_.path.fileName) must contain theSameElementsAs List("a", "b", "c", "d", "e", "x", "y", "z")
+      urls.foreach { url =>
+        url.path.isDir mustBe false
+        url.path.size must contain(1L)
       }
     }
     result.unsafeRunSync()
@@ -468,7 +469,7 @@ abstract class AbstractStoreTest[B <: FsObject]
       Stream.emits(lastFileBytes.toIndexedSeq)
 
     // Check overwrite
-    writeFile(store, dir.path)("3")
+    writeFile(store, dir)("3")
 
     val test = for {
       counter <- Ref.of[IO, Int](0)
@@ -477,17 +478,17 @@ abstract class AbstractStoreTest[B <: FsObject]
         .compile
         .drain
       files        <- store.list(dir).compile.toList
-      fileContents <- files.traverse(p => store.get(dir.replacePath(p), fileLength).compile.to(Array).map(p -> _))
+      fileContents <- files.traverse(u => store.get(u, fileLength).compile.to(Array).map(u -> _))
     } yield {
       files must have size (fileCount + 1)
-      files.flatMap(_.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
-      files.foreach { p =>
-        p.isDir mustBe false
-        p.size must contain(if (p.fileName.contains(fileCount.toString)) lastFileLength else fileLength)
+      files.flatMap(_.path.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
+      files.foreach { u =>
+        u.path.isDir mustBe false
+        u.path.size must contain(if (u.path.fileName.contains(fileCount.toString)) lastFileLength else fileLength)
       }
       fileContents.foreach {
-        case (p, content) =>
-          content mustBe (if (p.fileName.contains(fileCount.toString)) lastFileBytes else bytes)
+        case (u, content) =>
+          content mustBe (if (u.path.fileName.contains(fileCount.toString)) lastFileBytes else bytes)
       }
 
     }
@@ -524,21 +525,21 @@ abstract class AbstractStoreTest[B <: FsObject]
     }
   }
 
-  def dirUrl(name: String): Url = Url(scheme, authority, testRunRoot `//` name)
-
-  def dirPath(name: String): Path.Plain = testRunRoot `//` name
+  def dirUrl(name: String): Url[String] = Url(scheme, authority, testRunRoot `//` name)
 
   def localDirPath(name: String): Path.Plain = transferStoreRootDir / name
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
-  def writeFile(store: Store[IO, B], tmpDir: Path.Plain)(filename: String): Url = {
+  def writeFile(store: Store[IO, B], tmpDir: Url[String])(filename: String): Url[String] = {
     def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
       if (count < times) timer.sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
     }
-    val url = Url(scheme, authority, tmpDir / filename)
 
-    val writeContents = store.put(contents(filename), url).compile.drain.as(url)
+    val url = tmpDir / filename
+
+    val writeContents =
+      store.putContent(url, contents(filename)).as(url)
     retry(writeContents, 0, 5).unsafeRunSync()
   }
 

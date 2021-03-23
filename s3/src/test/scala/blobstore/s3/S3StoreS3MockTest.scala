@@ -40,7 +40,7 @@ class S3StoreS3MockTest extends AbstractS3StoreTest {
     val dir      = dirUrl("trailing-slash")
     val filePath = dir / "file-with-slash/"
 
-    store.put("test", filePath).compile.drain.unsafeRunSync()
+    store.putContent(filePath, "test").unsafeRunSync()
 
     val entities = s3Store
       .listUnderlying(dir, fullMetadata = false, expectTrailingSlashFiles = true, recursive = false)
@@ -48,9 +48,9 @@ class S3StoreS3MockTest extends AbstractS3StoreTest {
       .toList
       .unsafeRunSync()
 
-    entities.foreach { listedPath =>
-      listedPath.fileName mustBe Some("file-with-slash/")
-      listedPath.isDir mustBe false
+    entities.foreach { listedUrl =>
+      listedUrl.path.fileName mustBe Some("file-with-slash/")
+      listedUrl.path.isDir mustBe false
     }
 
     store.getContents(filePath).unsafeRunSync() mustBe "test"

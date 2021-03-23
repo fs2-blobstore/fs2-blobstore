@@ -3,7 +3,7 @@ package azure
 
 import java.util.concurrent.TimeUnit
 import blobstore.url.Path.Plain
-import blobstore.url.{Authority, Path, Url}
+import blobstore.url.{Authority, Path}
 import cats.effect.IO
 import fs2.Stream
 import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
@@ -55,12 +55,12 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
     val dir      = dirUrl("trailing-slash")
     val filePath = dir / "file-with-slash/"
 
-    store.put("test", filePath).compile.drain.unsafeRunSync()
+    store.putContent(filePath, "test").unsafeRunSync()
 
     val entities = store.list(dir).compile.toList.unsafeRunSync()
-    entities.foreach { listedPath =>
-      listedPath.fileName mustBe Some("file-with-slash/")
-      listedPath.isDir mustBe false
+    entities.foreach { listedUrl =>
+      listedUrl.path.fileName mustBe Some("file-with-slash/")
+      listedUrl.path.isDir mustBe false
     }
 
     store.getContents(filePath).unsafeRunSync() mustBe "test"
@@ -72,12 +72,12 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
 
   it should "expose underlying metadata" in {
     val dir  = dirUrl("expose-underlying")
-    val path = writeFile(store, dir.path)("abc.txt")
+    val path = writeFile(store, dir)("abc.txt")
 
     val entities = store.list(path).compile.toList.unsafeRunSync()
 
-    entities.foreach { azurePath =>
-      inside(azurePath.representation.properties) {
+    entities.foreach { azureUrl =>
+      inside(azureUrl.path.representation.properties) {
         case Some(properties) =>
           Option(properties.getAccessTier) must contain(AccessTier.HOT)
           Option(properties.getBlobType) must contain(BlobType.BLOCK_BLOB)
@@ -86,23 +86,23 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   }
 
   it should "set underlying metadata on write" in {
-    val ct            = "text/plain"
-    val at            = AccessTier.COOL
-    val properties    = new BlobItemProperties().setAccessTier(at).setContentType(ct)
-    val filePath: Url = dirUrl("set-underlying") / "file"
+    val ct         = "text/plain"
+    val at         = AccessTier.COOL
+    val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
+    val fileUrl    = dirUrl("set-underlying") / "file"
     Stream("data".getBytes.toIndexedSeq: _*).through(azureStore.put(
-      filePath,
+      fileUrl,
       overwrite = true,
       properties = Some(properties),
       meta = Map("key" -> "value")
     )).compile.drain.unsafeRunSync()
 
-    val entities = store.list(filePath).compile.toList.unsafeRunSync()
+    val entities = store.list(fileUrl).compile.toList.unsafeRunSync()
 
-    entities.foreach { azurePath =>
-      azurePath.representation.metadata must contain key "key"
-      azurePath.representation.metadata.get("key") must contain("value")
-      inside(azurePath.representation.properties) {
+    entities.foreach { azureUrl =>
+      azureUrl.path.representation.metadata must contain key "key"
+      azureUrl.path.representation.metadata.get("key") must contain("value")
+      inside(azureUrl.path.representation.properties) {
         case Some(properties) =>
           Option(properties.getAccessTier) must contain(at)
           Option(properties.getContentType) must contain(ct)
@@ -111,8 +111,8 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   }
 
   it should "resolve type of storage class" in {
-    store.list(dirUrl("foo")).map { path =>
-      val sc: Option[AccessTier] = path.storageClass
+    store.list(dirUrl("foo")).map { url =>
+      val sc: Option[AccessTier] = url.path.storageClass
       sc mustBe None
     }
   }
