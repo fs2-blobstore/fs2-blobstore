@@ -22,7 +22,6 @@ import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
 import cats.effect.IO
-import cats.effect.laws.util.TestInstances
 import cats.implicits._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
@@ -36,7 +35,6 @@ abstract class AbstractStoreTest[B <: FsObject]
   extends AnyFlatSpec
   with Matchers
   with BeforeAndAfterAll
-  with TestInstances
   with Inside
   with IOTest
   with Checkers {
