@@ -19,10 +19,10 @@ import java.util.UUID
 import java.nio.file.{Path => NioPath}
 import blobstore.fs.FileStore
 import blobstore.url.{Authority, FsObject, Path, Url}
-import cats.effect.concurrent.Ref
 import org.scalatest.{BeforeAndAfterAll, Inside}
 import cats.effect.IO
 import cats.implicits._
+import cats.effect.unsafe.implicits.global
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import fs2.Stream
@@ -36,7 +36,6 @@ abstract class AbstractStoreTest[B <: FsObject]
   with Matchers
   with BeforeAndAfterAll
   with Inside
-  with IOTest
   with Checkers {
 
   // Override this
@@ -49,7 +48,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   val testRun: UUID = java.util.UUID.randomUUID()
 
   val transferStoreRootDir: Path.Plain = Path(s"tmp/transfer-store-root/$testRun")
-  val transferStore: FileStore[IO]     = new FileStore[IO](blocker)
+  val transferStore: FileStore[IO]     = new FileStore[IO]
 
   // This path used for testing root level listing. Can be overridden by tests for stores that doesn't allow access
   // to the real root. No writing is done to this path.
@@ -472,7 +471,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     writeFile(store, dir)("3")
 
     val test = for {
-      counter <- Ref.of[IO, Int](0)
+      counter <- IO.ref(0)
       _ <- data
         .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
         .compile
@@ -533,7 +532,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   def writeFile(store: Store[IO, B], tmpDir: Url[String])(filename: String): Url[String] = {
     def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
-      if (count < times) timer.sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
+      if (count < times) IO.sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
     }
 
     val url = tmpDir / filename
