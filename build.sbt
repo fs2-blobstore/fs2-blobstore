@@ -34,7 +34,7 @@ lazy val fs2blobstore = project
   .in(file("."))
   .settings(
     moduleName := "root",
-    skip in publish := true
+    publish / skip := true
   )
   .aggregate(url, core, s3, sftp, gcs, azure, box)
 
@@ -57,7 +57,7 @@ lazy val docs = (project in file("project-docs"))
     mdocVariables := Map(
       "VERSION" -> version.value
     ),
-    skip in publish := true,
+    publish / skip := true,
     Compile / scalacOptions -= "-Ywarn-dead-code",
     mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94
   )

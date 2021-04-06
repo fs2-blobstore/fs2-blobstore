@@ -17,10 +17,10 @@ package blobstore
 package s3
 
 import blobstore.url.{Path, Url}
-import blobstore.util.liftJavaFuture
-import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Sync}
+import cats.effect.std.{Hotswap, Queue}
+import cats.effect.{Async, Resource}
 import cats.syntax.all._
-import fs2.{Chunk, Hotswap, INothing, Pipe, Pull, Stream}
+import fs2.{Chunk, INothing, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams._
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
@@ -43,7 +43,7 @@ import scala.jdk.CollectionConverters._
   * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
   *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
   */
-class S3Store[F[_]](
+class S3Store[F[_]: Async](
   s3: S3AsyncClient,
   objectAcl: Option[ObjectCannedACL] = None,
   sseAlgorithm: Option[String] = None,
@@ -51,8 +51,7 @@ class S3Store[F[_]](
   defaultTrailingSlashFiles: Boolean = false,
   bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
   queueSize: Int = 32
-)(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
-  extends Store[F, S3Blob] {
+) extends Store[F, S3Blob] {
   require(
     bufferSize >= S3Store.multiUploadMinimumPartSize,
     s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}"
@@ -83,7 +82,9 @@ class S3Store[F[_]](
           ()
         }
       }
-    Stream.eval(liftJavaFuture(F.delay(s3.getObject[Stream[F, Byte]](request, transformer)))).flatten
+    Stream.eval(
+      Async[F].fromCompletableFuture(Async[F].delay(s3.getObject[Stream[F, Byte]](request, transformer)))
+    ).flatten
   }
 
   def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
@@ -101,14 +102,16 @@ class S3Store[F[_]](
 
       val checkOverwrite =
         if (!overwrite) {
-          liftJavaFuture(F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))).attempt
+          Async[F].fromCompletableFuture(
+            Async[F].delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()))
+          ).attempt
             .flatMap {
-              case Left(_: NoSuchKeyException) => F.unit
-              case Left(e)                     => F.raiseError[Unit](e)
+              case Left(_: NoSuchKeyException) => Async[F].unit
+              case Left(e)                     => Async[F].raiseError[Unit](e)
               case Right(_) =>
-                F.raiseError[Unit](new IllegalArgumentException(s"File at path '$url' already exist."))
+                Async[F].raiseError[Unit](new IllegalArgumentException(show"File at path '$url' already exist."))
             }
-        } else F.unit
+        } else Async[F].unit
 
       Stream.eval(checkOverwrite) ++
         size.fold(putUnknownSize(bucket, key, meta, in))(size => putKnownSize(bucket, key, meta, size, in))
@@ -138,7 +141,7 @@ class S3Store[F[_]](
         .destinationKey(dstKey)
         .build()
     }
-    liftJavaFuture(F.delay(s3.copyObject(request))).void
+    Async[F].fromCompletableFuture(Async[F].delay(s3.copyObject(request))).void
   }
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
@@ -147,7 +150,7 @@ class S3Store[F[_]](
     val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
     if (recursive) new StoreOps[F, S3Blob](this).removeAll(url).void
-    else liftJavaFuture(F.delay(s3.deleteObject(req))).void
+    else Async[F].fromCompletableFuture(Async[F].delay(s3.deleteObject(req))).void
   }
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] =
@@ -156,14 +159,20 @@ class S3Store[F[_]](
         .flatMap(chunk => Stream.eval(computeUrl).flatMap(path => Stream.chunk(chunk).through(put(path))))
     } else {
       val newFile = for {
-        path  <- Resource.liftF(computeUrl)
-        queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
+        path  <- Resource.eval(computeUrl)
+        queue <- Resource.eval(Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
         _ <- Resource.make(
-          F.start(queue.dequeue.unNoneTerminate.flatMap(Stream.chunk).through(put(path)).compile.drain)
-        )(_.join)
-        _ <- Resource.make(F.unit)(_ => queue.enqueue1(None))
+          Async[F].start(
+            Stream.fromQueueNoneTerminatedChunk(
+              queue,
+              // TODO: Remove this limit once https://github.com/aws/aws-sdk-java-v2/issues/953 is resolved.
+              (limit / 2).toInt.min(S3Store.mb / 2)
+            ).through(put(path)).compile.drain
+          )
+        )(_.join.flatMap(_.fold(Async[F].unit, e => Async[F].raiseError[Unit](e), identity)))
+        _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
       } yield queue
-      putRotateBase(limit, newFile)(queue => chunk => queue.enqueue1(Some(chunk)))
+      putRotateBase(limit, newFile)(queue => chunk => queue.offer(Some(chunk)))
     }
 
   def listUnderlying[A](
@@ -186,8 +195,8 @@ class S3Store[F[_]](
       val fDirs =
         ol.commonPrefixes().asScala.toList.flatMap(cp => Option(cp.prefix())).traverse[F, Path[S3Blob]] { prefix =>
           if (expectTrailingSlashFiles) {
-            liftJavaFuture(
-              F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(prefix).build()))
+            Async[F].fromCompletableFuture(
+              Async[F].delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(prefix).build()))
             ).map { resp =>
               Path(prefix).as(S3Blob(bucket, prefix, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some))
             }
@@ -202,8 +211,8 @@ class S3Store[F[_]](
 
       val fFiles = ol.contents().asScala.toList.traverse[F, Path[S3Blob]] { s3Object =>
         if (fullMetadata) {
-          liftJavaFuture(
-            F.delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(s3Object.key()).build()))
+          Async[F].fromCompletableFuture(
+            Async[F].delay(s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(s3Object.key()).build()))
           ).map { resp =>
             Path(s3Object.key()).as(S3Blob(
               bucket,
@@ -227,13 +236,14 @@ class S3Store[F[_]](
     meta: Option[S3MetaInfo],
     size: Long,
     in: Stream[F, Byte]
-  ): Stream[F, Unit] = {
-    val request = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, size)
+  ): Stream[F, Unit] =
+    Stream.resource(in.chunks.map(chunk => chunk.toByteBuffer).toUnicastPublisher).flatMap { publisher =>
+      val request = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, size)
 
-    val requestBody = AsyncRequestBody.fromPublisher(in.chunks.map(chunk => chunk.toByteBuffer).toUnicastPublisher)
+      val requestBody = AsyncRequestBody.fromPublisher(publisher)
 
-    Stream.eval(liftJavaFuture(F.delay(s3.putObject(request, requestBody))).void)
-  }
+      Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(s3.putObject(request, requestBody))).void)
+    }
 
   private def putSingleChunk(
     bucket: String,
@@ -241,7 +251,7 @@ class S3Store[F[_]](
     meta: Option[S3MetaInfo],
     chunk: Chunk[Byte]
   ): Pull[F, INothing, Unit] =
-    Pull.eval(liftJavaFuture(F.delay(s3.putObject(
+    Pull.eval(Async[F].fromCompletableFuture(Async[F].delay(s3.putObject(
       S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, chunk.size.toLong),
       AsyncRequestBody.fromByteBuffer(chunk.toByteBuffer)
     ))).void)
@@ -272,7 +282,7 @@ class S3Store[F[_]](
           }
 
           val makeRequest: F[CreateMultipartUploadResponse] =
-            liftJavaFuture(F.delay(s3.createMultipartUpload(request)))
+            Async[F].fromCompletableFuture(Async[F].delay(s3.createMultipartUpload(request)))
 
           Pull.eval(makeRequest).flatMap { muResp =>
             val abortReq: AbortMultipartUploadRequest =
@@ -297,20 +307,20 @@ class S3Store[F[_]](
                   val cf       = new CompletableFuture[ByteBuffer]()
                   val withPart = uploadPartReqBuilder.partNumber(part)
                   val req      = size.fold(withPart)(newSize => withPart.contentLength(newSize)).build()
-                  val fBody    = F.delay(AsyncRequestBody.fromPublisher(CompletableFuturePublisher.from(cf)))
+                  val fBody    = Async[F].delay(AsyncRequestBody.fromPublisher(CompletableFuturePublisher.from(cf)))
                   val done = for {
                     body <- fBody
-                    resp <- liftJavaFuture(F.delay(s3.uploadPart(req, body)))
-                    _    <- F.delay(byteBuffer.clear())
+                    resp <- Async[F].fromCompletableFuture(Async[F].delay(s3.uploadPart(req, body)))
+                    _    <- Async[F].delay(byteBuffer.clear())
                   } yield CompletedPart.builder().eTag(resp.eTag()).partNumber(part).build()
-                  F.delay((cf, done))
+                  Async[F].delay((cf, done))
                 } {
-                  case ((cf, _), ExitCase.Completed) =>
-                    F.delay { byteBuffer.flip(); cf.complete(byteBuffer) }.void
-                  case ((cf, _), ExitCase.Error(e)) =>
-                    F.delay(cf.completeExceptionally(e)).void
-                  case ((cf, _), ExitCase.Canceled) =>
-                    F.delay(cf.cancel(true)).void
+                  case ((cf, _), Resource.ExitCase.Succeeded) =>
+                    Async[F].delay { byteBuffer.flip(); cf.complete(byteBuffer) }.void
+                  case ((cf, _), Resource.ExitCase.Errored(e)) =>
+                    Async[F].delay(cf.completeExceptionally(e)).void
+                  case ((cf, _), Resource.ExitCase.Canceled) =>
+                    Async[F].delay(cf.cancel(true)).void
                 }
                 .map(_._2)
 
@@ -340,21 +350,23 @@ class S3Store[F[_]](
                         completeReqBuilder
                           .multipartUpload(CompletedMultipartUpload.builder().parts(parts.asJava).build())
                           .build()
-                      Pull.eval(liftJavaFuture(F.delay(s3.completeMultipartUpload(request)))).void
+                      Pull.eval(
+                        Async[F].fromCompletableFuture(Async[F].delay(s3.completeMultipartUpload(request)))
+                      ).void
                     }
               }
               .onError {
                 case _ =>
-                  Pull.eval(liftJavaFuture(F.delay(s3.abortMultipartUpload(abortReq)))).void
+                  Pull.eval(Async[F].fromCompletableFuture(Async[F].delay(s3.abortMultipartUpload(abortReq)))).void
               }
           }
       }
       .stream
 
   override def stat[A](url: Url[A]): Stream[F, Path[S3Blob]] =
-    Stream.eval(liftJavaFuture(
-      F.delay(s3.headObject(HeadObjectRequest.builder().bucket(url.authority.show).key(url.path.relative.show).build()))
-    ).map { resp =>
+    Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(
+      s3.headObject(HeadObjectRequest.builder().bucket(url.authority.show).key(url.path.relative.show).build())
+    )).map { resp =>
       Path.of(
         url.path.show,
         S3Blob(url.authority.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
@@ -371,7 +383,21 @@ class S3Store[F[_]](
 }
 
 object S3Store {
-  def apply[F[_]](
+
+  /** @param s3 - S3 Async Client
+    * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
+    * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
+    * @param defaultFullMetadata       – return full object metadata on [[S3Store.list]], requires additional request per object.
+    *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
+    *                                  This controls behaviour of [[S3Store.list]] method from Store trait.
+    *                                  Use [[S3Store.listUnderlying]] to control on per-invocation basis.
+    * @param defaultTrailingSlashFiles - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names.
+    *                                  This controls behaviour of [[S3Store.list]] method from Store trait.
+    *                                  Use [[S3Store.listUnderlying]] to control on per-invocation basis.
+    * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
+    *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+    */
+  def apply[F[_]: Async](
     s3: S3AsyncClient,
     objectAcl: Option[ObjectCannedACL] = None,
     sseAlgorithm: Option[String] = None,
@@ -379,7 +405,7 @@ object S3Store {
     defaultTrailingSlashFiles: Boolean = false,
     bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
     queueSize: Int = 32
-  )(implicit F: ConcurrentEffect[F], cs: ContextShift[F]): F[S3Store[F]] =
+  ): F[S3Store[F]] =
     if (bufferSize < S3Store.multiUploadMinimumPartSize) {
       new IllegalArgumentException(s"Buffer size must be at least ${S3Store.multiUploadMinimumPartSize}").raiseError
     } else
@@ -418,14 +444,14 @@ object S3Store {
 
   private case class MultipartState(partNumber: Int, totalBytes: Long)
 
-  private def multipartGo[F[_]](
+  private def multipartGo[F[_]: Async](
     state: MultipartState,
     stream: Stream[F, Byte],
     byteBuffer: ByteBuffer,
     completion: F[CompletedPart],
     hotswap: Hotswap[F, F[CompletedPart]],
     newPart: (Int, Option[Long]) => Resource[F, F[CompletedPart]]
-  )(implicit F: Sync[F]): Pull[F, CompletedPart, Unit] = {
+  ): Pull[F, CompletedPart, Unit] = {
     stream.pull.unconsLimit(byteBuffer.capacity() - byteBuffer.position()).flatMap {
       case Some((hd, tl)) =>
         val newTotal = state.totalBytes + hd.size
@@ -437,7 +463,7 @@ object S3Store {
           )
         } else {
           Pull
-            .eval(F.delay(byteBuffer.put(hd.toByteBuffer)))
+            .eval(Async[F].delay(byteBuffer.put(hd.toByteBuffer)))
             .flatMap { _ =>
               if (byteBuffer.position() < byteBuffer.capacity()) {
                 multipartGo(
@@ -474,7 +500,9 @@ object S3Store {
             .eval(
               hotswap
                 .swap(newPart(state.partNumber, Some(currentBytes.toLong)))
-                .flatMap { newCompletion => hotswap.clear >> F.delay(byteBuffer.limit(currentBytes)) >> newCompletion }
+                .flatMap { newCompletion =>
+                  hotswap.clear >> Async[F].delay(byteBuffer.limit(currentBytes)) >> newCompletion
+                }
             )
             .flatMap(Pull.output1)
         } else {

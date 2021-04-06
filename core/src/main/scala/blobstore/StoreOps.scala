@@ -16,29 +16,35 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import blobstore.url.{FsObject, Url}
-import cats.effect.{Blocker, ContextShift, Sync}
+import cats.effect.Concurrent
 import cats.syntax.all._
 import fs2.Pipe
+import fs2.io.file.Files
 
 import java.nio.charset.StandardCharsets
 
 /** This object contains shared implementations of functions that requires additional capabilities from the effect type
   */
-class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
+class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
 
   /** Write contents of src file into dst Path
     * @param src java.nio.file.Path
     * @param dst Path to write to
     * @return F[Unit]
     */
-  def putFromNio[A](src: java.nio.file.Path, dst: Url[A], overwrite: Boolean, blocker: Blocker): F[Unit] =
-    Sync[F].delay(Option(src.toFile.length)).map(_.filter(_ > 0)).flatMap { size =>
-      fs2.io.file
-        .readAll(src, blocker, 4096)
-        .through(store.put(dst, overwrite, size))
-        .compile
-        .drain
+  def putFromNio[A](src: java.nio.file.Path, dst: Url[A], overwrite: Boolean): F[Unit] = {
+    val put = Files[F].size(src).flatMap {
+      case size if size > 0 =>
+        Files[F]
+          .readAll(src, 4096)
+          .through(store.put(dst, overwrite, size.some))
+          .compile
+          .drain
+      case _ =>
+        ().pure
     }
+    Files[F].isFile(src).ifM(put, new Exception("Not a file").raiseError)
+  }
 
   /** Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
     * to store. Useful when uploading data to stores that require content size like S3Store.
@@ -46,8 +52,8 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     * @param url Path to write to
     * @return Sink[F, Byte] buffered sink
     */
-  def bufferedPut[A](url: Url[A], overwrite: Boolean, chunkSize: Int, blocker: Blocker): Pipe[F, Byte, Unit] =
-    _.through(bufferToDisk[F](chunkSize, blocker)).flatMap {
+  def bufferedPut[A](url: Url[A], overwrite: Boolean, chunkSize: Int): Pipe[F, Byte, Unit] =
+    _.through(bufferToDisk[F](chunkSize)).flatMap {
       case (n, s) =>
         s.through(store.put(url, overwrite, Option(n)))
     }
@@ -57,8 +63,8 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     * @param dst local file to write contents to
     * @return F[Unit]
     */
-  def getToNio[A](src: Url[A], dst: java.nio.file.Path, chunkSize: Int, blocker: Blocker): F[Unit] =
-    store.get(src, chunkSize).through(fs2.io.file.writeAll[F](dst, blocker)).compile.drain
+  def getToNio[A](src: Url[A], dst: java.nio.file.Path, chunkSize: Int): F[Unit] =
+    store.get(src, chunkSize).through(Files[F].writeAll(dst)).compile.drain
 
   def putContent[A](url: Url[A], content: String): F[Unit] = {
     val bytes = content.getBytes(StandardCharsets.UTF_8)

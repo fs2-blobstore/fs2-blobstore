@@ -16,6 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package s3
 
+import cats.effect.unsafe.implicits.global
 import java.net.URI
 import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
