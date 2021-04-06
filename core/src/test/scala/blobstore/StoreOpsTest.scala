@@ -1,21 +1,17 @@
 package blobstore
 
 import blobstore.url.{Path, Url}
-import cats.effect.{Blocker, ContextShift, IO}
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import fs2.io.file.Files
 import fs2.{Pipe, Stream}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 
 import java.nio.charset.{Charset, StandardCharsets}
-import java.nio.file.Files
-import java.util.concurrent.Executors
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.ExecutionContext
 
 class StoreOpsTest extends AnyFlatSpec with Matchers {
-
-  implicit val cs = IO.contextShift(ExecutionContext.global)
-  val blocker     = Blocker.liftExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
 
   behavior of "PutOps"
   it should "buffer contents and compute size before calling Store.put" in {
@@ -25,7 +21,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     Stream
       .emits(bytes)
       .covary[IO]
-      .through(store.bufferedPut(Url.unsafe("foo://bucket/path/to/file.txt"), true, 4096, blocker))
+      .through(store.bufferedPut(Url.unsafe("foo://bucket/path/to/file.txt"), true, 4096))
       .compile
       .drain
       .unsafeRunSync()
@@ -38,10 +34,10 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     val store = DummyStore()
 
     Stream
-      .bracket(IO(Files.createTempFile("test-file", ".bin"))) { p => IO(p.toFile.delete).void }
+      .resource(Files[IO].tempFile())
       .flatMap { p =>
-        Stream.emits(bytes).covary[IO].through(fs2.io.file.writeAll(p, blocker)).drain ++
-          Stream.eval(store.putFromNio(p, Url.unsafe("foo://bucket/path/to/file.txt"), true, blocker))
+        Stream.emits(bytes).covary[IO].through(Files[IO].writeAll(p)).drain ++
+          Stream.eval(store.putFromNio(p, Url.unsafe("foo://bucket/path/to/file.txt"), true))
       }
       .compile
       .drain
@@ -56,12 +52,10 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     Stream.emits(bytes).through(store.put(path)).compile.drain.unsafeRunSync()
 
     Stream
-      .bracket(IO(Files.createTempFile("test-file", ".bin")))(p => IO(p.toFile.delete).void)
+      .resource(Files[IO].tempFile())
       .flatMap { nioPath =>
-        Stream.eval(store.getToNio(path, nioPath, 4096, blocker)) >> Stream.eval {
-          IO {
-            Files.readAllBytes(nioPath) mustBe bytes
-          }
+        Stream.eval(store.getToNio(path, nioPath, 4096)) >> Stream.eval {
+          Files[IO].readAll(nioPath, 4096).compile.to(Array).map(_ mustBe bytes)
         }
       }
       .compile
@@ -82,7 +76,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
   }
 }
 
-final case class DummyStore()(implicit cs: ContextShift[IO]) extends Store[IO, String] {
+final case class DummyStore() extends Store[IO, String] {
   val buf = new ArrayBuffer[Byte]()
   override def put[A](url: Url[A], overwrite: Boolean, size: Option[Long] = None): Pipe[IO, Byte, Unit] = {
     in =>
@@ -103,7 +97,7 @@ final case class DummyStore()(implicit cs: ContextShift[IO]) extends Store[IO, S
 }
 
 object DummyStore {
-  def withContents(s: String)(implicit cs: ContextShift[IO]): DummyStore = {
+  def withContents(s: String): DummyStore = {
     val store = DummyStore()
     store.buf.appendAll(s.getBytes(StandardCharsets.UTF_8))
     store

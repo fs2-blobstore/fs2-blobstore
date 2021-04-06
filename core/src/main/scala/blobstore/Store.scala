@@ -18,8 +18,9 @@ package blobstore
 import blobstore.url.{Path, Url}
 import cats.MonadError
 import cats.data.Validated
-import cats.effect.{ContextShift, Sync}
+import cats.effect.Concurrent
 import cats.syntax.all._
+import fs2.io.file.Files
 import fs2.{Pipe, Stream}
 
 trait Store[F[_], +BlobType] {
@@ -93,7 +94,7 @@ trait Store[F[_], +BlobType] {
 }
 
 object Store {
-  implicit def syntax[F[_]: Sync: ContextShift, B](store: Store[F, B]): StoreOps[F, B] =
+  implicit def syntax[F[_]: Files: Concurrent, B](store: Store[F, B]): StoreOps[F, B] =
     new StoreOps[F, B](store)
 
   /** Validates input URLs before delegating to underlying store. This allows different stores to be exposed
