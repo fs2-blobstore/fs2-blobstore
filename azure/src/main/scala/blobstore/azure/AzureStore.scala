@@ -2,8 +2,8 @@ package blobstore
 package azure
 
 import blobstore.url.{Path, Url}
-import blobstore.util.liftJavaFuture
-import cats.effect.{ConcurrentEffect, Resource}
+import cats.effect.{Async, Resource}
+import cats.effect.std.Queue
 import cats.syntax.all._
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
@@ -27,24 +27,23 @@ import scala.jdk.CollectionConverters._
   * @param defaultTrailingSlashFiles - test if folders returned by [[list]] are files with trailing slashes in their names.
   *                                  This controls behaviour of [[list]] method from Store trait.
   *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param blockSize  - For upload, The block size is the size of each block that will be staged.
+  * @param blockSize - for upload, The block size is the size of each block that will be staged.
   *                   This value also determines the number of requests that need to be made.
   *                   If block size is large, upload will make fewer network calls, but each individual call will send more data and will therefore take longer.
   *                   This parameter also determines the size that each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up to blockSize * numBuffers.
-  * @param numBuffers - For buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
+  * @param numBuffers - for buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
   *                   Memory will be allocated lazily as needed. Must be at least two.
   *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
   *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
   */
-class AzureStore[F[_]](
+class AzureStore[F[_]: Async](
   azure: BlobServiceAsyncClient,
   defaultFullMetadata: Boolean = false,
   defaultTrailingSlashFiles: Boolean = false,
   blockSize: Int = 50 * 1024 * 1024,
   numBuffers: Int = 2,
   queueSize: Int = 32
-)(implicit F: ConcurrentEffect[F])
-  extends Store[F, AzureBlob] {
+) extends Store[F, AzureBlob] {
   require(numBuffers >= 2, "Number of buffers must be at least 2")
 
   override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[AzureBlob]] =
@@ -73,37 +72,38 @@ class AzureStore[F[_]](
     overwrite: Boolean,
     properties: Option[BlobItemProperties],
     meta: Map[String, String]
-  ): Pipe[F, Byte, Unit] = in => {
-    val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-    val blobClient = azure
-      .getBlobContainerAsyncClient(container)
-      .getBlobAsyncClient(blobName)
-    val flux = Flux.from(in.chunks.map(_.toByteBuffer).toUnicastPublisher)
-    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
-    val (overwriteCheck, requestConditions) =
-      if (overwrite) {
-        Mono.empty -> null // scalafix:ok
-      } else {
-        blobClient.exists.flatMap((exists: java.lang.Boolean) =>
-          if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
-          else Mono.empty[Unit]
-        ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
-      }
+  ): Pipe[F, Byte, Unit] = in =>
+    Stream.resource(in.chunks.map(_.toByteBuffer).toUnicastPublisher).flatMap { publisher =>
+      val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
+      val blobClient = azure
+        .getBlobContainerAsyncClient(container)
+        .getBlobAsyncClient(blobName)
+      val flux = Flux.from(publisher)
+      val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+      val (overwriteCheck, requestConditions) =
+        if (overwrite) {
+          Mono.empty -> null // scalafix:ok
+        } else {
+          blobClient.exists.flatMap((exists: java.lang.Boolean) =>
+            if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
+            else Mono.empty[Unit]
+          ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
+        }
 
-    val headers = properties.map(AzureStore.toHeaders)
+      val headers = properties.map(AzureStore.toHeaders)
 
-    val upload = overwriteCheck
-      .`then`(blobClient.uploadWithResponse(
-        flux,
-        pto,
-        headers.orNull,
-        meta.asJava,
-        properties.flatMap(bip => Option(bip.getAccessTier)).orNull,
-        requestConditions
-      ))
-      .flatMap(resp => FluxUtil.toMono(resp))
-    Stream.eval(liftJavaFuture(F.delay(upload.toFuture)).void)
-  }
+      val upload = overwriteCheck
+        .`then`(blobClient.uploadWithResponse(
+          flux,
+          pto,
+          headers.orNull,
+          meta.asJava,
+          properties.flatMap(bip => Option(bip.getAccessTier)).orNull,
+          requestConditions
+        ))
+        .flatMap(resp => FluxUtil.toMono(resp))
+      Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(upload.toFuture)).void)
+    }
 
   override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     copy(src, dst) >> remove(
@@ -122,7 +122,7 @@ class AzureStore[F[_]](
       .getBlobContainerAsyncClient(dstContainer)
       .getBlobAsyncClient(dstBlob)
     val copy = blobClient.beginCopy(srcUrl, Duration.of(1, ChronoUnit.SECONDS))
-    liftJavaFuture(F.delay(copy.next().flatMap(_.getFinalResult).toFuture)).void
+    Async[F].fromCompletableFuture(Async[F].delay(copy.next().flatMap(_.getFinalResult).toFuture)).void
   }
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
@@ -153,30 +153,36 @@ class AzureStore[F[_]](
       } else {
         recoverNotFound(containerClient.getBlobAsyncClient(blobOrPrefix).delete())
       }
-    liftJavaFuture(F.delay(mono.toFuture)).void
+    Async[F].fromCompletableFuture(Async[F].delay(mono.toFuture)).void
   }
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile = for {
-      computed <- Resource.liftF(computeUrl)
+      computed <- Resource.eval(computeUrl)
       (container, blob) = AzureStore.urlToContainerAndBlob(computed)
-      queue <- Resource.liftF(fs2.concurrent.Queue.bounded[F, Option[ByteBuffer]](queueSize))
+      queue     <- Resource.eval(Queue.bounded[F, Option[ByteBuffer]](queueSize))
+      publisher <- Stream.fromQueueNoneTerminated(queue).toUnicastPublisher
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
       pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
-      flux   = Flux.from(queue.dequeue.unNoneTerminate.toUnicastPublisher)
+      flux   = Flux.from(publisher)
       upload = blobClient.upload(flux, pto, true)
-      _ <- Resource.make(F.start(liftJavaFuture(F.delay(upload.toFuture)).void))(_.join)
-      _ <- Resource.make(F.unit)(_ => queue.enqueue1(None))
+      _ <-
+        Resource.make(
+          Async[F].start(Async[F].fromCompletableFuture(Async[F].delay(upload.toFuture)).void)
+        )(
+          _.join.flatMap(_.fold(Async[F].unit, e => Async[F].raiseError[Unit](e), identity))
+        )
+      _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
     } yield queue
-    putRotateBase(limit, openNewFile)(queue => bytes => queue.enqueue1(Some(bytes.toByteBuffer)))
+    putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(bytes.toByteBuffer)))
   }
 
   override def stat[A](url: Url[A]): Stream[F, Path[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
-    Stream.eval(liftJavaFuture(F.delay(mono.toFuture)).attempt).evalMap {
+    Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(mono.toFuture)).attempt).evalMap {
       case Right(props) =>
         val (bip, meta) = AzureStore.toBlobItemProperties(props)
         Path.of(blobName, AzureBlob(container, blobName, bip.some, meta)).some.pure[F]
@@ -211,14 +217,32 @@ class AzureStore[F[_]](
 }
 
 object AzureStore {
-  def apply[F[_]](
+
+  /** @param azure - Azure Blob Service Async Client
+    * @param defaultFullMetadata – return full object metadata on [[AzureStore.list]], requires additional request per object.
+    *                              Metadata returned by default: size, lastModified, eTag, storageClass.
+    *                              This controls behaviour of [[AzureStore.list]] method from Store trait.
+    *                              Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
+    * @param defaultTrailingSlashFiles - test if folders returned by [[AzureStore.list]] are files with trailing slashes in their names.
+    *                                  This controls behaviour of [[AzureStore.list]] method from Store trait.
+    *                                  Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
+    * @param blockSize  - For upload, The block size is the size of each block that will be staged.
+    *                   This value also determines the number of requests that need to be made.
+    *                   If block size is large, upload will make fewer network calls, but each individual call will send more data and will therefore take longer.
+    *                   This parameter also determines the size that each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up to blockSize * numBuffers.
+    * @param numBuffers - For buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
+    *                   Memory will be allocated lazily as needed. Must be at least two.
+    *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
+    *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
+    */
+  def apply[F[_]: Async](
     azure: BlobServiceAsyncClient,
     defaultFullMetadata: Boolean = false,
     defaultTrailingSlashFiles: Boolean = false,
     blockSize: Int = 50 * 1024 * 1024,
     numBuffers: Int = 2,
     queueSize: Int = 32
-  )(implicit F: ConcurrentEffect[F]): F[AzureStore[F]] =
+  ): F[AzureStore[F]] =
     if (numBuffers < 2) new IllegalArgumentException(s"Number of buffers must be at least 2").raiseError
     else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize).pure[F]
 
