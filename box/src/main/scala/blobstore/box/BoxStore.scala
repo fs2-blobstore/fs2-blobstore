@@ -18,7 +18,7 @@ package box
 
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
-import cats.effect.{Blocker, Concurrent, ContextShift, ExitCase, Resource}
+import cats.effect.{Async, Resource}
 import cats.syntax.all._
 import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
 import fs2.{Pipe, Stream}
@@ -26,14 +26,14 @@ import fs2.{Pipe, Stream}
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import scala.jdk.CollectionConverters._
 
-class BoxStore[F[_]](
+/** @param api - underlying configured BoxAPIConnection
+  * @param rootFolderId – override for Root Folder Id, default – "0"
+  * @param largeFileThreshold – override for the threshold on the file size to be considered "large", default – 50MiB
+  */
+class BoxStore[F[_]: Async](
   api: BoxAPIConnection,
-  blocker: Blocker,
   rootFolderId: String,
   largeFileThreshold: Long = 50L * 1024L * 1024L
-)(
-  implicit F: Concurrent[F],
-  CS: ContextShift[F]
 ) extends PathStore[F, BoxPath] {
 
   private val rootFolder = new BoxFolder(api, rootFolderId)
@@ -42,23 +42,23 @@ class BoxStore[F[_]](
     listUnderlying(path, Array.empty, recursive)
 
   override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] = {
-    val init: F[(OutputStream, InputStream)] = blocker.delay {
+    val init: F[(OutputStream, InputStream)] = Async[F].blocking {
       val is = new PipedInputStream()
       val os = new PipedOutputStream(is)
       (os, is)
     }
     val release: ((OutputStream, InputStream)) => F[Unit] = ios =>
-      blocker.delay {
+      Async[F].blocking {
         ios._1.close()
         ios._2.close()
       }
 
     def consume(file: BoxFile)(streams: (OutputStream, InputStream)): Stream[F, Byte] = {
-      val dl = Stream.eval(blocker.delay {
+      val dl = Stream.eval(Async[F].blocking {
         file.download(streams._1)
         streams._1.close()
       })
-      val readInput = fs2.io.readInputStream(F.delay(streams._2), chunkSize, closeAfterUse = true, blocker = blocker)
+      val readInput = fs2.io.readInputStream(Async[F].delay(streams._2), chunkSize, closeAfterUse = true)
       readInput concurrently dl
     }
 
@@ -82,7 +82,7 @@ class BoxStore[F[_]](
               case Some(existing) if overwrite =>
                 (os: OutputStream, is: InputStream, existing.asLeft[BoxFolder]).pure[F]
               case Some(_) =>
-                F.raiseError(new IllegalArgumentException(s"File at path '$path' already exist."))
+                Async[F].raiseError(new IllegalArgumentException(s"File at path '$path' already exist."))
               case None =>
                 putFolderAtPath(rootFolder, path.up.segments.toList).map { parentFolder =>
                   (os: OutputStream, is: InputStream, parentFolder.asRight[BoxFile])
@@ -91,7 +91,7 @@ class BoxStore[F[_]](
           }
 
           val consume: ((OutputStream, InputStream, Either[BoxFile, BoxFolder])) => Stream[F, Unit] = ios => {
-            val putToBox = Stream.eval(blocker.delay {
+            val putToBox = Stream.eval(Async[F].blocking {
               size match {
                 case Some(size) if size > largeFileThreshold =>
                   ios._3.fold(_.uploadLargeFile(ios._2, size), _.uploadLargeFile(ios._2, name, size))
@@ -100,13 +100,15 @@ class BoxStore[F[_]](
               }
             }.void)
 
-            val writeBytes =
-              _writeAllToOutputStream1(in, ios._1, blocker).stream ++ Stream.eval(F.delay(ios._1.close()))
+            val writeBytes = {
+              in.through(fs2.io.writeOutputStream(ios._1.pure, closeAfterUse = false)) ++
+                Stream.eval(Async[F].delay(ios._1.close()))
+            }
             putToBox concurrently writeBytes
           }
 
           val release: ((OutputStream, InputStream, Either[BoxFile, BoxFolder])) => F[Unit] = ios =>
-            blocker.delay {
+            Async[F].blocking {
               ios._2.close()
               ios._1.close()
             }
@@ -119,7 +121,7 @@ class BoxStore[F[_]](
     case Some(file) =>
       putFolderAtPath(rootFolder, dst.up.segments.toList)
         .flatMap(folder =>
-          blocker.delay(file.move(
+          Async[F].blocking(file.move(
             folder,
             dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo.getName)
           )).void
@@ -131,7 +133,7 @@ class BoxStore[F[_]](
     case Some(file) =>
       putFolderAtPath(rootFolder, dst.up.segments.toList)
         .flatMap(folder =>
-          blocker.delay(file.copy(
+          Async[F].blocking(file.copy(
             folder,
             dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo.getName)
           )).void
@@ -142,48 +144,48 @@ class BoxStore[F[_]](
   override def remove[A](path: Path[A], recursive: Boolean): F[Unit] =
     boxInfoAtPath(path).flatMap {
       case Some(p) => p.representation.fileOrFolder.fold(
-          file => blocker.delay(new BoxFile(api, file.getID).delete()),
-          folder => blocker.delay(new BoxFolder(api, folder.getID).delete(recursive))
+          file => Async[F].blocking(new BoxFile(api, file.getID).delete()),
+          folder => Async[F].blocking(new BoxFolder(api, folder.getID).delete(recursive))
         )
       case None => ().pure
     }
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] = for {
-      p <- Resource.liftF(computePath)
-      name <- Resource.liftF(
-        F.fromEither(p.lastSegment.filter(s => !s.endsWith("/")).toRight(new IllegalArgumentException(
+      p <- Resource.eval(computePath)
+      name <- Resource.eval(
+        Async[F].fromEither(p.lastSegment.filter(s => !s.endsWith("/")).toRight(new IllegalArgumentException(
           s"Specified path '$p' doesn't point to a file."
         )))
       )
-      fileOrFolder <- Resource.liftF(boxFileAtPath(p).flatMap {
+      fileOrFolder <- Resource.eval(boxFileAtPath(p).flatMap {
         case None       => putFolderAtPath(rootFolder, p.up.segments.toList).map(_.asRight[BoxFile])
         case Some(file) => file.asLeft[BoxFolder].pure[F]
       })
-      (os, is) <- Resource.make(F.delay {
+      (os, is) <- Resource.make(Async[F].delay {
         val os = new PipedOutputStream()
         val is = new PipedInputStream(os)
         (os, is)
       }) {
         case (os, is) =>
-          F.delay {
+          Async[F].delay {
             is.close()
             os.close()
           }
       }
-      _ <- Resource.makeCase(F.unit) {
-        case (_, ExitCase.Completed) =>
-          blocker.delay {
+      _ <- Resource.makeCase(Async[F].unit) {
+        case (_, Resource.ExitCase.Succeeded) =>
+          Async[F].blocking {
             os.close()
             fileOrFolder.fold(_.uploadNewVersion(is), _.uploadFile(is, name))
             ()
           }
         case (_, _) =>
-          F.unit
+          Async[F].unit
       }
     } yield os
 
-    putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
+    putRotateBase(limit, openNewFile)(os => bytes => Async[F].blocking(os.write(bytes.toArray)))
   }
 
   @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
@@ -200,8 +202,8 @@ class BoxStore[F[_]](
           case f if BoxStore.isFolder(f) =>
             Stream
               .fromBlockingIterator(
-                blocker,
-                BoxStore.blockingIterator(new BoxFolder(api, f.getID), fields)
+                BoxStore.blockingIterator(new BoxFolder(api, f.getID), fields),
+                64
               )
               .map {
                 case i if BoxStore.isFile(i)   => i.asInstanceOf[BoxFile#Info].asLeft.some
@@ -265,11 +267,11 @@ class BoxStore[F[_]](
         else Stream.empty
       case head :: Nil =>
         Stream
-          .fromBlockingIterator(blocker, BoxStore.blockingIterator(parentFolder, fields))
+          .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, fields), 64)
           .find(_.getName.equalsIgnoreCase(head))
       case head :: tail =>
         Stream
-          .fromBlockingIterator(blocker, BoxStore.blockingIterator(parentFolder, Array.empty))
+          .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, Array.empty), 64)
           .find { info =>
             BoxStore.isFolder(info) && info.getName.equalsIgnoreCase(head)
           }
@@ -282,7 +284,7 @@ class BoxStore[F[_]](
     case Nil => parentFolder.pure[F]
     case head :: tail =>
       Stream
-        .fromBlockingIterator(blocker, BoxStore.blockingIterator(parentFolder, Array.empty))
+        .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, Array.empty), 64)
         .find(_.getName.equalsIgnoreCase(head))
         .compile
         .last
@@ -290,13 +292,13 @@ class BoxStore[F[_]](
           case Some(info) if BoxStore.isFolder(info) =>
             new BoxFolder(api, info.getID).pure[F]
           case Some(_) =>
-            F.raiseError(
+            Async[F].raiseError(
               new IllegalArgumentException(
                 s"Can't create Folder '$head' along path - File with this name already exists"
               )
             )
           case None =>
-            blocker.delay(parentFolder.createFolder(head).getResource)
+            Async[F].blocking(parentFolder.createFolder(head).getResource)
         }
         .flatMap(putFolderAtPath(_, tail))
   }
@@ -318,11 +320,14 @@ class BoxStore[F[_]](
 }
 
 object BoxStore {
-  def apply[F[_]](
+
+  /** @param api - underlying configured BoxAPIConnection
+    * @param rootFolderId – override for Root Folder Id, default – "0"
+    */
+  def apply[F[_]: Async](
     api: BoxAPIConnection,
-    blocker: Blocker,
     rootFolderId: String = RootFolderId
-  )(implicit F: Concurrent[F], CS: ContextShift[F]): BoxStore[F] = new BoxStore(api, blocker, rootFolderId)
+  ): BoxStore[F] = new BoxStore(api, rootFolderId)
 
   val RootFolderId = "0"
 
