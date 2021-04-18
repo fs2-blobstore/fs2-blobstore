@@ -158,6 +158,14 @@ abstract class AbstractStoreTest[B <: FsObject]
     io.unsafeRunSync()
   }
 
+  it should "stat urls" in {
+    val dir = dirUrl("list-dirs")
+    List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
+
+    val b = store.stat(dir / "subdir" / "file-1.txt").compile.lastOrError.unsafeRunSync()
+    b.path.fileName mustBe Some("file-1.txt")
+  }
+
   it should "list files and directories correctly" in {
     val dir   = dirUrl("list-dirs")
     val paths = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
@@ -524,13 +532,13 @@ abstract class AbstractStoreTest[B <: FsObject]
     }
   }
 
-  def dirUrl(name: String): Url[String] = Url(scheme, authority, testRunRoot `//` name)
+  def dirUrl(name: String): Url.Plain = Url(scheme, authority, testRunRoot `//` name)
 
   def localDirPath(name: String): Path.Plain = transferStoreRootDir / name
 
   def contents(filename: String): String = s"file contents to upload: $filename"
 
-  def writeFile(store: Store[IO, B], tmpDir: Url[String])(filename: String): Url[String] = {
+  def writeFile(store: Store[IO, B], tmpDir: Url.Plain)(filename: String): Url.Plain = {
     def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>
       if (count < times) IO.sleep(500.millis) >> retry(io, count + 1, times) else IO.raiseError(t)
     }

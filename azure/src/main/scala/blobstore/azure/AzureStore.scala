@@ -179,16 +179,17 @@ class AzureStore[F[_]: Async](
     putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(bytes.toByteBuffer)))
   }
 
-  override def stat[A](url: Url[A]): Stream[F, Path[AzureBlob]] = {
+  override def stat[A](url: Url[A]): Stream[F, Url[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
     Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(mono.toFuture)).attempt).evalMap {
       case Right(props) =>
         val (bip, meta) = AzureStore.toBlobItemProperties(props)
-        Path.of(blobName, AzureBlob(container, blobName, bip.some, meta)).some.pure[F]
+        val path        = Path.of(blobName, AzureBlob(container, blobName, bip.some, meta))
+        url.withPath(path).some.pure[F]
       case Left(e: BlobStorageException) if e.getStatusCode == 404 =>
-        none[Path[AzureBlob]].pure[F]
-      case Left(e) => e.raiseError[F, Option[Path[AzureBlob]]]
+        none[Url[AzureBlob]].pure[F]
+      case Left(e) => e.raiseError[F, Option[Url[AzureBlob]]]
     }.unNone
   }
 

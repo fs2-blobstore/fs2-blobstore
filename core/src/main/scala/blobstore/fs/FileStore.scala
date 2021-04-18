@@ -106,7 +106,7 @@ class FileStore[F[_]: Files: Async] extends PathStore[F, NioPath] {
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def lift(g: Url[String] => Validated[Throwable, Plain]): Store[F, NioPath] =
+  override def lift(g: Url.Plain => Validated[Throwable, Plain]): Store[F, NioPath] =
     new Store.DelegatingStore[F, NioPath](this, g)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =

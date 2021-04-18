@@ -60,14 +60,23 @@ class S3Store[F[_]: Async](
   override def list[A](url: Url[A], recursive: Boolean = false): Stream[F, Url[S3Blob]] =
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
-  override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = get(url, None)
-
-  def get[A](url: Url[A], meta: Option[S3MetaInfo]): Stream[F, Byte] = {
+  override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = {
     val bucket = url.authority.show
     val key    = url.path.relative.show
 
-    val request: GetObjectRequest =
-      meta.fold(GetObjectRequest.builder())(S3MetaInfo.getObjectRequest).bucket(bucket).key(key).build()
+    performGet(GetObjectRequest.builder().bucket(bucket).key(key).build())
+  }
+
+  def get[A](url: Url[A], meta: S3MetaInfo): Stream[F, Byte] = {
+    val bucket = url.authority.show
+    val key    = url.path.relative.show
+
+    val request = S3MetaInfo.getObjectRequest(meta).bucket(bucket).key(key).build()
+
+    performGet(request)
+  }
+
+  private def performGet(request: GetObjectRequest) = {
     val cf = new CompletableFuture[Stream[F, Byte]]()
     val transformer: AsyncResponseTransformer[GetObjectResponse, Stream[F, Byte]] =
       new AsyncResponseTransformer[GetObjectResponse, Stream[F, Byte]] {
@@ -363,21 +372,23 @@ class S3Store[F[_]: Async](
       }
       .stream
 
-  override def stat[A](url: Url[A]): Stream[F, Path[S3Blob]] =
+  override def stat[A](url: Url[A]): Stream[F, Url[S3Blob]] =
     Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(
       s3.headObject(HeadObjectRequest.builder().bucket(url.authority.show).key(url.path.relative.show).build())
     )).map { resp =>
-      Path.of(
+      val path = Path.of(
         url.path.show,
         S3Blob(url.authority.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
-      ).some
+      )
+      url.withPath(path).some
     }
       .recover {
         case _: NoSuchKeyException =>
           val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ =>
             defaultTrailingSlashFiles
           )
-          Path.of(url.path.show, S3Blob(url.authority.show, url.path.relative.show, meta)).some
+          val path = Path.of(url.path.show, S3Blob(url.authority.show, url.path.relative.show, meta))
+          url.withPath(path).some
       }).unNone
 
 }
