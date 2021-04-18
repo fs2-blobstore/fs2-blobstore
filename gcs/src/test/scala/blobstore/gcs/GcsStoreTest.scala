@@ -3,6 +3,7 @@ package gcs
 
 import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Path.Plain
+import blobstore.Store
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all._
@@ -28,6 +29,23 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   override def mkStore(): GcsStore[IO] = gcsStore
 
   behavior of "GcsStore"
+
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("storage-class")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    store.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None // not supported by gcs test lib
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+  }
 
   // When creating "folders" in the GCP UI, a zero byte object with the name of the prefix is created
   it should "list prefix with first object named the same as prefix" is pending

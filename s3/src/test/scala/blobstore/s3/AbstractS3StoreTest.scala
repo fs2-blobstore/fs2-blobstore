@@ -10,7 +10,7 @@ import com.dimafeng.testcontainers.GenericContainer
 import fs2.{Chunk, Stream}
 import org.scalatest.{Assertion, Inside}
 import software.amazon.awssdk.services.s3.S3AsyncClient
-import software.amazon.awssdk.services.s3.model.{CreateBucketRequest, StorageClass}
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 
 abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside {
   def container: GenericContainer
@@ -107,10 +107,4 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
     test.unsafeRunSync()
   }
 
-  it should "resolve type of storage class" in {
-    store.list(dirUrl("foo")).map { url =>
-      val sc: Option[StorageClass] = url.path.storageClass
-      sc mustBe None
-    }
-  }
 }

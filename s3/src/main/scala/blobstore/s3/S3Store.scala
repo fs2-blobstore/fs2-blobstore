@@ -60,6 +60,13 @@ class S3Store[F[_]: Async](
   override def list[A](url: Url[A], recursive: Boolean = false): Stream[F, Url[S3Blob]] =
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
+  /** This version of list will run a HEAD request on every object to return metadata for all objects
+    *
+    * See `defaultFullMetadata` for controlling the default `list` behavior
+    */
+  def listWithHead[A](url: Url[A], recursive: Boolean = false): Stream[F, Url[S3Blob]] =
+    listUnderlying(url, true, defaultTrailingSlashFiles, recursive)
+
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = get(url, None)
 
   def get[A](url: Url[A], meta: Option[S3MetaInfo]): Stream[F, Byte] = {
