@@ -49,6 +49,9 @@ trait Store[F[_], +BlobType] {
     */
   def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte]
 
+  def get[A](url: Url[A]): Stream[F, Byte] =
+    get(url, 2 * 1024 * 1024)
+
   /** @param url
     *   to put
     * @param overwrite

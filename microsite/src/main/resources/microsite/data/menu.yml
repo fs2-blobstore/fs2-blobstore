@@ -1,0 +1,18 @@
+options:
+
+  - title: Data model
+    url: documentation/data-model
+
+  - title: Stores
+    url: documentation/stores.html
+    nested_options:
+      - title: GCS
+        url: documentation/stores/gcs.html
+      - title: S3
+        url: documentation/stores/s3.html
+      - title: Azure
+        url: documentation/stores/azure.html
+      - title: SFTP
+        url: documentation/stores/sftp.html
+      - title: Box
+        url: documentation/stores/box.html

@@ -36,14 +36,14 @@ lazy val azure = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val `integration-tests` = project.dependsOn(s3, sftp, box, gcs, azure)
 
-lazy val docs = (project in file("project-docs"))
+lazy val docs = project in file("project-docs")
+
+lazy val microsite = project
   .settings(
-    mdocVariables := Map(
-      "VERSION" -> version.value
-    ),
-    publish / skip := true,
-    Compile / scalacOptions -= "-Ywarn-dead-code",
-    mdocExtraArguments := Seq("--no-link-hygiene") // https://github.com/scalameta/mdoc/issues/94
+    Compile / scalacOptions --= Seq("-Ywarn-unused:locals", "-Wunused:locals"),
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "squants" % "1.8.3"
+    )
   )
   .dependsOn(gcs, sftp, s3, box, azure, core % "compile->test")
-  .enablePlugins(MdocPlugin)
+  .enablePlugins(MdocPlugin, MicrositesPlugin)

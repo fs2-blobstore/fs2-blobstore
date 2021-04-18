@@ -1,0 +1,38 @@
+name: Update documentation
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - uses: coursier/cache-action@v6
+
+      - name: Configure git
+        run: |
+          git config --global user.name 'Github actions'
+          git config --global user.email 'fs2-blobstore@users.noreply.github.com'
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 2.7
+
+      - name: Setup Jekyll
+        run: gem install jekyll -v 4.0.0
+
+      - name: Generate documentation
+        run: sbt 'microsite/mdoc; microsite/publishMicrosite'
