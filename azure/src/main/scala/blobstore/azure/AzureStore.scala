@@ -73,7 +73,7 @@ class AzureStore[F[_]: Async](
     properties: Option[BlobItemProperties],
     meta: Map[String, String]
   ): Pipe[F, Byte, Unit] = in =>
-    Stream.resource(in.chunks.map(_.toByteBuffer).toUnicastPublisher).flatMap { publisher =>
+    Stream.resource(in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher).flatMap { publisher =>
       val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
       val blobClient = azure
         .getBlobContainerAsyncClient(container)
@@ -176,19 +176,20 @@ class AzureStore[F[_]: Async](
         )
       _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
     } yield queue
-    putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(bytes.toByteBuffer)))
+    putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(ByteBuffer.wrap(bytes.toArray))))
   }
 
-  override def stat[A](url: Url[A]): Stream[F, Path[AzureBlob]] = {
+  override def stat[A](url: Url[A]): Stream[F, Url[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
     Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(mono.toFuture)).attempt).evalMap {
       case Right(props) =>
         val (bip, meta) = AzureStore.toBlobItemProperties(props)
-        Path.of(blobName, AzureBlob(container, blobName, bip.some, meta)).some.pure[F]
+        val path        = Path.of(blobName, AzureBlob(container, blobName, bip.some, meta))
+        url.withPath(path).some.pure[F]
       case Left(e: BlobStorageException) if e.getStatusCode == 404 =>
-        none[Path[AzureBlob]].pure[F]
-      case Left(e) => e.raiseError[F, Option[Path[AzureBlob]]]
+        none[Url[AzureBlob]].pure[F]
+      case Left(e) => e.raiseError[F, Option[Url[AzureBlob]]]
     }.unNone
   }
 

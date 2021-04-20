@@ -1,9 +1,9 @@
 name := "s3"
 
-val fs2Version = "3.0.1"
+val fs2Version = "3.0.4"
 
 libraryDependencies ++= Seq(
-  "software.amazon.awssdk" % "s3"                        % "2.16.34",
+  "software.amazon.awssdk" % "s3"                        % "2.16.88",
   "co.fs2"                %% "fs2-reactive-streams"      % fs2Version,
-  "com.dimafeng"          %% "testcontainers-scala-core" % "0.39.3" % Test
+  "com.dimafeng"          %% "testcontainers-scala-core" % "0.39.5" % Test
 )

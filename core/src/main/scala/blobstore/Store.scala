@@ -15,7 +15,7 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-import blobstore.url.{Path, Url}
+import blobstore.url.{FsObject, Path, Url}
 import cats.MonadError
 import cats.data.Validated
 import cats.effect.Concurrent
@@ -90,10 +90,12 @@ trait Store[F[_], +BlobType] {
     */
   def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit]
 
-  def stat[A](url: Url[A]): Stream[F, Path[BlobType]]
+  def stat[A](url: Url[A]): Stream[F, Url[BlobType]]
 }
 
 object Store {
+  type Generic[F[_]] = Store[F, FsObject]
+
   implicit def syntax[F[_]: Files: Concurrent, B](store: Store[F, B]): StoreOps[F, B] =
     new StoreOps[F, B](store)
 
@@ -106,9 +108,9 @@ object Store {
   //
   private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob](
     delegate: PathStore[F, Blob],
-    validateInput: Url[String] => Validated[Throwable, Path.Plain] = (_: Url[String]).path.valid[Throwable]
+    validateInput: Url.Plain => Validated[Throwable, Path.Plain] = (_: Url.Plain).path.valid[Throwable]
   ) extends Store[F, Blob] {
-    private def plainUrl[A](url: Url[A]): Url[String] = url.copy(path = url.path.plain)
+    private def plainUrl[A](url: Url[A]): Url.Plain = url.copy(path = url.path.plain)
 
     override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[Blob]] =
       validateInput(plainUrl(url))
@@ -141,8 +143,10 @@ object Store {
     override def remove[A](url: Url[A], recursive: Boolean): F[Unit] =
       validateInput(plainUrl(url)).liftTo[F].flatMap(delegate.remove(_, recursive))
 
-    override def stat[A](url: Url[A]): Stream[F, Path[Blob]] =
-      validateInput(plainUrl(url)).liftTo[Stream[F, *]].flatMap(s => Stream.eval(delegate.stat[String](s)).unNone)
+    override def stat[A](url: Url[A]): Stream[F, Url[Blob]] =
+      validateInput(plainUrl(url)).liftTo[Stream[F, *]].flatMap(s =>
+        Stream.eval(delegate.stat[String](s)).unNone.map(url.withPath)
+      )
 
     override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
       val p = computeUrl.flatMap(url => validateInput(plainUrl(url)).liftTo[F])

@@ -92,10 +92,10 @@ abstract class PathStore[F[_], BlobType] {
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  def lift(g: Url[String] => Validated[Throwable, Path.Plain]): Store[F, BlobType]
+  def lift(g: Url.Plain => Validated[Throwable, Path.Plain]): Store[F, BlobType]
 
   def lift: Store[F, BlobType] =
-    lift((u: Url[String]) => u.path.valid.map(_.plain))
+    lift((u: Url.Plain) => u.path.valid.map(_.plain))
 
   def transferTo[B, P, A](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[A])(implicit ev: B <:< FsObject): F[Int]
 

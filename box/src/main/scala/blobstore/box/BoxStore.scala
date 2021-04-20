@@ -309,7 +309,7 @@ class BoxStore[F[_]: Async](
     * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
     * to this store.
     */
-  override def lift(g: Url[String] => Validated[Throwable, Path.Plain]): Store[F, BoxPath] =
+  override def lift(g: Url.Plain => Validated[Throwable, Path.Plain]): Store[F, BoxPath] =
     new Store.DelegatingStore[F, BoxPath](this, g)
 
   override def transferTo[B, P, A](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[A])(implicit

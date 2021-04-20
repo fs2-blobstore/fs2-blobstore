@@ -160,10 +160,10 @@ class GcsStore[F[_]: Async](
   override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     Async[F].blocking(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
-  override def stat[A](url: Url[A]): Stream[F, Path[GcsBlob]] =
+  override def stat[A](url: Url[A]): Stream[F, Url[GcsBlob]] =
     Stream.eval(Async[F].blocking(Option(storage.get(GcsStore.toBlobId(url)))))
       .unNone
-      .map(b => Path.of(b.getName, GcsBlob(b)))
+      .map(b => url.withPath(Path.of(b.getName, GcsBlob(b))))
 
 }
 

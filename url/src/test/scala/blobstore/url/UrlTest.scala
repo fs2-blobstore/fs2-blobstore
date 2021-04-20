@@ -3,6 +3,7 @@ package blobstore.url
 import blobstore.url.exception.UrlParseError
 import blobstore.url.UrlTest.{Password, User}
 import blobstore.url.exception.UrlParseError.MissingScheme
+import blobstore.url.Path.RootlessPath
 import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
@@ -14,6 +15,8 @@ import scala.util.{Success, Try}
 class UrlTest extends AnyFlatSpec with Matchers with Inside {
 
   behavior of "Url"
+
+  // scalafix:off
 
   it should "compose" in {
     val fileLike = "https://foo.example.com"
@@ -27,7 +30,8 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         (url / Path("foo")).show mustBe "https://foo.example.com/foo"
         (url / Path("/foo")).show mustBe "https://foo.example.com/foo"
         (url `//` "foo").show mustBe "https://foo.example.com/foo/"
-        (url / "foo").replacePath(Path("bar/baz/")).show mustBe "https://foo.example.com/bar/baz/"
+        (url / "foo").withPath(Path("bar/baz/")).show mustBe "https://foo.example.com/bar/baz/"
+        (url / "foo").withAuthority(Authority.unsafe("bar.example.com")).show mustBe "https://bar.example.com/foo"
     }
   }
 
@@ -119,7 +123,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         u.path.show mustBe "bar"
     }
 
-    inside(Url.parse("file:///bar")) { // scalafix:ok
+    inside(Url.parse("file:///bar")) {
       case Valid(u) =>
         u.scheme mustBe "file"
         u.authority.host.show mustBe "localhost"
@@ -135,30 +139,30 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
     val allExpected = Url(
       "https",
       Authority(Host.unsafe("example.com"), Some(UserInfo("foo", "bar".some)), blobstore.url.Port.unsafe(8080).some),
-      Path("/foo/")
+      Path("foo/")
     )
 
-    val candidates: List[Option[(String, Url[String])]] = cross.map {
+    val candidates: List[Option[(String, Url.Plain)]] = cross.map {
       case (User(u), User(_)) =>
         val v   = show"https://$u@example.com/foo/"
-        val url = Url("https", Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), None), Path("/foo/"))
+        val url = Url("https", Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), None), Path("foo/"))
         (v -> url).some
       case (User(u), Password(p)) =>
         val v   = show"https://$u:$p@example.com/foo/"
-        val url = Url("https", Authority(Host.unsafe("example.com"), Some(UserInfo(u, p.some)), None), Path("/foo/"))
+        val url = Url("https", Authority(Host.unsafe("example.com"), Some(UserInfo(u, p.some)), None), Path("foo/"))
         (v -> url).some
       case (User(u), Port(p)) =>
         val v = show"https://$u@example.com:$p/foo/"
         val url = Url(
           "https",
           Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), blobstore.url.Port.unsafe(p).some),
-          Path("/foo/")
+          Path("foo/")
         )
         (v -> url).some
       case (Port(p), Port(_)) =>
         val v = show"https://example.com:$p/foo/"
         val url =
-          Url("https", Authority(Host.unsafe("example.com"), None, blobstore.url.Port.unsafe(p).some), Path("/foo/"))
+          Url("https", Authority(Host.unsafe("example.com"), None, blobstore.url.Port.unsafe(p).some), Path("foo/"))
         (v -> url).some
       case _ => None
     }
@@ -179,6 +183,21 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         missingScheme mustBe List(MissingScheme("foo", None))
     }
   }
+
+  it should "parse to rootless paths by default" in {
+    val url = Url.unsafe("https://example.com/foo/bar")
+    url.path mustBe a[RootlessPath[_]]
+  }
+
+  it should "convert between schemes" in {
+    val url    = Url.unsafe("https://example.com/foo/bar")
+    val bucket = Hostname.unsafe("foo")
+    url.toAzure(bucket).show mustBe "https://foo/foo/bar"
+    url.toS3(bucket).show mustBe "s3://foo/foo/bar"
+    url.toGcs(bucket).show mustBe "gs://foo/foo/bar"
+    url.toSftp(bucket.authority).show mustBe "sftp://foo/foo/bar"
+  }
+  // scalafix:on
 }
 
 object UrlTest {

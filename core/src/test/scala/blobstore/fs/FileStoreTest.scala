@@ -26,7 +26,7 @@ class FileStoreTest extends AbstractStoreTest[NioPath] {
   private val localStore: FileStore[IO] = FileStore[IO]
 
   override def mkStore(): Store[IO, NioPath] =
-    localStore.lift((u: Url[String]) => u.path.valid)
+    localStore.lift((u: Url.Plain) => u.path.valid)
 
   override val scheme: String       = "file"
   override val authority: Authority = Authority.localhost
@@ -35,6 +35,24 @@ class FileStoreTest extends AbstractStoreTest[NioPath] {
   override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
 
   behavior of "FileStore.put"
+
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("trailing-slash")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    store.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+  }
+
   it should "not have side effects when creating a Sink" in {
     localStore.put(Path(s"fs_tests_$testRun/path/file.txt"))
     localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe Nil

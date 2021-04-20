@@ -1,7 +1,7 @@
 inThisBuild(
   Seq(
-    scalaVersion := "2.13.5",
-    crossScalaVersions := Seq("2.12.12", "2.13.5"),
+    scalaVersion := "2.13.6",
+    crossScalaVersions := Seq("2.12.14", "2.13.6"),
     organization := "com.github.fs2-blobstore",
     licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
@@ -13,7 +13,7 @@ inThisBuild(
     homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
     addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
-    addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.11.3" cross CrossVersion.full),
+    addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.13.0" cross CrossVersion.full),
     javacOptions ++= {
       val javaVersion: Int = {
         var sysVersion = System.getProperty("java.version")
@@ -26,8 +26,7 @@ inThisBuild(
         case x if x >= 10 => Seq("-source", s"$x", "-target", s"$x")
       }
     }
-  ) ++
-    addCommandAlias("scalafixCheck", "scalafix --check")
+  )
 )
 
 lazy val fs2blobstore = project
@@ -36,7 +35,7 @@ lazy val fs2blobstore = project
     moduleName := "root",
     publish / skip := true
   )
-  .aggregate(url, core, s3, sftp, gcs, azure, box)
+  .aggregate(url, core, s3, sftp, gcs, azure, box, `integration-tests`)
 
 lazy val url = project
 
@@ -51,6 +50,8 @@ lazy val box = project.dependsOn(core % "compile->compile;test->test")
 lazy val gcs = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val azure = project.dependsOn(core % "compile->compile;test->test")
+
+lazy val `integration-tests` = project.dependsOn(s3, sftp, box, gcs, azure)
 
 lazy val docs = (project in file("project-docs"))
   .settings(

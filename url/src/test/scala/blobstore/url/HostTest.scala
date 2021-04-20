@@ -5,6 +5,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.Inside
 
+import scala.util.{Failure, Success, Try}
+
 class HostTest extends AnyFlatSpec with Matchers with Inside {
   behavior of "Host"
 
@@ -43,10 +45,21 @@ class HostTest extends AnyFlatSpec with Matchers with Inside {
         case Right(Hostname(_)) => //noop
       }
     }
+    validHostnames.map(Host.parseF[Try]).foreach { h =>
+      inside(h) {
+        case Success(Hostname(_)) => //noop
+      }
+    }
 
     validIps.map(Host.parse).map(_.toEither).foreach { h =>
       inside(h) {
         case Right(IpV4Address(_, _, _, _)) => //noop
+      }
+    }
+
+    validIps.map(Host.parseF[Try]).foreach { h =>
+      inside(h) {
+        case Success(IpV4Address(_, _, _, _)) => //noop
       }
     }
 
@@ -56,9 +69,21 @@ class HostTest extends AnyFlatSpec with Matchers with Inside {
       }
     }
 
+    invalidHostnames.map(Hostname.parseF[Try]).foreach { h =>
+      inside(h) {
+        case Failure(_) => //noop
+      }
+    }
+
     invalidIps.map(IpV4Address.parse).map(_.toEither).foreach { h =>
       inside(h) {
         case Left(_) => //noop
+      }
+    }
+
+    invalidIps.map(IpV4Address.parseF[Try]).foreach { h =>
+      inside(h) {
+        case Failure(_) => //noop
       }
     }
   }

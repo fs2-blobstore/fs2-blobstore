@@ -76,7 +76,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
   }
 
   /** getContents with default UTF8 decoder
-    * @param url Path to get
+    * @param url Url to get
     * @return F[String] with file contents
     */
   def getContents[A](url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
@@ -93,42 +93,35 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     store.get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
 
   /** Collect all list results in the same order as the original list Stream
-    * @param url Path to list
-    * @return F\[List\[Path\]\] with all items in the result
+    * @param url Url to list
+    * @return F\[List\[Url\]\] with all items in the result
     */
-  def listAll[A](url: Url[A]): F[List[Url[B]]] =
-    store.list(url).compile.toList
+  def listAll[A](url: Url[A], recursive: Boolean = false): F[List[Url[B]]] =
+    store.list(url, recursive).compile.toList
 
   /** Copy value of the given path in this store to the destination store.
     *
-    * This is especially useful when transferring content into S3Store that requires to know content
-    * size before starting content upload.
-    *
-    * This method will list items from srcPath, get the file size and put into dstStore with the given size. If
-    * listing contents result in nested directories it will copy files inside dirs recursively.
+    * This method will list item at srcUrl and copy it to dstUrl in dstStore.
+    * If srcUrl points to a directory, it will copy files inside recursively.
     *
     * @param dstStore destination store
-    * @param srcUrl path to transfer from (can be a path to a file or dir)
-    * @param dstUrl path to transfer to (can be a path to a file or dir, if you are transferring multiple files,
-    *                make sure that dstPath.isDir == true, otherwise all files will override destination.
-    * @return Stream[F, Int] number of files transfered
+    * @param srcUrl url to transfer from (can be a path to a file or directory)
+    * @param dstUrl url to transfer to (if srcUrl points to a directory, interpreted as a prefix)
+    * @return F[Int] number of files transferred
     */
   def transferTo[BB, A, C](dstStore: Store[F, BB], srcUrl: Url[A], dstUrl: Url[C]): F[Int] =
-    store.list(srcUrl, recursive = true)
-      .flatMap(u =>
-        store.get(u, 4096)
-          .through(dstStore.put(dstUrl))
-          .last
-          .map(_.fold(0)(_ => 1))
-      )
-      .fold(0)(_ + _)
-      .compile.last.map(_.getOrElse(0))
+    store.list(srcUrl, recursive = true).evalMap { u =>
+      val targetUrl =
+        if (u.path.plain === srcUrl.path.plain) dstUrl.plain
+        else dstUrl / srcUrl.path.nioPath.relativize(u.path.nioPath).toString
+      store.get(u, 4096).through(dstStore.put(targetUrl)).compile.drain.as(1)
+    }.compile.fold(0)(_ + _)
 
   /** Remove all files from a store recursively, given a path
     */
   def removeAll[A](url: Url[A])(implicit ev: B <:< FsObject): F[Int] = {
     val isDir = store.stat(url).compile.last.map {
-      case Some(d) => d.isDir
+      case Some(d) => d.path.isDir
       case None    => url.path.show.endsWith("/")
     }
 
@@ -138,7 +131,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
           if (u.path.isDir) {
             removeAll(url / u.path.lastSegment)
           } else {
-            val dUrl: Url[String] = if (isDir) url / u.path.lastSegment else url.replacePath(url.path)
+            val dUrl: Url.Plain = if (isDir) url / u.path.lastSegment else url.withPath(url.path.plain)
             store.remove(dUrl, recursive = false).as(1)
           }
         )
