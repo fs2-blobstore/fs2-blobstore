@@ -15,5 +15,17 @@ coverage:
         informational: true
         if_ci_failed: success
 
+flags:
+  2.12:
+    paths:
+      - box/src/main/scala/blobstore/box/BoxPath.scala
+      - box/src/main/scala/blobstore/box/BoxStore.scala
+    carryforward: true
+  2.13:
+    paths:
+      - box/src/main/scala/blobstore/box/BoxPath.scala
+      - box/src/main/scala/blobstore/box/BoxStore.scala
+    carryforward: true
+
 ignore:
   - "**/S3MetaInfo.scala"

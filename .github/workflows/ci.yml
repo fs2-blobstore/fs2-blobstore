@@ -23,6 +23,10 @@ jobs:
         java: ['adopt:11']
     runs-on: ${{ matrix.os }}
     steps:
+      - id: scala-major-minor
+        run: |
+          v=$(echo ${{matrix.scala}} | cut -d'.' -f1-2)
+          echo "::set-output name=version::$v"
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2
 
@@ -44,7 +48,7 @@ jobs:
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
         with:
-          flags: local-scala-${{ matrix.scala }}
+          flags: local-scala-${{ steps.scala-major-minor.outputs.version }}
 
   all-test:
     name: Checks & all tests
@@ -56,6 +60,10 @@ jobs:
         java: ['adopt:11']
     runs-on: ${{ matrix.os }}
     steps:
+      - id: scala-major-minor
+        run: |
+          v=$(echo ${{matrix.scala}} | cut -d'.' -f1-2)
+          echo "::set-output name=version::$v"
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2
 
@@ -80,4 +88,4 @@ jobs:
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
         with:
-          flags: all-scala-${{ matrix.scala }}
+          flags: all-scala-${{ steps.scala-major-minor.outputs.version }}
