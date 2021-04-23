@@ -16,15 +16,19 @@ coverage:
         if_ci_failed: success
 
 flags:
-  2.12:
+  all-scala-2.12:
     paths:
       - box/src/main/scala/blobstore/box/BoxPath.scala
       - box/src/main/scala/blobstore/box/BoxStore.scala
+      - core/src/main/scala/blobstore/PathStore.scala
+      - url/src/main/scala/blobstore/url/Path.scala
     carryforward: true
-  2.13:
+  all-scala-2.13:
     paths:
       - box/src/main/scala/blobstore/box/BoxPath.scala
       - box/src/main/scala/blobstore/box/BoxStore.scala
+      - core/src/main/scala/blobstore/PathStore.scala
+      - url/src/main/scala/blobstore/url/Path.scala
     carryforward: true
 
 ignore:
