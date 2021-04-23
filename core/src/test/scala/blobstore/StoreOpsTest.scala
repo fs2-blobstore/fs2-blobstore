@@ -86,14 +86,14 @@ final case class DummyStore() extends Store[IO, String] {
       }
   }
   override def get[A](url: Url[A], chunkSize: Int): Stream[IO, Byte] = Stream.emits(buf)
-  override def list[A](url: Url[A], recursive: Boolean = false): Stream[IO, Url[String]] =
-    Stream.emits(List(url.replacePath(Path("the-file.txt"))))
+  override def list[A](url: Url[A], recursive: Boolean = false): Stream[IO, Url.Plain] =
+    Stream.emits(List(url.withPath(Path("the-file.txt"))))
   override def move[A, B](src: Url[A], dst: Url[B]): IO[Unit]                          = ???
   override def copy[A, B](src: Url[A], dst: Url[B]): IO[Unit]                          = ???
   override def remove[A](url: Url[A], recursive: Boolean): IO[Unit]                    = ???
   override def putRotate[A](computeUrl: IO[Url[A]], limit: Long): Pipe[IO, Byte, Unit] = ???
 
-  override def stat[A](url: Url[A]): Stream[IO, Path[String]] = ???
+  override def stat[A](url: Url[A]): Stream[IO, Url.Plain] = ???
 }
 
 object DummyStore {

@@ -12,18 +12,29 @@ import cats.syntax.all._
 import scala.util.Try
 
 case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
-  def replacePath[AA](p: Path[AA]): Url[String] = copy(path = p.plain)
-  def /[AA](path: Path[AA]): Url[String]        = copy(path = this.path./(path.show))
-  def /(segment: String): Url[String]           = copy(path = path./(segment))
-  def /(segment: Option[String]): Url[String] = segment match {
+  lazy val representation: A = path.representation
+
+  def plain: Url.Plain = copy(path = path.plain)
+
+  def withPath[AA](p: Path[AA]): Url[AA]     = copy(path = p)
+  def withAuthority(a: Authority): Url.Plain = copy(authority = a, path = path.plain)
+
+  def toS3(bucketName: Hostname): Url.Plain    = copy(scheme = "s3", authority = Authority(bucketName), path.plain)
+  def toGcs(bucketName: Hostname): Url.Plain   = copy(scheme = "gs", authority = Authority(bucketName), path.plain)
+  def toAzure(bucketName: Hostname): Url.Plain = copy(scheme = "https", authority = Authority(bucketName), path.plain)
+  def toSftp(authority: Authority): Url.Plain  = copy(scheme = "sftp", authority = authority, path.plain)
+
+  def /[AA](path: Path[AA]): Url.Plain = copy(path = this.path./(path.show))
+  def /(segment: String): Url.Plain    = copy(path = path./(segment))
+  def /(segment: Option[String]): Url.Plain = segment match {
     case Some(s) => /(s)
     case None    => copy(path = path.plain)
   }
 
   /** Ensure that path always is suffixed with '/'
     */
-  def `//`(segment: String): Url[String] = copy(path = path.`//`(segment))
-  def `//`(segment: Option[String]): Url[String] = segment match {
+  def `//`(segment: String): Url.Plain = copy(path = path.`//`(segment))
+  def `//`(segment: Option[String]): Url.Plain = segment match {
     case Some(s) => `//`(s)
     case None    => copy(path = path.plain)
   }
@@ -76,21 +87,23 @@ case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
 
 object Url {
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url[String]] =
+  type Plain = Url[String]
+
+  def parseF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url.Plain] =
     parse(c).leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
-  def unsafe(c: String): Url[String] = parse(c) match {
+  def unsafe(c: String): Url.Plain = parse(c) match {
     case Valid(u)   => u
     case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
-  def parse(c: String): ValidatedNec[UrlParseError, Url[String]] = {
+  def parse(c: String): ValidatedNec[UrlParseError, Url.Plain] = {
     val regex = "^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?".r
 
     // Treat `m.group` as unsafe, since it really is
     def tryOpt[A](a: => A): Try[Option[A]] = Try(a).map(Option.apply)
 
-    def parseFileUrl(u: String): ValidatedNec[UrlParseError, Url[String]] = {
+    def parseFileUrl(u: String): ValidatedNec[UrlParseError, Url.Plain] = {
       val fileRegex = "file:/([^:]+)".r
       fileRegex.findFirstMatchIn(u).map { m =>
         val matchRegex = tryOpt(m.group(1)).toEither.leftMap(_ => InvalidFileUrl(show"Not a valid file uri: $u"))
@@ -113,7 +126,11 @@ object Url {
       val typedAuthority: ValidatedNec[AuthorityParseError, Authority] =
         authority.leftMap(NonEmptyChain(_)).flatMap(Authority.parse(_).toEither).toValidated
 
-      val path: Path.Plain = OptionT(tryOpt(m.group(5))).map(Path.apply).getOrElse(Path.empty).getOrElse(Path.empty)
+      // Default to rootless paths when parsing URLs, these tends to be more useful.
+      // S3 fails if you pass it an absolute path, the same will GCS. Rootless paths will work for SFTP servers that
+      // don't use chroot for user logins, while absolute paths will not.
+      val pathGroup        = OptionT(tryOpt(m.group(5))).map(_.stripPrefix("/"))
+      val path: Path.Plain = pathGroup.map(Path.apply).getOrElse(Path.empty).getOrElse(Path.empty)
       val scheme =
         OptionT(
           tryOpt(m.group(2)).toEither.leftMap(t => MissingScheme(c, Some(t))).leftWiden[UrlParseError]
