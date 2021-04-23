@@ -128,7 +128,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     */
   def removeAll[A](url: Url[A])(implicit ev: B <:< FsObject): F[Int] = {
     val isDir = store.stat(url).compile.last.map {
-      case Some(d) => d.isDir
+      case Some(d) => d.path.isDir
       case None    => url.path.show.endsWith("/")
     }
 
@@ -138,7 +138,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
           if (u.path.isDir) {
             removeAll(url / u.path.lastSegment)
           } else {
-            val dUrl: Url[String] = if (isDir) url / u.path.lastSegment else url.replacePath(url.path)
+            val dUrl: Url.Plain = if (isDir) url / u.path.lastSegment else url.withPath(url.path.plain)
             store.remove(dUrl, recursive = false).as(1)
           }
         )

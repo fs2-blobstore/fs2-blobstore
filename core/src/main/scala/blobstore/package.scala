@@ -81,13 +81,13 @@ package object blobstore {
     srcPath: Path[P],
     dstUrl: Url[A]
   )(implicit evB: B <:< FsObject, evC: C <:< FsObject): F[Int] =
-    dstStore.stat(dstUrl).last.map(_.fold(dstUrl.path.show.endsWith("/"))(_.isDir)).flatMap { dstIsDir =>
+    dstStore.stat(dstUrl).last.map(_.fold(dstUrl.path.show.endsWith("/"))(_.path.isDir)).flatMap { dstIsDir =>
       selfStore.list(srcPath.plain, recursive = false)
         .evalMap { p =>
           if (p.isDir) {
             defaultTransferTo(selfStore, dstStore, p, dstUrl `//` p.lastSegment)
           } else {
-            val dUrl: Url[String] = if (dstIsDir) dstUrl / p.lastSegment else dstUrl.replacePath(dstUrl.path)
+            val dUrl: Url.Plain = if (dstIsDir) dstUrl / p.lastSegment else dstUrl.withPath(dstUrl.path.plain)
             selfStore.get(p, 4096).through(dstStore.put(dUrl)).compile.drain.as(1)
           }
         }

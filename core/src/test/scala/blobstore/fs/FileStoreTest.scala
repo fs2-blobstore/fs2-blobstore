@@ -26,7 +26,7 @@ class FileStoreTest extends AbstractStoreTest[NioPath] {
   private val localStore: FileStore[IO] = FileStore[IO]
 
   override def mkStore(): Store[IO, NioPath] =
-    localStore.lift((u: Url[String]) => u.path.valid)
+    localStore.lift((u: Url.Plain) => u.path.valid)
 
   override val scheme: String       = "file"
   override val authority: Authority = Authority.localhost

@@ -2,7 +2,7 @@ package blobstore.url
 
 import blobstore.url.exception.{HostParseError, MultipleUrlValidationException}
 import blobstore.url.Hostname.Label
-import cats.{ContravariantMonoidal, Order, Show}
+import cats.{ApplicativeThrow, ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
 import cats.syntax.all._
@@ -15,11 +15,16 @@ import scala.util.matching.Regex
   *
   * @see https://www.ietf.org/rfc/rfc1123.txt 2.1 "Host names and numbers"
   */
-sealed trait Host
+sealed trait Host {
+  def authority: Authority = Authority(this, None, None)
+}
 
 object Host {
 
   def parse(s: String): ValidatedNec[HostParseError, Host] = IpV4Address.parse(s).widen[Host].orElse(Hostname.parse(s))
+
+  def parseF[F[_]: ApplicativeThrow](s: String) =
+    parse(s).toEither.leftMap(new MultipleUrlValidationException(_)).liftTo[F]
 
   def unsafe(s: String): Host = parse(s) match {
     case Valid(v)   => v
@@ -61,6 +66,9 @@ object IpV4Address {
       case _ => HostParseError.ipv4.InvalidIpv4(s).invalidNec
     }
   }
+
+  def parseF[F[_]: ApplicativeThrow](s: String): F[IpV4Address] =
+    parse(s).toEither.leftMap(new MultipleUrlValidationException(_)).liftTo[F]
 
   def unsafe(s: String): IpV4Address = parse(s) match {
     case Valid(i)   => i
@@ -104,10 +112,13 @@ object Hostname {
     implicit val ordering: Ordering[Label] = order.toOrdering
   }
 
+  def parseF[F[_]: ApplicativeThrow](value: String): F[Hostname] =
+    parse(value).toEither.leftMap(MultipleUrlValidationException(_)).liftTo[F]
+
   def parse(value: String): ValidatedNec[HostParseError, Hostname] = {
     val labels: ValidatedNec[HostParseError, List[Label]] = value.split('.').toList.traverse { el =>
       val lengthOk: ValidatedNec[HostParseError, Unit] = Validated.cond(
-        el.length >= 1 && el.length <= 63,
+        el.nonEmpty && el.length <= 63,
         (),
         HostParseError.label.LabelLengthOutOfRange(el)
       ).toValidatedNec
