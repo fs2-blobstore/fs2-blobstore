@@ -16,6 +16,8 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
 
   behavior of "Url"
 
+  // scalafix:off
+
   it should "compose" in {
     val fileLike = "https://foo.example.com"
 
@@ -121,7 +123,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         u.path.show mustBe "bar"
     }
 
-    inside(Url.parse("file:///bar")) { // scalafix:ok
+    inside(Url.parse("file:///bar")) {
       case Valid(u) =>
         u.scheme mustBe "file"
         u.authority.host.show mustBe "localhost"
@@ -195,7 +197,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
     url.toGcs(bucket).show mustBe "gs://foo/foo/bar"
     url.toSftp(bucket.authority).show mustBe "sftp://foo/foo/bar"
   }
-
+  // scalafix:on
 }
 
 object UrlTest {
