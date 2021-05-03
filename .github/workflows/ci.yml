@@ -13,9 +13,8 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  local-test:
-    name: Checks & local tests
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+  run-tests:
+    name: Checks & Tests
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -48,10 +47,10 @@ jobs:
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
         with:
-          flags: local-scala-${{ steps.scala-major-minor.outputs.version }}
+          flags: scala-${{ steps.scala-major-minor.outputs.version }}
 
-  all-test:
-    name: Checks & all tests
+  integration-tests:
+    name: Integration tests
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     strategy:
       matrix:
@@ -83,9 +82,9 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Test
-        run: sbtn ++${{ matrix.scala }}! 'coverage; test; coverageAggregate'
+        run: sbtn ++${{ matrix.scala }}! 'coverage; testOnly * -- -n blobstore.IntegrationTest; coverageAggregate'
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
         with:
-          flags: all-scala-${{ steps.scala-major-minor.outputs.version }}
+          flags: scala-it-${{ steps.scala-major-minor.outputs.version }}
