@@ -1,78 +1,86 @@
 package blobstore
 package gcs
 
-import blobstore.url.{Authority, Path, Url}
-import blobstore.url.Path.Plain
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
+import blobstore.url.{Authority, Path}
+import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
 import fs2.Stream
-import org.scalatest.Inside
+import weaver.GlobalRead
 
 import scala.jdk.CollectionConverters._
 
-class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
+class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsStore[IO]](global) {
 
-  override val scheme: String        = "gs"
-  override val authority: Authority  = Authority.unsafe("bucket")
-  override val fileSystemRoot: Plain = Path("")
+  // LocalStorageHelper is not thread safe
+  override def maxParallelism = 1
 
-  val gcsStore: GcsStore[IO] = GcsStore[IO](
-    LocalStorageHelper.getOptions.getService,
-    defaultTrailingSlashFiles = true,
-    defaultDirectDownload = false
-  )
+  override val scheme: String       = "gs"
+  override val authority: Authority = Authority.unsafe("bucket")
 
-  override def mkStore(): GcsStore[IO] = gcsStore
+  override val fileSystemRoot: Path.Plain = Path("")
+  override val testRunRoot: Path.Plain    = Path(testRun.toString)
 
-  behavior of "GcsStore"
+  override val sharedResource: Resource[IO, TestResource[GcsBlob, GcsStore[IO]]] =
+    Resource.pure {
+      val gcsStore: GcsStore[IO] = GcsStore[IO](
+        LocalStorageHelper.getOptions.getService,
+        defaultTrailingSlashFiles = true,
+        defaultDirectDownload = false
+      )
+
+      TestResource(gcsStore, gcsStore)
+    }
 
   // When creating "folders" in the GCP UI, a zero byte object with the name of the prefix is created
-  it should "list prefix with first object named the same as prefix" is pending
+  // TODO: test("list prefix with first object named the same as prefix")
 
   // Keys with trailing slashes are perfectly legal in GCS.
   // https://cloud.google.com/storage/docs/naming
-  it should "handle files with trailing / in name" in {
-    val dir      = dirUrl("trailing-slash")
-    val filePath = dir / "file-with-slash/"
-
-    store.putContent(filePath, "test").unsafeRunSync()
-
-    // Note
-    val entities = store.list(dir).compile.toList.unsafeRunSync()
-    entities must not be Nil
-
-    entities.foreach { listedUrl =>
-      listedUrl.path.fileName mustBe Some("file-with-slash/")
-      listedUrl.path.isDir mustBe false
+  test("handle files with trailing / in name") { res =>
+    val dir = dirUrl("trailing-slash")
+    val url = dir / "file-with-slash/"
+    for {
+      data    <- randomBytes(25)
+      _       <- Stream.emits(data).through(res.store.put(url)).compile.drain
+      l1      <- res.store.listAll(dir)
+      content <- res.store.get(url, 128).compile.to(Array)
+      _       <- res.store.remove(url)
+      l2      <- res.store.listAll(dir)
+    } yield {
+      expect.all(
+        data sameElements content,
+        l1.size == 1,
+        l2.isEmpty
+      ) and l1.map(url =>
+        expect.all(
+          url.path.fileName.contains("file-with-slash/"),
+          !url.path.isDir
+        )
+      ).combineAll
     }
 
-    store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
-
-    store.remove(filePath).unsafeRunSync()
-
-    store.list(dir).compile.toList.unsafeRunSync() mustBe Nil
   }
 
-  it should "expose underlying metadata" in {
-    val dir  = dirUrl("expose-underlying")
-    val path = writeFile(store, dir)("abc.txt")
+  test("expose underlying metadata") { (res, log) =>
+    val dir = dirUrl("expose-underlying")
+    for {
+      (url, _) <- writeRandomFile(res.store, log)(dir)
+      l        <- res.store.listAll(url)
+    } yield {
 
-    val entities = store.list(path).compile.toList.unsafeRunSync()
-
-    entities.foreach { gcsUrl =>
       // Note: LocalStorageHelper doesn't automatically set other fields like storageClass, md5, etc.
-      gcsUrl.path.representation.blob.getGeneration mustBe 1
+      l.map { u => expect(u.path.representation.blob.getGeneration == 1L) }.combineAll
     }
   }
 
-  it should "set underlying metadata on write" in {
-    val ct  = "text/plain"
-    val sc  = StorageClass.NEARLINE
-    val url = Url("gs", authority, Path(s"test-$testRun/set-underlying/file"))
+  test("set underlying metadata on write using typed path") { res =>
+    val dir = dirUrl("set-underlying")
+    val url = dir / "file.bin"
 
+    val ct = "application/octet-stream"
+    val sc = StorageClass.NEARLINE
     val blobInfo = BlobInfo
       .newBuilder(url.authority.show, url.path.show)
       .setContentType(ct)
@@ -80,38 +88,37 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       .setMetadata(Map("key" -> "value").asJava)
       .build()
 
-    Stream("data".getBytes.toIndexedSeq: _*).through(
-      gcsStore.put(url.path.as(GcsBlob(blobInfo)), List.empty)
-    ).compile.drain.unsafeRunSync()
-    val entities = store.list(url).compile.toList.unsafeRunSync()
-
-    entities.foreach { gcsUrl =>
-      gcsUrl.path.representation.blob.getContentType mustBe ct
-      gcsUrl.path.representation.blob.getStorageClass mustBe sc
-      gcsUrl.path.representation.blob.getMetadata must contain key "key"
-      gcsUrl.path.representation.blob.getMetadata.get("key") mustBe "value"
+    for {
+      data <- randomBytes(25)
+      _    <- Stream.emits(data).through(res.extra.put(url.path.as(GcsBlob(blobInfo)), Nil)).compile.drain
+      l    <- res.store.listAll(url)
+    } yield {
+      l.map { u =>
+        expect.all(
+          u.path.representation.blob.getContentType == ct,
+          u.path.representation.blob.getStorageClass == sc,
+          u.path.representation.blob.getMetadata.get("key") == "value"
+        )
+      }.combineAll
     }
   }
 
-  it should "support direct download" in {
-    val dir      = dirUrl("direct-download")
-    val filename = s"test-${System.currentTimeMillis}.txt"
-    val path     = writeFile(store, dir)(filename)
-
-    val content = gcsStore
-      .getUnderlying(path, 4096, direct = true)
-      .through(fs2.text.utf8Decode)
-      .compile
-      .toList
-      .map(_.mkString)
-
-    content.unsafeRunSync() must be(contents(filename))
+  test("direct download") { (res, log) =>
+    val dir = dirUrl("direct-download")
+    for {
+      (url, original) <- writeRandomFile(res.store, log)(dir)
+      content         <- res.extra.getUnderlying(url, 4096, direct = true).compile.to(Array)
+    } yield {
+      expect(original sameElements content)
+    }
   }
 
-  it should "resolve type of storage class" in {
-    gcsStore.list(dirUrl("foo")).map { u =>
-      val sc: Option[StorageClass] = u.path.storageClass
-      sc mustBe None
+  test("resolve type of storage class") { res =>
+    res.store.listAll(dirUrl("storage-class")).map { l =>
+      l.map { u =>
+        val sc: Option[StorageClass] = u.path.storageClass
+        expect(sc.isEmpty)
+      }.combineAll
     }
   }
 }
