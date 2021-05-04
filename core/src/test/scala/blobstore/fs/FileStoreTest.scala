@@ -1,42 +1,32 @@
-/*
-Copyright 2018 LendUp Global, Inc.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
- */
 package blobstore
 package fs
 
 import blobstore.url.{Authority, Path, Url}
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
+import cats.effect.{IO, Resource}
+
 import cats.syntax.all._
+import weaver.GlobalRead
 
-class FileStoreTest extends AbstractStoreTest[NioPath] {
+import java.nio.file.Paths
 
-  private val localStore: FileStore[IO] = FileStore[IO]
-
-  override def mkStore(): Store[IO, NioPath] =
-    localStore.lift((u: Url.Plain) => u.path.valid)
+class FileStoreTest(global: GlobalRead) extends AbstractStoreTest[NioPath, Unit](global) {
 
   override val scheme: String       = "file"
   override val authority: Authority = Authority.localhost
 
-  override val fileSystemRoot: Path.Plain   = testRunRoot
-  override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
+  override val testRunRoot: Path.Plain    = Path(Paths.get(s"tmp/filestore/$testRun/").toAbsolutePath.toString)
+  override val fileSystemRoot: Path.Plain = testRunRoot.parentPath
 
-  behavior of "FileStore.put"
-  it should "not have side effects when creating a Sink" in {
-    localStore.put(Path(s"fs_tests_$testRun/path/file.txt"))
-    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe Nil
+  override val sharedResource: Resource[IO, TestResource[NioPath, Unit]] =
+    Resource.make(FileStore[IO].pure)(fs => fs.remove(testRunRoot, recursive = true))
+      .map(fs => TestResource(fs.lift((u: Url[String]) => u.path.valid), ()))
+
+  test("no side effects when creating a Pipe") { res =>
+    val dir = dirUrl("should-not") / "be" `//` "created"
+
+    res.store.put(dir / "file.txt")
+
+    res.store.list(dir.withPath(dir.path.parentPath)).compile.toList.map(list => expect(list.isEmpty))
+
   }
 }

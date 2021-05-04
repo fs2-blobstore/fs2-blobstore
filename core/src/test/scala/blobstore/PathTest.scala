@@ -1,126 +1,132 @@
-/*
-Copyright 2018 LendUp Global, Inc.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
- */
 package blobstore
 
 import blobstore.url.Path
-import org.scalatest.matchers.must.Matchers
-import org.scalatest.flatspec.AnyFlatSpec
+
 import cats.data.Chain
-import org.scalatest.{Assertion, Inside}
+
 import cats.syntax.all._
+import weaver.FunSuite
 
-class PathTest extends AnyFlatSpec with Matchers with Inside {
-  behavior of "Path"
-  it should "parse string path to file correctly" in {
+object PathTest extends FunSuite {
+
+  test("parse string path to file correctly") {
     val path = Path("some-bucket/path/to/file")
 
-    path.representation mustBe "some-bucket/path/to/file"
-    path.show mustBe "some-bucket/path/to/file"
-    path.segments mustBe Chain("some-bucket", "path", "to", "file")
-    path.lastSegment mustBe "file".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "some-bucket/path/to/file",
+      path.show == "some-bucket/path/to/file",
+      path.segments == Chain("some-bucket", "path", "to", "file"),
+      path.lastSegment == "file".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "parse string path to file without prefix correctly" in {
+  test("parse string path to file without prefix correctly") {
     val path = Path("some-bucket/path/to/file")
 
-    path.representation mustBe "some-bucket/path/to/file"
-    path.show mustBe "some-bucket/path/to/file"
-    path.segments mustBe Chain("some-bucket", "path", "to", "file")
-    path.lastSegment mustBe "file".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "some-bucket/path/to/file",
+      path.show == "some-bucket/path/to/file",
+      path.segments == Chain("some-bucket", "path", "to", "file"),
+      path.lastSegment == "file".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "parse string path to file stating with / correctly" in {
+  test("parse string path to file stating with / correctly") {
     val path = Path("/some-bucket/path/to/file")
 
-    path.representation mustBe "/some-bucket/path/to/file"
-    path.show mustBe "/some-bucket/path/to/file"
-    path.segments mustBe Chain("some-bucket", "path", "to", "file")
-    path.lastSegment mustBe "file".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "/some-bucket/path/to/file",
+      path.show == "/some-bucket/path/to/file",
+      path.segments == Chain("some-bucket", "path", "to", "file"),
+      path.lastSegment == "file".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "parse string path to dir correctly" in {
+  test("parse string path to dir correctly") {
     val path = Path("some-bucket/path/to/")
 
-    path.representation mustBe "some-bucket/path/to/"
-    path.show mustBe "some-bucket/path/to/"
-    path.segments mustBe Chain("some-bucket", "path", "to", "")
-    path.lastSegment mustBe "to/".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "some-bucket/path/to/",
+      path.show == "some-bucket/path/to/",
+      path.segments == Chain("some-bucket", "path", "to", ""),
+      path.lastSegment == "to/".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "parse paths with no key" in {
+  test("parse paths with no key") {
     val path = Path("some-bucket")
 
-    path.representation mustBe "some-bucket"
-    path.show mustBe "some-bucket"
-    path.segments mustBe Chain("some-bucket")
-    path.lastSegment mustBe "some-bucket".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "some-bucket",
+      path.show == "some-bucket",
+      path.segments == Chain("some-bucket"),
+      path.lastSegment == "some-bucket".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "parse empty path" in {
-    Path("") mustBe Path.empty
+  test("parse empty path") {
+    expect(Path("") == Path.empty)
   }
 
-  it should "parse paths with spaces" in {
+  test("parse paths with spaces") {
     val path = Path("root with spaces/dir with spaces/file with spaces")
 
-    path.representation mustBe "root with spaces/dir with spaces/file with spaces"
-    path.show mustBe "root with spaces/dir with spaces/file with spaces"
-    path.segments mustBe Chain("root with spaces", "dir with spaces", "file with spaces")
-    path.lastSegment mustBe "file with spaces".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "root with spaces/dir with spaces/file with spaces",
+      path.show == "root with spaces/dir with spaces/file with spaces",
+      path.segments == Chain("root with spaces", "dir with spaces", "file with spaces"),
+      path.lastSegment == "file with spaces".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "extend a path with no key correctly" in {
+  test("extend a path with no key correctly") {
     val path = Path("some-bucket") / "key"
 
-    path.representation mustBe "some-bucket/key"
-    path.show mustBe "some-bucket/key"
-    path.segments mustBe Chain("some-bucket", "key")
-    path.lastSegment mustBe "key".some
-    path.plain.show mustBe path.show
-    path.plain.representation mustBe path.representation
+    expect.all(
+      path.representation == "some-bucket/key",
+      path.show == "some-bucket/key",
+      path.segments == Chain("some-bucket", "key"),
+      path.lastSegment == "key".some,
+      path.plain.show == path.show,
+      path.plain.representation == path.representation
+    )
   }
 
-  it should "be extractable using unapply" in {
+  test("be extractable using unapply") {
     val path  = Path("some-bucket/folder/file").as(())
     val path2 = Path("some-bucket/folder/file")
 
-    inside[Path[Unit], Assertion](path) {
-      case Path(s, representation, segments) =>
-        s mustBe "some-bucket/folder/file"
-        representation mustBe (())
-        segments mustBe Chain("some-bucket", "folder", "file")
+    val e1 = expect {
+      path match {
+        case Path(s, _: Unit, segments) =>
+          s == "some-bucket/folder/file" &&
+            segments == Chain("some-bucket", "folder", "file")
+        case _ => false
+      }
     }
 
-    inside[Path.Plain, Assertion](path2) {
-      case Path(s, representation, segments) =>
-        s mustBe "some-bucket/folder/file"
-        representation mustBe "some-bucket/folder/file"
-        segments mustBe Chain("some-bucket", "folder", "file")
+    val e2 = expect {
+      path2 match {
+        case Path(s, representation, segments) =>
+          s == "some-bucket/folder/file" &&
+            representation == "some-bucket/folder/file" &&
+            segments == Chain("some-bucket", "folder", "file")
+        case _ => false
+      }
     }
+
+    e1 and e2
   }
 }

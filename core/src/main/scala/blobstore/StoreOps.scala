@@ -112,7 +112,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
   def transferTo[BB, A, C](dstStore: Store[F, BB], srcUrl: Url[A], dstUrl: Url[C]): F[Int] =
     store.list(srcUrl, recursive = true).evalMap { u =>
       val targetUrl =
-        if (u.path.plain === srcUrl.path.plain) dstUrl
+        if (u.path.plain === srcUrl.path.plain) dstUrl.plain
         else dstUrl / srcUrl.path.nioPath.relativize(u.path.nioPath).toString
 
       store.get(u, 4096).through(dstStore.put(targetUrl)).compile.drain.as(1)
