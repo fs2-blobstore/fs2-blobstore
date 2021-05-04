@@ -84,7 +84,7 @@ jobs:
         uses: coursier/cache-action@v5
 
       - name: Compile all sources
-        run: sbt --client ++ all compile Test/compile IntegrationTest/compile doc
+        run: sbt --client all compile Test/compile IntegrationTest/compile doc
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -93,10 +93,10 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Enable coverage instrumentation
-        run: sbt --client ++ coverage
+        run: sbt --client coverage
 
       - name: Test
-        run: sbt --client ++ 'testOnly * -- -n blobstore.IntegrationTest'
+        run: sbt --client 'testOnly * -- -n blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -106,7 +106,7 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        run: sbt --client ++ coverageReport
+        run: sbt --client coverageReport
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
