@@ -4,8 +4,8 @@ pull_request_rules:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
       - "label=mergify:merge"
-      - status-success=scalafmt
-      - status-success=tests
+      - "check-success~=^CI.*Formatting"
+      - "check-success~=^CI.*Tests"
     actions:
       merge:
         method: merge
@@ -16,8 +16,8 @@ pull_request_rules:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
       - "author=scala-steward"
-      - status-success=scalafmt
-      - status-success=tests
+      - "check-success~=^CI.*Formatting"
+      - "check-success~=^CI.*Tests"
     actions:
       merge:
         method: squash
@@ -27,9 +27,9 @@ pull_request_rules:
     conditions:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
-      - author~=^dependabot(|-preview)\[bot\]$
-      - status-success=scalafmt
-      - status-success=tests
+      - "author~=^dependabot(|-preview)\[bot\]$"
+      - "check-success~=^CI.*Formatting"
+      - "check-success~=^CI.*Tests"
     actions:
       merge:
         method: squash
