@@ -1,19 +1,16 @@
 package blobstore
 
 import blobstore.fs.NioPath
-import cats.effect.Resource
-
-import java.util.UUID
-import fs2.Stream
-
 import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.data.Chain
+import cats.effect.{IO, Resource}
 import cats.effect.std.Random
-import cats.effect.IO
 import cats.syntax.all._
-import weaver.{Expectations, GlobalRead, IOSuite, Log}
+import fs2.Stream
 import weaver.scalacheck._
+import weaver.{Expectations, GlobalRead, IOSuite, Log}
 
+import java.util.UUID
 import scala.concurrent.duration.FiniteDuration
 
 abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
@@ -32,7 +29,7 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
   def testRunRoot: Path.Plain
 
   // This path used for testing root level listing. Can be overridden by tests for stores that doesn't allow access
-  // to the real root. No writing is done to this path.
+  // to the real root.
   def fileSystemRoot: Path.Plain
 
   def transferStoreResources: Resource[IO, (Url[NioPath], Store[IO, NioPath])] =
@@ -378,16 +375,19 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
   test("read same data that was written") { res =>
     val dir = dirUrl("read-write")
-    forall[List[Byte], IO[Expectations]] { bytes: List[Byte] =>
-      val blob = Stream.emits(bytes)
-      for {
-        filePath <- randomAlphanumeric(20).map(dir / _)
-        _        <- blob.through(res.store.put(filePath)).compile.drain.attempt
-        contents <- res.store.get(filePath, 1024).compile.to(Array)
-      } yield {
-        expect(contents sameElements bytes)
-      }
+    if (res.disableHighRateTests) {
+      cancel("High-rate tests are disabled.")
+    } else {
+      forall[List[Byte], IO[Expectations]] { bytes: List[Byte] =>
+        for {
+          filePath <- randomAlphanumeric(20).map(dir / _)
+          _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain.attempt
+          contents <- res.store.get(filePath, 1024).compile.to(Array)
+        } yield {
+          expect(contents sameElements bytes)
+        }
 
+      }
     }
   }
 

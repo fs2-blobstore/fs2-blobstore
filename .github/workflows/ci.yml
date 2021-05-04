@@ -53,7 +53,7 @@ jobs:
         run: mkdir tmp
 
       - name: Test
-        run: sbt --client + 'testOnly * -- -l blobstore.IntegrationTest'
+        run: sbt --client + test
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -93,17 +93,17 @@ jobs:
         run: mkdir tmp
 
       - name: Decrypt Box App Key
-        run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
+        run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/it/resources/box_appkey.json.enc -out box/src/it/resources/box_appkey.json -d
 
       - name: Test
-        run: sbt --client 'testOnly * -- -n blobstore.IntegrationTest'
+        run: sbt --client IntegrationTest/test
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
         uses: mikepenz/action-junit-report@v2.4.1
         with:
           github_token: ${{ github.token }}
-          report_paths: '**/target/test-reports/*.xml'
+          report_paths: '**/target/it-reports/*.xml'
 
       - name: Generate coverage report
         run: sbt --client coverageReport
