@@ -1,20 +1,20 @@
 package blobstore.s3
 
-import blobstore.url.{Path, Url}
-import cats.effect.IO
-import cats.effect.std.Random
-import cats.effect.unsafe.implicits.global
+import cats.effect.{IO, Resource}
 import com.dimafeng.testcontainers.GenericContainer
-import fs2.{Chunk, Stream}
+import fs2.Stream
+import cats.syntax.all._
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
+import weaver.GlobalRead
 
 import java.net.URI
 
-class S3StoreMinioTest extends AbstractS3StoreTest {
-  override val container: GenericContainer = GenericContainer(
+class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
+
+  val container: GenericContainer = GenericContainer(
     dockerImage = "minio/minio",
     exposedPorts = List(9000),
     command = List("server", "--compat", "/data"),
@@ -24,63 +24,69 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
     )
   )
 
-  override def client: S3AsyncClient = S3AsyncClient
+  def s3(host: String, port: Int): S3AsyncClient = S3AsyncClient
     .builder()
     .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(s"http://${container.containerIpAddress}:${container.mappedPort(9000)}"))
+    .endpointOverride(URI.create(s"http://$host:$port"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
       "minio_access_key",
       "minio_secret_key"
     )))
     .build()
 
-  it should "set underlying metadata on write" in {
-    val ct = "text/plain"
+  override def clientResource: Resource[IO, S3AsyncClient] =
+    Resource.make(IO.blocking(container.start()))(_ => IO.blocking(container.stop()))
+      .map(_ => s3(container.containerIpAddress, container.mappedPort(9000)))
+
+  test("set underlying metadata on write") { res =>
+    val dir = dirUrl("set-underlying")
+    val url = dir / "file.bin"
+
+    val ct = "application/octet-stream"
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
-      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
+      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "value"))
 
-    val filePath = Path(s"test-$testRun/set-underlying/file1")
-    Stream("data".getBytes.toIndexedSeq: _*).through(
-      s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta))
-    ).compile.drain.unsafeRunSync()
-    val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
-
-    entities.foreach { s3Url =>
-      inside(s3Url.path.representation.meta) {
-        case Some(meta) =>
-          meta.storageClass must contain(sc)
-          meta.contentType must contain(ct)
-          meta.metadata.map { case (k, v) => k.toLowerCase -> v.toLowerCase } mustBe Map("key" -> "value")
-      }
+    for {
+      data <- randomBytes(25)
+      _ <-
+        Stream.emits(data).through(res.extra.put(url, overwrite = true, size = None, meta = Some(s3Meta))).compile.drain
+      l <- res.store.listAll(url)
+    } yield {
+      l.map { u =>
+        val meta = u.path.representation.meta
+        expect.all(
+          meta.flatMap(_.contentType).contains(ct),
+          meta.flatMap(_.storageClass).contains(sc),
+          meta.flatMap(_.metadata.get("key")).contains("value")
+        )
+      }.combineAll
     }
   }
 
-  it should "set underlying metadata on multipart-upload" in {
-    val ct = "text/plain"
+  test("set underlying metadata on multipart-upload") { res =>
+    val dir = dirUrl("set-underlying-multipart")
+    val url = dir / "file.bin"
+
+    val ct = "application/octet-stream"
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
-      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
-    val filePath = Path(s"test-$testRun/set-underlying/file2")
-    Random.scalaUtilRandom[IO].flatMap(r =>
-      Stream.repeatEval(r.nextInt)
-        .flatMap(n => Stream.chunk(Chunk.ArraySlice(n.toString.getBytes())))
-        .take(6 * 1024 * 1024)
-        .through(s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta)))
-        .compile
-        .drain
-    )
-      .unsafeRunSync()
+      S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "value"))
+    for {
+      data <- randomBytes(6 * 1024 * 1024)
+      _ <-
+        Stream.emits(data).through(res.extra.put(url, overwrite = true, size = None, meta = Some(s3Meta))).compile.drain
+      l <- res.store.listAll(url)
+    } yield {
+      l.map { u =>
+        val meta = u.path.representation.meta
+        expect.all(
+          meta.flatMap(_.contentType).contains(ct),
+          meta.flatMap(_.storageClass).contains(sc),
+          meta.flatMap(_.metadata.get("key")).contains("value")
+        )
+      }.combineAll
 
-    val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
-
-    entities.foreach { s3Url =>
-      inside(s3Url.path.representation.meta) {
-        case Some(meta) =>
-          meta.storageClass must contain(sc)
-          meta.contentType must contain(ct)
-          meta.metadata.map { case (k, v) => k.toLowerCase -> v.toLowerCase } mustBe Map("key" -> "value")
-      }
     }
   }
 }

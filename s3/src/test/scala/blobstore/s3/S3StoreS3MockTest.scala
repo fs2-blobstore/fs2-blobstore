@@ -1,64 +1,63 @@
-/*
-Copyright 2018 LendUp Global, Inc.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
- */
 package blobstore
 package s3
 
-import cats.effect.unsafe.implicits.global
+import cats.effect.{IO, Resource}
+import fs2.Stream
+import cats.syntax.all._
 import java.net.URI
 import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
+import weaver.GlobalRead
 
-class S3StoreS3MockTest extends AbstractS3StoreTest {
+class S3StoreS3MockTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
 
-  override val container: GenericContainer = GenericContainer(
+  val container: GenericContainer = GenericContainer(
     dockerImage = "adobe/s3mock",
     exposedPorts = List(9090)
   )
 
-  override def client: S3AsyncClient = S3AsyncClient
-    .builder()
-    .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(s"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
-    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("a", "s")))
-    .build()
+  def s3(host: String, port: Int): S3AsyncClient =
+    S3AsyncClient
+      .builder()
+      .region(Region.US_EAST_1)
+      .endpointOverride(URI.create(s"http://$host:$port"))
+      .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("a", "s")))
+      .build()
 
-  it should "handle files with trailing / in name" in {
-    val dir      = dirUrl("trailing-slash")
-    val filePath = dir / "file-with-slash/"
+  override def clientResource: Resource[IO, S3AsyncClient] =
+    Resource.make(IO.blocking(container.start()))(_ => IO.blocking(container.stop()))
+      .map(_ => s3(container.containerIpAddress, container.mappedPort(9090)))
 
-    store.putContent(filePath, "test").unsafeRunSync()
-
-    val entities = s3Store
-      .listUnderlying(dir, fullMetadata = false, expectTrailingSlashFiles = true, recursive = false)
-      .compile
-      .toList
-      .unsafeRunSync()
-
-    entities.foreach { listedUrl =>
-      listedUrl.path.fileName mustBe Some("file-with-slash/")
-      listedUrl.path.isDir mustBe false
+  test("handle files with trailing / in name") { res =>
+    val dir = dirUrl("trailing-slash")
+    val url = dir / "file-with-slash/"
+    for {
+      data <- randomBytes(25)
+      _    <- Stream.emits(data).through(res.store.put(url)).compile.drain
+      l1 <- res.extra.listUnderlying(
+        dir,
+        fullMetadata = false,
+        expectTrailingSlashFiles = true,
+        recursive = false
+      ).compile.toList
+      content <- res.store.get(url, 128).compile.to(Array)
+      _       <- res.store.remove(url)
+      l2      <- res.store.listAll(dir)
+    } yield {
+      expect.all(
+        data sameElements content,
+        l1.size == 1,
+        l2.isEmpty
+      ) and l1.map(url =>
+        expect.all(
+          url.path.fileName.contains("file-with-slash/"),
+          !url.path.isDir
+        )
+      ).combineAll
     }
 
-    store.getContents(filePath).unsafeRunSync() mustBe "test"
-
-    store.remove(filePath).unsafeRunSync()
-
-    store.list(dir).compile.toList.unsafeRunSync() mustBe Nil
   }
 
 }
