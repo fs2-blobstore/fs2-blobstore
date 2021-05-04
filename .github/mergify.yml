@@ -22,3 +22,15 @@ pull_request_rules:
       merge:
         method: squash
         strict: true
+
+  - name: Automatic merge for dependabot
+    conditions:
+      - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
+      - "author=dependabot"
+      - status-success=scalafmt
+      - status-success=tests
+    actions:
+      merge:
+        method: squash
+        strict: true
