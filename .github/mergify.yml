@@ -27,7 +27,7 @@ pull_request_rules:
     conditions:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
-      - "author=dependabot"
+      - author~=^dependabot(|-preview)\[bot\]$
       - status-success=scalafmt
       - status-success=tests
     actions:
