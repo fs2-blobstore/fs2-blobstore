@@ -29,13 +29,12 @@ inThisBuild(
   )
 )
 
-lazy val fs2blobstore = project
+lazy val root = project
   .in(file("."))
   .settings(
-    moduleName := "root",
     publish / skip := true
   )
-  .aggregate(url, core, s3, sftp, gcs, azure, box)
+  .aggregate(url, core /*, s3, sftp, gcs, azure, box*/ )
 
 lazy val url = project
 
