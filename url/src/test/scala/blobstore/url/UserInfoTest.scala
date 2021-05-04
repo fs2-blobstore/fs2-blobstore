@@ -1,23 +1,25 @@
 package blobstore.url
 
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.must.Matchers
 import cats.syntax.all._
+import weaver.FunSuite
 
-class UserInfoTest extends AnyFlatSpec with Matchers {
-  behavior of "Userinfo"
+object UserInfoTest extends FunSuite {
 
-  it should "mask password" in {
+  test("mask password") {
     val ui = UserInfo("foo", Some("bar"))
-    ui.show mustBe ui.toString
-    ui.show mustBe "foo:*****"
-    ui.toStringWithPassword mustBe "foo:bar"
+    expect.all(
+      ui.show == ui.toString,
+      ui.show == "foo:*****",
+      ui.toStringWithPassword == "foo:bar"
+    )
   }
 
-  it should "render correctly without password" in {
+  test("render correctly without password") {
     val ui = UserInfo("foo", None)
-    ui.show mustBe ui.toString
-    ui.show mustBe "foo"
-    ui.toStringWithPassword mustBe "foo"
+    expect.all(
+      ui.show == ui.toString,
+      ui.show == "foo",
+      ui.toStringWithPassword == "foo"
+    )
   }
 }
