@@ -1,7 +1,7 @@
 inThisBuild(
   Seq(
     scalaVersion := "2.13.5",
-    crossScalaVersions := Seq("2.12.12", "2.13.5"),
+    crossScalaVersions := Seq("2.12.13", "2.13.5"),
     organization := "com.github.fs2-blobstore",
     licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
@@ -26,8 +26,7 @@ inThisBuild(
         case x if x >= 10 => Seq("-source", s"$x", "-target", s"$x")
       }
     }
-  ) ++
-    addCommandAlias("scalafixCheck", "scalafix --check")
+  )
 )
 
 lazy val fs2blobstore = project
