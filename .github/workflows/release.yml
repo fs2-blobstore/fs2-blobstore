@@ -37,7 +37,7 @@ jobs:
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: sbt --client ++ ci-release
+        run: sbt --client + ci-release
 
   readme:
     name: Update Readme
