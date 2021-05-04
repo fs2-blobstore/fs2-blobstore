@@ -38,22 +38,22 @@ jobs:
         uses: coursier/cache-action@v5
 
       - name: Compile all sources
-        run: sbt --client ++ all compile Test/compile IntegrationTest/compile doc
+        run: sbt --client + all compile Test/compile IntegrationTest/compile doc
 
       - name: Compile readme
-        run: sbt --client docs/mdoc
+        run: sbt --client + docs/mdoc
 
       - name: Run Scalafix
-        run: sbt --client scalafixAll --check
+        run: sbt --client + scalafixAll --check
 
       - name: Create tmp directory
         run: mkdir tmp
 
       - name: Enable coverage instrumentation
-        run: sbt --client ++ coverage
+        run: sbt --client + coverage
 
       - name: Test
-        run: sbt --client ++ 'testOnly * -- -l blobstore.IntegrationTest'
+        run: sbt --client + 'testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -63,7 +63,7 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        run: sbt --client ++ coverageReport
+        run: sbt --client + coverageReport
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1
