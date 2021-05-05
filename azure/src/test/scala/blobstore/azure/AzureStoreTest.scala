@@ -17,6 +17,8 @@ import java.util.function.Consumer
 
 class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, AzureStore[IO]](global) {
 
+  override def maxParallelism = 1
+
   // TODO: Fix underlying issue and remove this
   val logger: Logger = Loggers.getLogger(classOf[Operators])
   Hooks.onErrorDropped(new Consumer[Throwable] {

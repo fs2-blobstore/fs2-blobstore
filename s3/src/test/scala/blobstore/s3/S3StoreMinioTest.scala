@@ -14,6 +14,8 @@ import java.net.URI
 
 class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
 
+  override def maxParallelism = 1
+
   val container: GenericContainer = GenericContainer(
     dockerImage = "minio/minio",
     exposedPorts = List(9000),

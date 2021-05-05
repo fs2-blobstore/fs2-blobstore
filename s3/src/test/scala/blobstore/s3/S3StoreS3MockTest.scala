@@ -13,6 +13,8 @@ import weaver.GlobalRead
 
 class S3StoreS3MockTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
 
+  override def maxParallelism = 1
+
   val container: GenericContainer = GenericContainer(
     dockerImage = "adobe/s3mock",
     exposedPorts = List(9090)
