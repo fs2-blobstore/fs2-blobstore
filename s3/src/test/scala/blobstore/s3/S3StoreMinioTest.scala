@@ -1,9 +1,9 @@
 package blobstore.s3
 
 import cats.effect.{IO, Resource}
-import com.dimafeng.testcontainers.GenericContainer
-import fs2.Stream
 import cats.syntax.all._
+import fs2.Stream
+import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
