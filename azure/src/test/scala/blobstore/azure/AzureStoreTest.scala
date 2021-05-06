@@ -5,27 +5,15 @@ import blobstore.url.{Authority, Path}
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import fs2.Stream
-import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
+import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
-import reactor.core.publisher.{Hooks, Operators}
-import reactor.util.{Logger, Loggers}
 import weaver.GlobalRead
-
-import java.util.function.Consumer
 
 class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, AzureStore[IO]](global) {
 
   override def maxParallelism = 1
-
-  // TODO: Fix underlying issue and remove this
-  val logger: Logger = Loggers.getLogger(classOf[Operators])
-  Hooks.onErrorDropped(new Consumer[Throwable] {
-    // Hide those verbose "Operator called default onErrorDropped" logs on
-    // java.lang.IllegalStateException: dispatcher already shutdown
-    override def accept(t: Throwable): Unit = logger.debug("Exception happened:", t)
-  })
 
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
