@@ -54,7 +54,7 @@ jobs:
       - name: Generate updated README.md
         run: sbt --client 'docs/mdoc --out .'
 
-      - uses: EndBug/add-and-commit@v7.2.0
+      - uses: EndBug/add-and-commit@v7.2.1
         with:
           message: Update readme for released version
           add: README.md
