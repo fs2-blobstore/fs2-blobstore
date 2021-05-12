@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v2.3.4
       - uses: AvaPL/scalafmt-native-formatter@v0.1.1
 
   tests:
@@ -32,7 +32,7 @@ jobs:
     needs: [scalafmt]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2
+        uses: actions/checkout@v2.3.4
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
@@ -57,7 +57,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v2
+        uses: mikepenz/action-junit-report@v2.4.1
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
@@ -66,7 +66,7 @@ jobs:
         run: sbt --client + coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v1.5.0
         with:
           flags: scala
 
@@ -78,7 +78,7 @@ jobs:
     needs: [scalafmt, tests]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2
+        uses: actions/checkout@v2.3.4
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
@@ -100,7 +100,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v2
+        uses: mikepenz/action-junit-report@v2.4.1
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
@@ -109,6 +109,6 @@ jobs:
         run: sbt --client coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v1.5.0
         with:
           flags: scala-it
