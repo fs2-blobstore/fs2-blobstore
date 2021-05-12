@@ -5,13 +5,21 @@ import blobstore.url.{Authority, Path}
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import fs2.Stream
+import com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
 import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
+import reactor.core.publisher.Hooks
 import weaver.GlobalRead
 
+import java.util.function.Consumer
+
 class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, AzureStore[IO]](global) {
+
+  Hooks.onErrorDropped(new Consumer[Throwable] {
+    override def accept(t: Throwable): Unit = ()
+  })
 
   override def maxParallelism = 1
 
@@ -33,8 +41,9 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
         s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://$host:$port/devstoreaccount1;"
       )
       .retryOptions(
-        new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
+        new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 5, 5, null, null, null) // scalafix:ok
       )
+      .httpClient(new OkHttpAsyncHttpClientBuilder().build())
       .buildAsyncClient()
 
   def blobContainer(a: BlobServiceAsyncClient): Resource[IO, Unit] = Resource.make {
