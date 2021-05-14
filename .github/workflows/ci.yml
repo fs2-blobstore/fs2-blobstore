@@ -61,6 +61,7 @@ jobs:
         run: sbt +test
         env:
           AZURITE_PORT: ${{ job.services.azurite.ports[10000] }}
+          AZURE_CONNECTION_STRING: ${{ secrets.AZURE_CONNECTION_STRING }}
 
       - name: Dump docker logs on failure
         if: failure()

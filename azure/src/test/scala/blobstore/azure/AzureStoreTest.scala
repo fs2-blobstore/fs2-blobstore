@@ -23,6 +23,8 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
 
   override def maxParallelism = 1
 
+  val maybeConnectionString: IO[Option[String]] = IO(sys.env.get("AZURE_CONNECTION_STRING"))
+
   val maybeAzuritePort: IO[Option[Int]] =
     IO(sys.env.get("AZURITE_PORT")).flatMap(_.fold(IO.none[Int])(mp => IO(mp.toInt.some)))
 
@@ -38,11 +40,9 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
   override val fileSystemRoot: Path.Plain = Path("")
   override val testRunRoot: Path.Plain    = Path(testRun.toString)
 
-  def azure(host: String, port: Int): BlobServiceAsyncClient =
+  def azure(connectionString: String): BlobServiceAsyncClient =
     new BlobServiceClientBuilder()
-      .connectionString(
-        s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://$host:$port/devstoreaccount1;"
-      )
+      .connectionString(connectionString)
       .retryOptions(
         new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 5, 5, null, null, null) // scalafix:ok
       )
@@ -54,18 +54,22 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
     IO.fromCompletableFuture(IO(bcClient.delete().toFuture)).void
   }.void
 
-  val containerHostAndPort: Resource[IO, (String, Int)] = for {
-    maybePort <- Resource.eval(maybeAzuritePort)
-    hostAndPort <- maybePort match {
-      case Some(p) => Resource.pure[IO, (String, Int)]("localhost" -> p)
-      case None => Resource.make(IO.blocking(container.start()))(_ => IO.blocking(container.stop())).map(_ =>
-          container.containerIpAddress -> container.mappedPort(10000)
-        )
+  val connectionString: Resource[IO, String] =
+    Resource.eval(maybeConnectionString).flatMap {
+      case Some(connectionString) => Resource.pure(connectionString)
+      case None => for {
+          maybePort <- Resource.eval(maybeAzuritePort)
+          (host, port) <- maybePort match {
+            case Some(p) => Resource.pure[IO, (String, Int)]("localhost" -> p)
+            case None => Resource.make(IO.blocking(container.start()))(_ => IO.blocking(container.stop())).map(_ =>
+                container.containerIpAddress -> container.mappedPort(10000)
+              )
+          }
+        } yield s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://$host:$port/devstoreaccount1;"
     }
-  } yield hostAndPort
 
   override val sharedResource: Resource[IO, TestResource[AzureBlob, AzureStore[IO]]] =
-    containerHostAndPort.map((azure _).tupled).flatMap(a => blobContainer(a).as(a)).map { a =>
+    connectionString.map(azure).flatMap(a => blobContainer(a).as(a)).map { a =>
       val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
       TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
     }
