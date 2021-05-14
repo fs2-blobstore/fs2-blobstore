@@ -53,7 +53,7 @@ jobs:
         run: mkdir tmp
 
       - name: Install azurite
-        run: npm install -g azurite
+        run: sudo npm install -g azurite
 
       - name: Start azurite
         run: azurite-blob -d azurite-debug.log
