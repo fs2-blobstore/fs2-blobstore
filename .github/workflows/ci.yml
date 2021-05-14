@@ -35,6 +35,8 @@ jobs:
         image: mcr.microsoft.com/azure-storage/azurite
         ports:
           - 10000/tcp
+    env:
+      AZURITE_PORT: ${{ job.tests.services.azurite.ports['10000'] }}
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2.3.4
@@ -59,8 +61,6 @@ jobs:
 
       - name: Test
         run: sbt +test
-        env:
-          AZURITE_PORT: ${{ job.tests.services.azurite.ports['10000'] }}
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
