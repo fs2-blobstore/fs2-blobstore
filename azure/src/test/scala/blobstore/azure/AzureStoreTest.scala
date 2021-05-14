@@ -5,7 +5,6 @@ import blobstore.url.{Authority, Path}
 import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import fs2.Stream
-import com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
 import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
@@ -43,7 +42,6 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
       .retryOptions(
         new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 5, 5, null, null, null) // scalafix:ok
       )
-      .httpClient(new OkHttpAsyncHttpClientBuilder().build())
       .buildAsyncClient()
 
   def blobContainer(a: BlobServiceAsyncClient): Resource[IO, Unit] = Resource.make {
