@@ -409,14 +409,15 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       if (res.disableHighRateTests) {
         cancel("High-rate tests are disabled.")
       } else {
-        forall[List[Byte], IO[Expectations]] { bytes: List[Byte] =>
-          for {
-            filePath <- randomAlphanumeric(20).map(dir / _)
-            _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain.attempt
-            contents <- res.store.get(filePath, 1024).compile.to(Array)
-          } yield {
-            expect(contents sameElements bytes)
-          }
+        forall.withConfig(CheckConfig.default.copy(perPropertyParallelism = 5))[List[Byte], IO[Expectations]] {
+          bytes: List[Byte] =>
+            for {
+              filePath <- randomAlphanumeric(20).map(dir / _)
+              _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain.attempt
+              contents <- res.store.get(filePath, 1024).compile.to(Array)
+            } yield {
+              expect(contents sameElements bytes)
+            }
 
         }
       }
