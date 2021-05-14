@@ -69,7 +69,7 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
   override val sharedResource: Resource[IO, TestResource[AzureBlob, AzureStore[IO]]] =
     connectionString.map(azure).flatMap(a => blobContainer(a).as(a)).map { a =>
       val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
-      TestResource(azureStore, azureStore, FiniteDuration(20, "s"))
+      TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
     }
 
   test("handle files with trailing / in name") { res =>
