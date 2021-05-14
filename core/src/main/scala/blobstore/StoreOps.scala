@@ -116,7 +116,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
         else dstUrl / srcUrl.path.nioPath.relativize(u.path.nioPath).toString
 
       store.get(u, 4096).through(dstStore.put(targetUrl)).compile.drain.as(1)
-    }.fold(0)(_ + _).compile.last.map(_.getOrElse(0))
+    }.compile.fold(0)(_ + _)
 
   /** Remove all files from a store recursively, given a path
     */
