@@ -62,7 +62,6 @@ jobs:
         run: sbt +test
         env:
           AZURITE_PORT: 10000
-          AZURE_CONNECTION_STRING: ${{ secrets.AZURE_CONNECTION_STRING }}
 
       - name: Echo azurite logs
         if: failure()
