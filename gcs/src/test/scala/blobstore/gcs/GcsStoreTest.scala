@@ -9,6 +9,7 @@ import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
 import fs2.Stream
 import weaver.GlobalRead
 
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsStore[IO]](global) {
@@ -30,7 +31,7 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
         defaultDirectDownload = false
       )
 
-      TestResource(gcsStore, gcsStore)
+      TestResource(gcsStore, gcsStore, FiniteDuration(1, "s"))
     }
 
   // When creating "folders" in the GCP UI, a zero byte object with the name of the prefix is created
@@ -41,7 +42,7 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
   test("handle files with trailing / in name") { res =>
     val dir = dirUrl("trailing-slash")
     val url = dir / "file-with-slash/"
-    for {
+    val test = for {
       data    <- randomBytes(25)
       _       <- Stream.emits(data).through(res.store.put(url)).compile.drain
       l1      <- res.store.listAll(dir)
@@ -61,11 +62,13 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
       ).combineAll
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("expose underlying metadata") { (res, log) =>
     val dir = dirUrl("expose-underlying")
-    for {
+    val test = for {
       (url, _) <- writeRandomFile(res.store, log)(dir)
       l        <- res.store.listAll(url)
     } yield {
@@ -73,6 +76,8 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
       // Note: LocalStorageHelper doesn't automatically set other fields like storageClass, md5, etc.
       l.map { u => expect(u.path.representation.blob.getGeneration == 1L) }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 
   test("set underlying metadata on write using typed path") { res =>
@@ -88,7 +93,7 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
       .setMetadata(Map("key" -> "value").asJava)
       .build()
 
-    for {
+    val test = for {
       data <- randomBytes(25)
       _    <- Stream.emits(data).through(res.extra.put(url.path.as(GcsBlob(blobInfo)), Nil)).compile.drain
       l    <- res.store.listAll(url)
@@ -101,24 +106,29 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
         )
       }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 
   test("direct download") { (res, log) =>
     val dir = dirUrl("direct-download")
-    for {
+    val test = for {
       (url, original) <- writeRandomFile(res.store, log)(dir)
       content         <- res.extra.getUnderlying(url, 4096, direct = true).compile.to(Array)
     } yield {
       expect(original sameElements content)
     }
+
+    test.timeout(res.timeout)
   }
 
   test("resolve type of storage class") { res =>
-    res.store.listAll(dirUrl("storage-class")).map { l =>
+    val test = res.store.listAll(dirUrl("storage-class")).map { l =>
       l.map { u =>
         val sc: Option[StorageClass] = u.path.storageClass
         expect(sc.isEmpty)
       }.combineAll
     }
+    test.timeout(res.timeout)
   }
 }

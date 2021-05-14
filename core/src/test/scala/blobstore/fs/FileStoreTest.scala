@@ -3,11 +3,11 @@ package fs
 
 import blobstore.url.{Authority, Path, Url}
 import cats.effect.{IO, Resource}
-
 import cats.syntax.all._
 import weaver.GlobalRead
 
 import java.nio.file.Paths
+import scala.concurrent.duration.FiniteDuration
 
 class FileStoreTest(global: GlobalRead) extends AbstractStoreTest[NioPath, Unit](global) {
 
@@ -19,7 +19,7 @@ class FileStoreTest(global: GlobalRead) extends AbstractStoreTest[NioPath, Unit]
 
   override val sharedResource: Resource[IO, TestResource[NioPath, Unit]] =
     Resource.make(FileStore[IO].pure)(fs => fs.remove(testRunRoot, recursive = true))
-      .map(fs => TestResource(fs.lift((u: Url[String]) => u.path.valid), ()))
+      .map(fs => TestResource(fs.lift((u: Url[String]) => u.path.valid), (), FiniteDuration(1, "s")))
 
   test("no side effects when creating a Pipe") { res =>
     val dir = dirUrl("should-not") / "be" `//` "created"

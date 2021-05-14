@@ -8,6 +8,8 @@ import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.Session
 import weaver.GlobalRead
 
+import scala.concurrent.duration.FiniteDuration
+
 abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTest[SftpFile, SftpStore[IO]](global) {
 
   def container: GenericContainer
@@ -27,12 +29,12 @@ abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTe
   override def sharedResource: Resource[IO, TestResource[SftpFile, SftpStore[IO]]] =
     sessionResource
       .flatMap(session => SftpStore(session.pure, Some(10), 50000))
-      .flatMap(store => Resource.make(IO(TestResource(store.lift, store)))(_ => cleanup(store)))
+      .flatMap(store => Resource.make(IO(TestResource(store.lift, store, FiniteDuration(8, "s"))))(_ => cleanup(store)))
 
   test("list files in current working directory") { res =>
     val empty = Path("")
     val dot   = Path(".")
-    for {
+    val test = for {
       emptyList <- res.extra.list(empty).compile.toList
       dotList   <- res.extra.list(dot).compile.toList
     } yield {
@@ -41,11 +43,13 @@ abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTe
         dotList.flatMap(_.lastSegment) == List("sftp_tests/")
       )
     }
+
+    test.timeout(res.timeout)
   }
 
   test("list more than 64 (default queue/buffer size) keys") { (res, log) =>
     val dir = dirUrl("list-more-than-64")
-    for {
+    val test = for {
       urls <- (1 to 256).toList.traverse(_ => writeRandomFile(res.store, log)(dir))
       l    <- res.store.listAll(dir)
     } yield {
@@ -54,11 +58,13 @@ abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTe
       )
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("remove empty directory") { (res, log) =>
     val dir = dirUrl("remove-empty-dir")
-    for {
+    val test = for {
       (url, _) <- writeRandomFile(res.store, log)(dir)
       _        <- res.store.remove(url)
       _        <- res.store.remove(dir)
@@ -67,17 +73,21 @@ abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTe
       expect(l.isEmpty)
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("don't remove non-empty directory") { (res, log) =>
     val dir = dirUrl("dont-remove-non-empty")
-    for {
+    val test = for {
       _      <- writeRandomFile(res.store, log)(dir)
       result <- res.store.remove(dir).attempt
       l      <- res.store.listAll(dir)
     } yield {
       expect.all(result.isLeft, l.size == 1)
     }
+
+    test.timeout(res.timeout)
 
   }
 

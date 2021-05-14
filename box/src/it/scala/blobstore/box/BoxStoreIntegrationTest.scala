@@ -10,6 +10,7 @@ import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnectio
 import weaver.GlobalRead
 
 import java.time.temporal.ChronoUnit
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 /** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
@@ -101,12 +102,12 @@ class BoxStoreIntegrationTest(global: GlobalRead) extends AbstractStoreTest[BoxP
     _          <- Resource.eval(cleanup(rf))
   } yield {
     val store = BoxStore[IO](connection)
-    TestResource(store.lift, store, disableHighRateTests = true)
+    TestResource(store.lift, store, FiniteDuration(1, "m"), disableHighRateTests = true)
   }
 
   test("expose underlying metadata") { (res, log) =>
     val dir = dirUrl("expose-underlying")
-    for {
+    val test = for {
       _ <- writeRandomFile(res.store, log)(dir)
       urls <-
         res.extra.listUnderlying(dir.path, Array("comment_count", "watermark_info"), recursive = false).compile.toList
@@ -118,5 +119,7 @@ class BoxStoreIntegrationTest(global: GlobalRead) extends AbstractStoreTest[BoxP
         }
       }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 }

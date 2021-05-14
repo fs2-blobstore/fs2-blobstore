@@ -35,7 +35,7 @@ class S3StoreS3MockTest(global: GlobalRead) extends AbstractS3StoreTest(global) 
   test("handle files with trailing / in name") { res =>
     val dir = dirUrl("trailing-slash")
     val url = dir / "file-with-slash/"
-    for {
+    val test = for {
       data <- randomBytes(25)
       _    <- Stream.emits(data).through(res.store.put(url)).compile.drain
       l1 <- res.extra.listUnderlying(
@@ -59,6 +59,8 @@ class S3StoreS3MockTest(global: GlobalRead) extends AbstractS3StoreTest(global) 
         )
       ).combineAll
     }
+
+    test.timeout(res.timeout)
 
   }
 

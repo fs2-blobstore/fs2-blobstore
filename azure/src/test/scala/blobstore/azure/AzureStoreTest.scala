@@ -13,6 +13,7 @@ import reactor.core.publisher.Hooks
 import weaver.GlobalRead
 
 import java.util.function.Consumer
+import scala.concurrent.duration.FiniteDuration
 
 class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, AzureStore[IO]](global) {
 
@@ -56,13 +57,13 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
       .flatMap(a => blobContainer(a).as(a))
       .map { a =>
         val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
-        TestResource(azureStore, azureStore)
+        TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
       }
 
   test("handle files with trailing / in name") { res =>
     val dir = dirUrl("trailing-slash")
     val url = dir / "file-with-slash/"
-    for {
+    val test = for {
       data    <- randomBytes(25)
       _       <- Stream.emits(data).through(res.store.put(url)).compile.drain
       l1      <- res.store.listAll(dir)
@@ -82,11 +83,12 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
       ).combineAll
     }
 
+    test.timeout(res.timeout)
   }
 
   test("expose underlying metadata") { (res, log) =>
     val dir = dirUrl("expose-underlying")
-    for {
+    val test = for {
       (url, _) <- writeRandomFile(res.store, log)(dir)
       l        <- res.store.listAll(url)
     } yield {
@@ -97,6 +99,8 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
         )
       }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 
   test("set underlying metadata on write") { res =>
@@ -107,7 +111,7 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
     val at         = AccessTier.COOL
     val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
 
-    for {
+    val test = for {
       data <- randomBytes(25)
       _ <- Stream.emits(data).through(
         res.extra.put(url, overwrite = true, properties = Some(properties), meta = Map("key" -> "value"))
@@ -121,17 +125,20 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
           u.path.representation.metadata.get("key").contains("value")
         )
       }.combineAll
-
     }
+
+    test.timeout(res.timeout)
   }
 
   test("resolve type of storage class") { res =>
-    res.store.listAll(dirUrl("storage-class")).map { l =>
+    val test = res.store.listAll(dirUrl("storage-class")).map { l =>
       l.map { u =>
         val sc: Option[AccessTier] = u.path.storageClass
         expect(sc.isEmpty)
       }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 
 }

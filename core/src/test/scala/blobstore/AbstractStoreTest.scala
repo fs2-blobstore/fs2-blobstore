@@ -39,7 +39,7 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
   test("put, list, get, remove keys") { (res, log) =>
     val dir = dirUrl("all")
-    for {
+    val test = for {
       (url, written) <- writeRandomFile(res.store, log)(dir)
       listed1        <- res.store.listAll(url)
       content        <- res.store.get(url, 128).compile.to(Array)
@@ -54,12 +54,12 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       )
     }
 
+    test.timeout(res.timeout)
   }
 
   test("move keys") { (res, log) =>
     val dir = dirUrl("move-keys")
-
-    for {
+    val test = for {
       (srcUrl, srcContent) <- writeRandomFile(res.store, log)(dir)
       dstUrl               <- randomAlphanumeric(20).map(r => dir / s"$r.bin")
       l1                   <- res.store.listAll(srcUrl)
@@ -73,17 +73,20 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("list multiple keys") { (res, log) =>
     val dir = dirUrl("list-many")
-    for {
+    val test = for {
       urls <- (1 to 10).toList.traverse(_ => writeRandomFile(res.store, log)(dir))
       l    <- res.store.listAll(dir)
     } yield {
       expect(urls.map(_._1.show).toSet == l.map(_.show).toSet)
     }
 
+    test.timeout(res.timeout)
   }
 
   // We've had some bugs involving directories at the root level, since it is a bit of an edge case.
@@ -98,7 +101,7 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     }
 
-    r.use { urls =>
+    val test = r.use { urls =>
       res.store.listAll(fsRootUrl).map { l =>
         // Not doing equals comparison because this directory contains files from other tests.
         // Also, some stores will prepend a "/" before the filenames. Doing a string comparison to ignore this detail for now.
@@ -108,22 +111,25 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     }
 
+    test.timeout(res.timeout)
   }
 
   test("stat urls") { (res, log) =>
     val dir = dirUrl("list-dirs")
-    for {
+    val test = for {
       _ <-
         List("subdir/file-1.txt", "file-2.txt").traverse(suffix => writeRandomFile(res.store, log)(dir, Some(suffix)))
       s <- res.store.stat(dir / "subdir" / "file-1.txt").compile.lastOrError
     } yield {
       expect(s.path.fileName.contains("file-1.txt"))
     }
+
+    test.timeout(res.timeout)
   }
 
   test("list files and directories correctly") { (res, log) =>
     val dir = dirUrl("list-dirs")
-    for {
+    val test = for {
       urls <-
         List("subdir/file-1.txt", "file-2.txt").traverse(suffix => writeRandomFile(res.store, log)(dir, Some(suffix)))
       l <- res.store.listAll(dir)
@@ -136,11 +142,13 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       )
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("transfer individual file to a file path from one store to another") { (res, log) =>
     val srcDir = dirUrl("transfer-file-to-file")
-    transferStoreResources.use { case (transferStoreRoot, transferStore) =>
+    val test = transferStoreResources.use { case (transferStoreRoot, transferStore) =>
       for {
         (srcUrl, srcContent) <- writeRandomFile(res.store, log)(srcDir)
         dstDir = transferStoreRoot / testRun.toString / srcDir.path.lastSegment
@@ -157,12 +165,14 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("transfer directories recursively from one store to another") { (res, log) =>
     val srcDir = dirUrl("transfer-dir-rec")
 
-    transferStoreResources.use { case (transferStoreRoot, transferStore) =>
+    val test = transferStoreResources.use { case (transferStoreRoot, transferStore) =>
       for {
         srcUrls <- (1 to 10).toList.traverse(i =>
           writeRandomFile(res.store, log)(srcDir, Some(if (i % 2 == 0) s"$i.bin" else s"subdir/$i.bin"))
@@ -185,12 +195,14 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("copy file within a store") { (res, log) =>
     val srcDir = dirUrl("copy-dir-to-dir/src")
     val dstDir = dirUrl("copy-dir-to-dir/dst")
-    for {
+    val test = for {
       (srcUrl, srcOriginalContent) <- writeRandomFile(res.store, log)(srcDir)
       dstUrl = dstDir / srcUrl.path.lastSegment
       _          <- res.store.copy(srcUrl, dstUrl)
@@ -204,11 +216,12 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       )
     }
 
+    test.timeout(res.timeout)
   }
 
   test("remove files and directories recursively") { (res, log) =>
     val dir = dirUrl("rm-dir")
-    for {
+    val test = for {
       _ <- (1 to 10).toList.traverse { i =>
         writeRandomFile(res.store, log)(dir, Some(if (i % 2 == 0) s"$i.bin" else s"subdir/$i.bin"))
       }
@@ -221,38 +234,45 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
         l2.isEmpty
       )
     }
+
+    test.timeout(res.timeout)
   }
 
   test("fail stream when getting non-existing file") { res =>
     val url = dirUrl("get-nonexistent") / "no-file"
-    res.store.get(url, 128).compile.to(Array).attempt.map { result =>
+    val test = res.store.get(url, 128).compile.to(Array).attempt.map { result =>
       expect(result.isLeft)
     }
+
+    test.timeout(res.timeout)
   }
 
   test("succeed on remove when path does not exist") { res =>
     val url = dirUrl("rm-nonexistent") / "no-file"
-    res.store.remove(url).attempt.map { result =>
+    val test = res.store.remove(url).attempt.map { result =>
       expect(result.isRight)
     }
 
+    test.timeout(res.timeout)
   }
 
   test("put content with unknown size") { res =>
     val url = dirUrl("put-unknown-size") / "file.bin"
 
-    for {
+    val test = for {
       data    <- randomBytes(25)
       _       <- Stream.emits(data).through(res.store.put(url)).compile.drain
       content <- res.store.get(url, 128).compile.to(Array)
     } yield {
       expect(data sameElements content)
     }
+
+    test.timeout(res.timeout)
   }
 
   test("overwrite existing file on put with overwrite") { (res, log) =>
     val dir = dirUrl("overwrite-existing")
-    for {
+    val test = for {
       (url, original) <- writeRandomFile(res.store, log)(dir)
       originalContent <- res.store.get(url, 128).compile.to(Array)
       newContent      <- randomBytes(25)
@@ -265,11 +285,12 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       )
     }
 
+    test.timeout(res.timeout)
   }
 
   test("fail on put to url with existing file without overwrite") { (res, log) =>
     val dir = dirUrl("fail-no-overwrite")
-    for {
+    val test = for {
       (url, original) <- writeRandomFile(res.store, log)(dir)
       newContent      <- randomBytes(25)
       result          <- Stream.emits(newContent).through(res.store.put(url, overwrite = false)).compile.drain.attempt
@@ -280,11 +301,13 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
         content sameElements original
       )
     }
+
+    test.timeout(res.timeout)
   }
 
   test("put to new Path without overwrite") { res =>
     val url = dirUrl("no-overwrite") / "file.bin"
-    for {
+    val test = for {
       data    <- randomBytes(25)
       _       <- Stream.emits(data).through(res.store.put(url, overwrite = false)).compile.drain.attempt
       content <- res.store.get(url, 128).compile.to(Array)
@@ -292,6 +315,7 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       expect(data sameElements content)
     }
 
+    test.timeout(res.timeout)
   }
 
   test("support paths with spaces") { (res, log) =>
@@ -301,7 +325,7 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     val expected = Chain("path spaces", "file with spaces")
 
-    for {
+    val test = for {
       (url, original) <- writeRandomFile(res.store, log)(dir, Some("file with spaces"))
       l1              <- res.store.listAll(url)
       l2              <- res.store.listAll(dir)
@@ -319,11 +343,13 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       )
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("list recursively") { (res, log) =>
     val dir = dirUrl("list-recursively")
-    for {
+    val test = for {
       _ <- List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").traverse { suffix =>
         writeRandomFile(res.store, log)(dir, Some(suffix))
 
@@ -333,12 +359,13 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       expect(l.size == 8) and l.map { u => expect(!u.path.isDir) }.combineAll
     }
 
+    test.timeout(res.timeout)
   }
 
   test("put data while rotating files") { (res, log) =>
     val dir = dirUrl("put-rotating")
 
-    for {
+    val test = for {
       _       <- writeRandomFile(res.store, log)(dir, Some("3"))
       data    <- randomBytes(110)
       counter <- IO.ref(0)
@@ -356,12 +383,13 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
     }
 
+    test.timeout(res.timeout)
   }
 
   test("put empty (zero-byte) files") { res =>
     val file = dirUrl("empty-file") / "file"
 
-    for {
+    val test = for {
       result  <- Stream.empty.through(res.store.put(file)).compile.drain.attempt
       content <- res.store.get(file, 128).compile.toList
     } yield {
@@ -371,24 +399,29 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       )
     }
 
+    test.timeout(res.timeout)
+
   }
 
   test("read same data that was written") { res =>
     val dir = dirUrl("read-write")
-    if (res.disableHighRateTests) {
-      cancel("High-rate tests are disabled.")
-    } else {
-      forall[List[Byte], IO[Expectations]] { bytes: List[Byte] =>
-        for {
-          filePath <- randomAlphanumeric(20).map(dir / _)
-          _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain.attempt
-          contents <- res.store.get(filePath, 1024).compile.to(Array)
-        } yield {
-          expect(contents sameElements bytes)
-        }
+    val test =
+      if (res.disableHighRateTests) {
+        cancel("High-rate tests are disabled.")
+      } else {
+        forall[List[Byte], IO[Expectations]] { bytes: List[Byte] =>
+          for {
+            filePath <- randomAlphanumeric(20).map(dir / _)
+            _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain.attempt
+            contents <- res.store.get(filePath, 1024).compile.to(Array)
+          } yield {
+            expect(contents sameElements bytes)
+          }
 
+        }
       }
-    }
+
+    test.timeout(res.timeout)
   }
 
   def randomAlphanumeric(size: Int): IO[String] = for {

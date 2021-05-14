@@ -57,12 +57,12 @@ abstract class AbstractS3StoreTest(global: GlobalRead) extends AbstractStoreTest
     .flatMap(client => bucketResource(client).as(client))
     .map { client =>
       val s3Store = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
-      TestResource(s3Store, s3Store)
+      TestResource(s3Store, s3Store, FiniteDuration(10, "s"))
     }
 
   test("expose underlying metadata") { (res, log) =>
     val dir = dirUrl("expose-underlying")
-    for {
+    val test = for {
       (url, _) <- writeRandomFile(res.store, log)(dir)
       l        <- res.store.listAll(url)
     } yield {
@@ -75,6 +75,8 @@ abstract class AbstractS3StoreTest(global: GlobalRead) extends AbstractStoreTest
         )
       }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 
   def testUploadNoSize(store: Store[IO, S3Blob], size: Long, name: String): IO[Expectations] = {
@@ -92,24 +94,24 @@ abstract class AbstractS3StoreTest(global: GlobalRead) extends AbstractStoreTest
   }
 
   test("put content with no size when aligned with multi-upload boundaries 5mb") { res =>
-    testUploadNoSize(res.store, 5 * 1024 * 1024, "5mb")
+    testUploadNoSize(res.store, 5 * 1024 * 1024, "5mb").timeout(res.timeout)
   }
 
   test("put content with no size when aligned with multi-upload boundaries 10mb") { res =>
-    testUploadNoSize(res.store, 10 * 1024 * 1024, "10mb")
+    testUploadNoSize(res.store, 10 * 1024 * 1024, "10mb").timeout(res.timeout)
   }
 
   test("put content with no size when aligned with multi-upload boundaries 7mb") { res =>
-    testUploadNoSize(res.store, 7 * 1024 * 1024, "7mb")
+    testUploadNoSize(res.store, 7 * 1024 * 1024, "7mb").timeout(res.timeout)
   }
 
   test("put content with no size when aligned with multi-upload boundaries 12mb") { res =>
-    testUploadNoSize(res.store, 12 * 1024 * 1024, "12mb")
+    testUploadNoSize(res.store, 12 * 1024 * 1024, "12mb").timeout(res.timeout)
   }
 
   test("put rotating with file-limit > bufferSize") { res =>
     val dir = dirUrl("put-rotating-s3")
-    for {
+    val test = for {
       data    <- randomBytes(7 * 1024 * 1024)
       counter <- IO.ref(0)
       _ <- Stream.emits(data).through(res.store.putRotate(
@@ -127,16 +129,17 @@ abstract class AbstractS3StoreTest(global: GlobalRead) extends AbstractStoreTest
         contents.flatten == data.toList
       )
     }
-
+    test.timeout(res.timeout)
   }
 
   test("resolve type of storage class") { res =>
-    res.store.listAll(dirUrl("storage-class")).map { l =>
+    val test = res.store.listAll(dirUrl("storage-class")).map { l =>
       l.map { u =>
         val sc: Option[StorageClass] = u.path.storageClass
         expect(sc.isEmpty)
       }.combineAll
     }
+    test.timeout(res.timeout)
   }
 
 }

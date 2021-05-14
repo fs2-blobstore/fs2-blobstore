@@ -49,7 +49,7 @@ class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "value"))
 
-    for {
+    val test = for {
       data <- randomBytes(25)
       _ <-
         Stream.emits(data).through(res.extra.put(url, overwrite = true, size = None, meta = Some(s3Meta))).compile.drain
@@ -64,6 +64,8 @@ class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
         )
       }.combineAll
     }
+
+    test.timeout(res.timeout)
   }
 
   test("set underlying metadata on multipart-upload") { res =>
@@ -74,7 +76,7 @@ class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "value"))
-    for {
+    val test = for {
       data <- randomBytes(6 * 1024 * 1024)
       _ <-
         Stream.emits(data).through(res.extra.put(url, overwrite = true, size = None, meta = Some(s3Meta))).compile.drain
@@ -90,5 +92,7 @@ class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
       }.combineAll
 
     }
+
+    test.timeout(res.timeout)
   }
 }
