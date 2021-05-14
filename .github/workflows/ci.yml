@@ -30,6 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [scalafmt]
+    services:
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite
+        ports:
+          - 10000/tcp
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2.3.4
@@ -54,6 +59,8 @@ jobs:
 
       - name: Test
         run: sbt +test
+        env:
+          AZURITE_PORT: ${{ jobs.tests.services.azurite.ports['10000'] }}
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail

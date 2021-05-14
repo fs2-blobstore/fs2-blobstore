@@ -23,6 +23,9 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
 
   override def maxParallelism = 1
 
+  val maybeAzuritePort: IO[Option[Int]] =
+    IO(sys.env.get("AZURITE_PORT")).flatMap(_.fold(IO.none[Int])(mp => IO(mp.toInt.some)))
+
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
     exposedPorts = List(10000),
@@ -51,14 +54,21 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
     IO.fromCompletableFuture(IO(bcClient.delete().toFuture)).void
   }.void
 
+  val containerHostAndPort: Resource[IO, (String, Int)] = for {
+    maybePort <- Resource.eval(maybeAzuritePort)
+    hostAndPort <- maybePort match {
+      case Some(p) => Resource.pure[IO, (String, Int)]("localhost" -> p)
+      case None => Resource.make(IO.blocking(container.start()))(_ => IO.blocking(container.stop())).map(_ =>
+          container.containerIpAddress -> container.mappedPort(10000)
+        )
+    }
+  } yield hostAndPort
+
   override val sharedResource: Resource[IO, TestResource[AzureBlob, AzureStore[IO]]] =
-    Resource.make(IO.blocking(container.start()))(_ => IO.blocking(container.stop()))
-      .map(_ => azure(container.containerIpAddress, container.mappedPort(10000)))
-      .flatMap(a => blobContainer(a).as(a))
-      .map { a =>
-        val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
-        TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
-      }
+    containerHostAndPort.map((azure _).tupled).flatMap(a => blobContainer(a).as(a)).map { a =>
+      val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
+      TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
+    }
 
   test("handle files with trailing / in name") { res =>
     val dir = dirUrl("trailing-slash")
