@@ -21,8 +21,6 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
     override def accept(t: Throwable): Unit = ()
   })
 
-  override def maxParallelism = 1
-
   val maybeConnectionString: IO[Option[String]] = IO(sys.env.get("AZURE_CONNECTION_STRING"))
 
   val maybeAzuritePort: IO[Option[Int]] =
@@ -35,7 +33,7 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
   )
 
   override val scheme: String       = "https"
-  override val authority: Authority = Authority.unsafe("container")
+  override val authority: Authority = Authority.unsafe(s"container-$testRun")
 
   override val fileSystemRoot: Path.Plain = Path("")
   override val testRunRoot: Path.Plain    = Path(testRun.toString)
@@ -71,7 +69,7 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
   override val sharedResource: Resource[IO, TestResource[AzureBlob, AzureStore[IO]]] =
     connectionString.map(azure).flatMap(a => blobContainer(a).as(a)).map { a =>
       val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
-      TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
+      TestResource(azureStore, azureStore, FiniteDuration(15, "s"))
     }
 
   test("handle files with trailing / in name") { res =>
