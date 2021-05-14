@@ -62,8 +62,12 @@ jobs:
         env:
           AZURITE_PORT: ${{ job.services.azurite.ports[10000] }}
 
+      - name: Dump docker logs on failure
+        if: failure()
+        uses: jwalton/gh-docker-logs@v1
+
       - name: Publish JUnit test report
-        if: always() # publish report when tests fail
+        if: always()
         uses: mikepenz/action-junit-report@v2.4.1
         with:
           github_token: ${{ github.token }}
