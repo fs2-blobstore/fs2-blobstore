@@ -18,8 +18,6 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
   with Checkers
   with LocalFSResource {
 
-  override def checkConfig: CheckConfig = super.checkConfig.copy(perPropertyParallelism = 100, minimumSuccessful = 100)
-
   type Res = TestResource[B, T]
 
   def scheme: String
@@ -409,7 +407,7 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
       if (res.disableHighRateTests) {
         cancel("High-rate tests are disabled.")
       } else {
-        forall.withConfig(CheckConfig.default.copy(perPropertyParallelism = 5))[List[Byte], IO[Expectations]] {
+        forall[List[Byte], IO[Expectations]] {
           bytes: List[Byte] =>
             for {
               filePath <- randomAlphanumeric(20).map(dir / _)
