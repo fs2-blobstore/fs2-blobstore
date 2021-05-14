@@ -30,11 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [scalafmt]
-    services:
-      azurite:
-        image: mcr.microsoft.com/azure-storage/azurite
-        ports:
-          - 10000/tcp
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2.3.4
@@ -57,15 +52,21 @@ jobs:
       - name: Create tmp directory
         run: mkdir tmp
 
+      - name: Install azurite
+        run: npm install -g azurite
+
+      - name: Start azurite
+      - run: azurite-blob -d azurite-debug.log
+
       - name: Test
         run: sbt +test
         env:
-          AZURITE_PORT: ${{ job.services.azurite.ports[10000] }}
+          AZURITE_PORT: 10000
           AZURE_CONNECTION_STRING: ${{ secrets.AZURE_CONNECTION_STRING }}
 
-      - name: Dump docker logs on failure
+      - name: Echo azurite logs
         if: failure()
-        uses: jwalton/gh-docker-logs@v1
+        run: cat azurite-debug.log
 
       - name: Publish JUnit test report
         if: always()
