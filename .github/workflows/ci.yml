@@ -48,7 +48,7 @@ jobs:
       - name: Compile all sources
         run: sbt +'all compile Test/compile IntegrationTest/compile doc'
         env:
-          AZURITE_PORT: ${{ job.tests.services.azurite.ports['10000'] }}
+          AZURITE_PORT: ${{ job.services.azurite.ports[10000] }}
 
       - name: Compile readme
         run: sbt +'docs/mdoc'
