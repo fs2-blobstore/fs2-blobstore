@@ -60,7 +60,7 @@ jobs:
       - name: Test
         run: sbt +test
         env:
-          AZURITE_PORT: ${{ jobs.tests.services.azurite.ports['10000'] }}
+          AZURITE_PORT: ${{ job.tests.services.azurite.ports['10000'] }}
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
