@@ -47,7 +47,7 @@ jobs:
         run: sbt +'docs/mdoc'
 
       - name: Run Scalafix
-        run: sbt scalafixAll --check
+        run: sbt 'scalafixAll --check'
 
       - name: Create tmp directory
         run: mkdir tmp
