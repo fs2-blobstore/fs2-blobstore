@@ -52,20 +52,20 @@ jobs:
       - name: Create tmp directory
         run: mkdir tmp
 
-      - name: Install azurite
-        run: sudo npm install -g azurite
-
-      - name: Start azurite
-        run: azurite-blob -d azurite-debug.log &
+#      - name: Install azurite
+#        run: sudo npm install -g azurite
+#
+#      - name: Start azurite
+#        run: azurite-blob -d azurite-debug.log &
 
       - name: Test
         run: sbt +test
-        env:
-          AZURITE_PORT: 10000
+#        env:
+#          AZURITE_PORT: 10000
 
-      - name: Echo azurite logs
-        if: failure()
-        run: cat azurite-debug.log
+#      - name: Echo azurite logs
+#        if: failure()
+#        run: cat azurite-debug.log
 
       - name: Publish JUnit test report
         if: always()

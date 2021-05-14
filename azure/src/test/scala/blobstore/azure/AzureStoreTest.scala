@@ -29,7 +29,7 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
     exposedPorts = List(10000),
-    command = List("azurite-blob", "--blobHost", "0.0.0.0", "--loose")
+    command = List("azurite-blob", "--blobHost", "0.0.0.0", "--loose", "-d", "azurite-debug.log")
   )
 
   override val scheme: String       = "https"
