@@ -47,8 +47,6 @@ jobs:
 
       - name: Compile all sources
         run: sbt +'all compile Test/compile IntegrationTest/compile doc'
-        env:
-          AZURITE_PORT: ${{ job.services.azurite.ports[10000] }}
 
       - name: Compile readme
         run: sbt +'docs/mdoc'
@@ -61,6 +59,8 @@ jobs:
 
       - name: Test
         run: sbt +test
+        env:
+          AZURITE_PORT: ${{ job.services.azurite.ports[10000] }}
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
