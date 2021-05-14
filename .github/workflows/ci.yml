@@ -63,6 +63,10 @@ jobs:
 #        env:
 #          AZURITE_PORT: 10000
 
+
+      - name: Dump docker logs on failure
+        if: failure()
+        uses: jwalton/gh-docker-logs@v1
 #      - name: Echo azurite logs
 #        if: failure()
 #        run: cat azurite-debug.log
