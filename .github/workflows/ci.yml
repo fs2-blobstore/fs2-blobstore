@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v2.3.4
-      - uses: AvaPL/scalafmt-native-formatter@v0.1.1
+      - uses: AvaPL/scalafmt-native-formatter@v0.1.2
 
   tests:
     name: Tests
