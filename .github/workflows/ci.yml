@@ -37,6 +37,9 @@ jobs:
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
+      - name: Enable coverage instrumentation
+        run: sbt --client + coverage
+
       - name: Compile all sources
         run: sbt --client + all compile Test/compile IntegrationTest/compile doc
 
@@ -48,9 +51,6 @@ jobs:
 
       - name: Create tmp directory
         run: mkdir tmp
-
-      - name: Enable coverage instrumentation
-        run: sbt --client + coverage
 
       - name: Test
         run: sbt --client + 'testOnly * -- -l blobstore.IntegrationTest'
@@ -83,6 +83,9 @@ jobs:
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
+      - name: Enable coverage instrumentation
+        run: sbt --client coverage
+
       - name: Compile all sources
         run: sbt --client all compile Test/compile IntegrationTest/compile doc
 
@@ -91,9 +94,6 @@ jobs:
 
       - name: Decrypt Box App Key
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
-
-      - name: Enable coverage instrumentation
-        run: sbt --client coverage
 
       - name: Test
         run: sbt --client 'testOnly * -- -n blobstore.IntegrationTest'
