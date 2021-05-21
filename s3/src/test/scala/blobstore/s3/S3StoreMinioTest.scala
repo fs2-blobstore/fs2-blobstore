@@ -8,11 +8,10 @@ import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCrede
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
-import weaver.GlobalRead
 
 import java.net.URI
 
-class S3StoreMinioTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
+object S3StoreMinioTest extends AbstractS3StoreTest {
 
   override def maxParallelism = 1
 

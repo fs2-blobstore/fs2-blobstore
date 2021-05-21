@@ -7,12 +7,11 @@ import cats.syntax.all._
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
 import fs2.Stream
-import weaver.GlobalRead
 
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
-class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsStore[IO]](global) {
+object GcsStoreTest extends AbstractStoreTest[GcsBlob, GcsStore[IO]] {
 
   // LocalStorageHelper is not thread safe
   override def maxParallelism = 1
@@ -24,14 +23,14 @@ class GcsStoreTest(global: GlobalRead) extends AbstractStoreTest[GcsBlob, GcsSto
   override val testRunRoot: Path.Plain    = Path(testRun.toString)
 
   override val sharedResource: Resource[IO, TestResource[GcsBlob, GcsStore[IO]]] =
-    Resource.pure {
+    transferStoreResources.map { case (tsr, ts) =>
       val gcsStore: GcsStore[IO] = GcsStore[IO](
         LocalStorageHelper.getOptions.getService,
         defaultTrailingSlashFiles = true,
         defaultDirectDownload = false
       )
 
-      TestResource(gcsStore, gcsStore, FiniteDuration(1, "s"))
+      TestResource(gcsStore, gcsStore, FiniteDuration(1, "s"), tsr, ts)
     }
 
   // When creating "folders" in the GCP UI, a zero byte object with the name of the prefix is created

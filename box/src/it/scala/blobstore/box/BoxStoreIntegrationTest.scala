@@ -7,7 +7,6 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import cats.effect.std.Console
 import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnection, BoxFile, BoxFolder}
-import weaver.GlobalRead
 
 import java.time.temporal.ChronoUnit
 import scala.concurrent.duration.FiniteDuration
@@ -16,7 +15,7 @@ import scala.jdk.CollectionConverters._
 /** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
   * See AbstractStoreTest to see what operations performed here.
   */
-class BoxStoreIntegrationTest(global: GlobalRead) extends AbstractStoreTest[BoxPath, BoxStore[IO]](global) {
+object BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath, BoxStore[IO]] {
 
   // Box cannot handle parallel execution
   override def maxParallelism: Int = 1
@@ -97,12 +96,13 @@ class BoxStoreIntegrationTest(global: GlobalRead) extends AbstractStoreTest[BoxP
     }
 
   override def sharedResource: Resource[IO, TestResource[BoxPath, BoxStore[IO]]] = for {
+    (tsr, ts)  <- transferStoreResources
     connection <- connectionResource
     rf         <- Resource.eval(rootFolder(connection))
     _          <- Resource.eval(cleanup(rf))
   } yield {
     val store = BoxStore[IO](connection)
-    TestResource(store.lift, store, FiniteDuration(1, "m"), disableHighRateTests = true)
+    TestResource(store.lift, store, FiniteDuration(1, "m"), tsr, ts, disableHighRateTests = true)
   }
 
   test("expose underlying metadata") { (res, log) =>

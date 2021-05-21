@@ -10,12 +10,11 @@ import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
 import reactor.core.publisher.Hooks
-import weaver.GlobalRead
 
 import java.util.function.Consumer
 import scala.concurrent.duration.FiniteDuration
 
-class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, AzureStore[IO]](global) {
+object AzureStoreTest extends AbstractStoreTest[AzureBlob, AzureStore[IO]] {
 
   Hooks.onErrorDropped(new Consumer[Throwable] {
     override def accept(t: Throwable): Unit = ()
@@ -66,11 +65,13 @@ class AzureStoreTest(global: GlobalRead) extends AbstractStoreTest[AzureBlob, Az
         } yield s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://$host:$port/devstoreaccount1;"
     }
 
-  override val sharedResource: Resource[IO, TestResource[AzureBlob, AzureStore[IO]]] =
-    connectionString.map(azure).flatMap(a => blobContainer(a).as(a)).map { a =>
-      val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
-      TestResource(azureStore, azureStore, FiniteDuration(10, "s"))
-    }
+  override val sharedResource: Resource[IO, TestResource[AzureBlob, AzureStore[IO]]] = for {
+    (tsr, ts) <- transferStoreResources
+    a         <- connectionString.map(azure).flatMap(a => blobContainer(a).as(a))
+  } yield {
+    val azureStore = new AzureStore(a, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
+    TestResource(azureStore, azureStore, FiniteDuration(10, "s"), tsr, ts)
+  }
 
   test("handle files with trailing / in name") { res =>
     val dir = dirUrl("trailing-slash")

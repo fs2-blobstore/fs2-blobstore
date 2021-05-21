@@ -4,11 +4,10 @@ import java.util.Properties
 import cats.effect.{IO, Resource}
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{JSch, Session}
-import weaver.GlobalRead
 
 /** sftp-container follows the default atmoz/sftp configuration and will have "/" mapped to the user's home directory
   */
-class SftpStoreChrootTest(global: GlobalRead) extends AbstractSftpStoreTest(global) {
+object SftpStoreChrootTest extends AbstractSftpStoreTest {
   override val container: GenericContainer = GenericContainer(
     "atmoz/sftp",
     exposedPorts = List(22),

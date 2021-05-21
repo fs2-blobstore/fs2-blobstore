@@ -1,22 +1,21 @@
 package blobstore
 
-import blobstore.fs.NioPath
+import blobstore.fs.{FileStore, NioPath}
 import blobstore.url.{Authority, FsObject, Path, Url}
 import cats.data.Chain
 import cats.effect.{IO, Resource}
 import cats.effect.std.Random
 import cats.syntax.all._
 import fs2.Stream
+import fs2.io.file.Files
 import weaver.scalacheck._
-import weaver.{Expectations, GlobalRead, IOSuite, Log}
+import weaver.{Expectations, IOSuite, Log}
 
+import java.nio.file.Paths
 import java.util.UUID
 import scala.concurrent.duration.FiniteDuration
 
-abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
-  extends IOSuite
-  with Checkers
-  with LocalFSResource {
+abstract class AbstractStoreTest[B <: FsObject, T] extends IOSuite with Checkers {
 
   type Res = TestResource[B, T]
 
@@ -30,8 +29,22 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
   // to the real root.
   def fileSystemRoot: Path.Plain
 
-  def transferStoreResources: Resource[IO, (Url[NioPath], Store[IO, NioPath])] =
-    LocalFSResource.sharedTransferStoreRootResourceOrFallback(global)
+  def transferStoreResources: Resource[IO, (Url[NioPath], Store[IO, NioPath])] = for {
+    _ <- Resource.make(IO.unit)(_ => Files[IO].deleteDirectoryRecursively(Paths.get("tmp")))
+    rs <- Resource.make {
+      val p = Paths.get("tmp/transfer-store-root")
+      (
+        Url(
+          "file",
+          Authority.localhost,
+          Path.of(p.toAbsolutePath.toString, NioPath(p.toAbsolutePath, size = None, isDir = true, lastModified = None))
+        ),
+        FileStore[IO].lift((u: Url[String]) => u.path.valid)
+      ).pure[IO]
+    } { case (u, s) =>
+      s.remove(u, recursive = true)
+    }
+  } yield rs
 
   val testRun: UUID = java.util.UUID.randomUUID()
 
@@ -146,21 +159,18 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
 
   test("transfer individual file to a file path from one store to another") { (res, log) =>
     val srcDir = dirUrl("transfer-file-to-file")
-    val test = transferStoreResources.use { case (transferStoreRoot, transferStore) =>
-      for {
-        (srcUrl, srcContent) <- writeRandomFile(res.store, log)(srcDir)
-        dstDir = transferStoreRoot / testRun.toString / srcDir.path.lastSegment
-        dstUrl = dstDir / srcUrl.path.lastSegment
-        _           <- log.debug(s"Transfer from $srcUrl to $dstUrl")
-        transferred <- res.store.transferTo(transferStore, srcUrl, dstUrl)
-        dstContent  <- transferStore.get(dstUrl, 128).compile.to(Array)
-      } yield {
-        expect.all(
-          transferred == 1,
-          srcContent sameElements dstContent
-        )
-      }
-
+    val test = for {
+      (srcUrl, srcContent) <- writeRandomFile(res.store, log)(srcDir)
+      dstDir = res.transferStoreRoot / testRun.toString / srcDir.path.lastSegment
+      dstUrl = dstDir / srcUrl.path.lastSegment
+      _           <- log.debug(s"Transfer from $srcUrl to $dstUrl")
+      transferred <- res.store.transferTo(res.transferStore, srcUrl, dstUrl)
+      dstContent  <- res.transferStore.get(dstUrl, 128).compile.to(Array)
+    } yield {
+      expect.all(
+        transferred == 1,
+        srcContent sameElements dstContent
+      )
     }
 
     test.timeout(res.timeout)
@@ -170,27 +180,24 @@ abstract class AbstractStoreTest[B <: FsObject, T](global: GlobalRead)
   test("transfer directories recursively from one store to another") { (res, log) =>
     val srcDir = dirUrl("transfer-dir-rec")
 
-    val test = transferStoreResources.use { case (transferStoreRoot, transferStore) =>
-      for {
-        srcUrls <- (1 to 10).toList.traverse(i =>
-          writeRandomFile(res.store, log)(srcDir, Some(if (i % 2 == 0) s"$i.bin" else s"subdir/$i.bin"))
-        )
-        srcContents = srcUrls.foldLeft(Map.empty[String, List[Byte]]) { case (acc, (u, bytes)) =>
-          u.path.lastSegment.fold(acc)(acc.updated(_, bytes.toList))
-        }
-        dstDir = transferStoreRoot / testRun.toString / srcDir.path.lastSegment
-        _           <- log.debug(s"Transfer from dir $srcDir to dir $dstDir")
-        transferred <- res.store.transferTo(transferStore, srcDir, dstDir)
-        dstContents <- transferStore.list(dstDir, recursive = true).evalMap { u =>
-          transferStore.get(u, 128).compile.to(List).map(u.path.lastSegment -> _)
-        }.compile.fold(Map.empty[String, List[Byte]]) { case (acc, (k, v)) => k.fold(acc)(acc.updated(_, v)) }
-      } yield {
-        expect.all(
-          transferred == 10,
-          srcContents == dstContents
-        )
+    val test = for {
+      srcUrls <- (1 to 10).toList.traverse(i =>
+        writeRandomFile(res.store, log)(srcDir, Some(if (i % 2 == 0) s"$i.bin" else s"subdir/$i.bin"))
+      )
+      srcContents = srcUrls.foldLeft(Map.empty[String, List[Byte]]) { case (acc, (u, bytes)) =>
+        u.path.lastSegment.fold(acc)(acc.updated(_, bytes.toList))
       }
-
+      dstDir = res.transferStoreRoot / testRun.toString / srcDir.path.lastSegment
+      _           <- log.debug(s"Transfer from dir $srcDir to dir $dstDir")
+      transferred <- res.store.transferTo(res.transferStore, srcDir, dstDir)
+      dstContents <- res.transferStore.list(dstDir, recursive = true).evalMap { u =>
+        res.transferStore.get(u, 128).compile.to(List).map(u.path.lastSegment -> _)
+      }.compile.fold(Map.empty[String, List[Byte]]) { case (acc, (k, v)) => k.fold(acc)(acc.updated(_, v)) }
+    } yield {
+      expect.all(
+        transferred == 10,
+        srcContents == dstContents
+      )
     }
 
     test.timeout(res.timeout)

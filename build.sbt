@@ -34,7 +34,7 @@ lazy val root = project
   .settings(
     publish / skip := true
   )
-  .aggregate(s3 /*url, core, s3, sftp, gcs, azure, box*/ )
+  .aggregate(url, core, s3, sftp, gcs, azure, box)
 
 lazy val url = project
 

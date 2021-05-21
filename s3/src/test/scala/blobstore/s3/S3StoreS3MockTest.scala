@@ -9,9 +9,8 @@ import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
-import weaver.GlobalRead
 
-class S3StoreS3MockTest(global: GlobalRead) extends AbstractS3StoreTest(global) {
+object S3StoreS3MockTest extends AbstractS3StoreTest {
 
   override def maxParallelism = 1
 

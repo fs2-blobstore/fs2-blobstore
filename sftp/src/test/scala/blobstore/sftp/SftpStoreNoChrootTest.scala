@@ -5,11 +5,10 @@ import cats.effect.{IO, Resource}
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{JSch, Session}
 import org.testcontainers.containers.BindMode
-import weaver.GlobalRead
 
 /** sftp-no-chroot-container doesn't map user's home directory to "/". User's instead land in "/home/<username>/"
   */
-class SftpStoreNoChrootTest(global: GlobalRead) extends AbstractSftpStoreTest(global) {
+object SftpStoreNoChrootTest extends AbstractSftpStoreTest {
   override val container: GenericContainer = GenericContainer(
     "atmoz/sftp",
     exposedPorts = List(22),

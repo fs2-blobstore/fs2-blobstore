@@ -16,11 +16,11 @@ import software.amazon.awssdk.services.s3.model.{
   ObjectIdentifier,
   StorageClass
 }
-import weaver.{Expectations, GlobalRead}
+import weaver.Expectations
 
 import scala.concurrent.duration.FiniteDuration
 
-abstract class AbstractS3StoreTest(global: GlobalRead) extends AbstractStoreTest[S3Blob, S3Store[IO]](global) {
+abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob, S3Store[IO]] {
   override val scheme: String             = "s3"
   override val authority: Authority       = Authority.unsafe("blobstore-test-bucket")
   override val fileSystemRoot: Path.Plain = Path("")
@@ -53,12 +53,16 @@ abstract class AbstractS3StoreTest(global: GlobalRead) extends AbstractStoreTest
     IO.fromCompletableFuture(IO(client.createBucket(CreateBucketRequest.builder().bucket(authority.show).build()))).void
   )(_ => cleanup(client))
 
-  override val sharedResource: Resource[IO, TestResource[S3Blob, S3Store[IO]]] = clientResource
-    .flatMap(client => bucketResource(client).as(client))
-    .map { client =>
+  override val sharedResource: Resource[IO, TestResource[S3Blob, S3Store[IO]]] = {
+    for {
+      (tsr, ts) <- transferStoreResources
+      client    <- clientResource
+      _         <- bucketResource(client)
+    } yield {
       val s3Store = new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
-      TestResource(s3Store, s3Store, FiniteDuration(10, "s"))
+      TestResource(s3Store, s3Store, FiniteDuration(10, "s"), tsr, ts)
     }
+  }
 
   test("expose underlying metadata") { (res, log) =>
     val dir = dirUrl("expose-underlying")

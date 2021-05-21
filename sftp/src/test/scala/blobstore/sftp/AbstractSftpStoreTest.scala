@@ -6,11 +6,10 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.Session
-import weaver.GlobalRead
 
 import scala.concurrent.duration.FiniteDuration
 
-abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTest[SftpFile, SftpStore[IO]](global) {
+abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile, SftpStore[IO]] {
 
   def container: GenericContainer
 
@@ -26,10 +25,14 @@ abstract class AbstractSftpStoreTest(global: GlobalRead) extends AbstractStoreTe
 
   def cleanup(store: SftpStore[F]): F[Unit] = store.remove(testRunRoot, recursive = true)
 
-  override def sharedResource: Resource[IO, TestResource[SftpFile, SftpStore[IO]]] =
-    sessionResource
-      .flatMap(session => SftpStore(session.pure, Some(10), 50000))
-      .flatMap(store => Resource.make(IO(TestResource(store.lift, store, FiniteDuration(8, "s"))))(_ => cleanup(store)))
+  override def sharedResource: Resource[IO, TestResource[SftpFile, SftpStore[IO]]] = {
+    for {
+      (tsr, ts) <- transferStoreResources
+      session   <- sessionResource
+      store     <- SftpStore(session.pure, Some(10), 50000)
+      _         <- Resource.onFinalize(cleanup(store))
+    } yield TestResource(store.lift, store, FiniteDuration(8, "s"), tsr, ts)
+  }
 
   test("list files in current working directory") { res =>
     val empty = Path("")
