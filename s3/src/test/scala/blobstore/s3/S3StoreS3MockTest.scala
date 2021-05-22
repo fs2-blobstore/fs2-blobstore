@@ -12,8 +12,6 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 
 object S3StoreS3MockTest extends AbstractS3StoreTest {
 
-  override def maxParallelism = 1
-
   val container: GenericContainer = GenericContainer(
     dockerImage = "adobe/s3mock",
     exposedPorts = List(9090)

@@ -7,6 +7,7 @@ import cats.syntax.all._
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
 import fs2.Stream
+import weaver.scalacheck.CheckConfig
 
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
@@ -14,7 +15,8 @@ import scala.jdk.CollectionConverters._
 object GcsStoreTest extends AbstractStoreTest[GcsBlob, GcsStore[IO]] {
 
   // LocalStorageHelper is not thread safe
-  override def maxParallelism = 1
+  override def maxParallelism           = 1
+  override def checkConfig: CheckConfig = CheckConfig.default.copy(perPropertyParallelism = 1)
 
   override val scheme: String       = "gs"
   override val authority: Authority = Authority.unsafe("bucket")

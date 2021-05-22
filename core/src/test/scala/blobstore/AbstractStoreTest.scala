@@ -418,7 +418,7 @@ abstract class AbstractStoreTest[B <: FsObject, T] extends IOSuite with Checkers
           bytes: List[Byte] =>
             for {
               filePath <- randomAlphanumeric(20).map(dir / _)
-              _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain.attempt
+              _        <- Stream.emits(bytes).through(res.store.put(filePath)).compile.drain
               contents <- res.store.get(filePath, 1024).compile.to(Array)
             } yield {
               expect(contents sameElements bytes)
