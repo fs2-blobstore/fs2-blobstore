@@ -1,14 +1,11 @@
 package blobstore.url
 
-import cats.data.Validated.{Invalid, Valid}
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.must.Matchers
 import cats.syntax.all._
-import org.scalatest.Inside
+import weaver.FunSuite
 
-class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
+object AuthorityTest extends FunSuite {
 
-  it should "parse bucket names" in {
+  test("parse bucket names") {
     val valid = List(
       "foo",
       "foo_bar.baz-bam42"
@@ -25,12 +22,7 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
       "aa"
     ).traverse(Authority.parse)
 
-    inside(valid) {
-      case Valid(_) => // ok
-    }
-
-    inside(invalid) { // scalafix:ok
-      case Invalid(_) => // ok
-    }
+    expect(valid.isValid)
+    expect(invalid.isInvalid)
   }
 }

@@ -29,10 +29,9 @@ inThisBuild(
   )
 )
 
-lazy val fs2blobstore = project
+lazy val root = project
   .in(file("."))
   .settings(
-    moduleName := "root",
     publish / skip := true
   )
   .aggregate(url, core, s3, sftp, gcs, azure, box)
@@ -45,7 +44,10 @@ lazy val s3 = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val sftp = project.dependsOn(core % "compile->compile;test->test")
 
-lazy val box = project.dependsOn(core % "compile->compile;test->test")
+lazy val box = project
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
+  .dependsOn(core % "compile->compile;it->test")
 
 lazy val gcs = project.dependsOn(core % "compile->compile;test->test")
 

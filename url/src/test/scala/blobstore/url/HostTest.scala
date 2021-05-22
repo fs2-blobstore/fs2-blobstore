@@ -1,14 +1,12 @@
 package blobstore.url
 
+import cats.data.Validated
 import cats.syntax.all._
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.must.Matchers
-import org.scalatest.Inside
+import weaver.FunSuite
 
-import scala.util.{Failure, Success, Try}
+import scala.util.{Success, Try}
 
-class HostTest extends AnyFlatSpec with Matchers with Inside {
-  behavior of "Host"
+object HostTest extends FunSuite {
 
   val validHostnames: List[String] = List(
     "f",
@@ -39,57 +37,49 @@ class HostTest extends AnyFlatSpec with Matchers with Inside {
     "1.1.1"
   )
 
-  it should "parse" in {
-    validHostnames.map(Host.parse).map(_.toEither).foreach { h =>
-      inside(h) {
-        case Right(Hostname(_)) => //noop
-      }
-    }
-    validHostnames.map(Host.parseF[Try]).foreach { h =>
-      inside(h) {
-        case Success(Hostname(_)) => //noop
-      }
-    }
+  test("parse") {
 
-    validIps.map(Host.parse).map(_.toEither).foreach { h =>
-      inside(h) {
-        case Right(IpV4Address(_, _, _, _)) => //noop
-      }
-    }
+    val hostnames = validHostnames.map(s => Host.parse(s) -> Host.parseF[Try](s)).map { case (parsed, parsedTry) =>
+      expect.all(
+        parsed match {
+          case Validated.Valid(Hostname(_)) => true
+          case _                            => false
+        },
+        parsedTry match {
+          case Success(Hostname(_)) => true
+          case _                    => false
+        }
+      )
+    }.combineAll
 
-    validIps.map(Host.parseF[Try]).foreach { h =>
-      inside(h) {
-        case Success(IpV4Address(_, _, _, _)) => //noop
-      }
-    }
+    val ips = validIps.map(s => Host.parse(s) -> Host.parseF[Try](s)).map { case (parsed, parsedTry) =>
+      expect.all(
+        parsed match {
+          case Validated.Valid(IpV4Address(_, _, _, _)) => true
+          case _                                        => false
+        },
+        parsedTry match {
+          case Success(IpV4Address(_, _, _, _)) => true
+          case _                                => false
+        }
+      )
+    }.combineAll
 
-    invalidHostnames.map(Host.parse).map(_.toEither).foreach { h =>
-      inside(h) {
-        case Left(_) => //noop
-      }
-    }
+    val nonHostnames =
+      invalidHostnames.map(s => Host.parse(s) -> Host.parseF[Try](s)).map { case (parsed, parsedTry) =>
+        expect.all(parsed.isInvalid, parsedTry.isFailure)
+      }.combineAll
 
-    invalidHostnames.map(Hostname.parseF[Try]).foreach { h =>
-      inside(h) {
-        case Failure(_) => //noop
-      }
-    }
+    val nonIps =
+      invalidIps.map(s => IpV4Address.parse(s) -> IpV4Address.parseF[Try](s)).map { case (parsed, parsedTry) =>
+        expect.all(parsed.isInvalid, parsedTry.isFailure)
+      }.combineAll
 
-    invalidIps.map(IpV4Address.parse).map(_.toEither).foreach { h =>
-      inside(h) {
-        case Left(_) => //noop
-      }
-    }
-
-    invalidIps.map(IpV4Address.parseF[Try]).foreach { h =>
-      inside(h) {
-        case Failure(_) => //noop
-      }
-    }
+    hostnames and ips and nonHostnames and nonIps
   }
 
-  it should "order" in {
-    val sorted = (validHostnames ++ validIps).map(Host.parse(_).toOption).flattenOption.map(_.show).sorted
+  test("order") {
+    val sorted = (validHostnames ++ validIps).flatMap(Host.parse(_).toOption).sorted(Host.order.toOrdering).map(_.show)
     val correctSorting =
       List(
         "1.1.1.1",
@@ -102,6 +92,6 @@ class HostTest extends AnyFlatSpec with Matchers with Inside {
         "ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt"
       )
 
-    sorted must contain theSameElementsInOrderAs correctSorting
+    expect(sorted == correctSorting)
   }
 }

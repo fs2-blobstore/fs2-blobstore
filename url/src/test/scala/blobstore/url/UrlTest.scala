@@ -1,41 +1,42 @@
 package blobstore.url
 
 import blobstore.url.exception.UrlParseError
-import blobstore.url.UrlTest.{Password, User}
 import blobstore.url.exception.UrlParseError.MissingScheme
 import blobstore.url.Path.RootlessPath
-import cats.data.Validated.{Invalid, Valid}
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.must.Matchers
-import org.scalatest.Inside
+import blobstore.url.exception.AuthorityParseError.MissingHost
+import cats.data.NonEmptyChain
 import cats.syntax.all._
+import weaver.FunSuite
 
 import scala.util.{Success, Try}
 
-class UrlTest extends AnyFlatSpec with Matchers with Inside {
+object UrlTest extends FunSuite {
 
-  behavior of "Url"
+  sealed trait UrlComponent
+  case class User(v: String)     extends UrlComponent
+  case class Password(v: String) extends UrlComponent
 
-  // scalafix:off
-
-  it should "compose" in {
+  test("compose") {
     val fileLike = "https://foo.example.com"
 
-    inside(Url.parse(fileLike).toEither) {
-      case Right(url) =>
-        (url / "foo").show mustBe "https://foo.example.com/foo"
-        (url / "/foo").show mustBe "https://foo.example.com/foo"
-        (url / "//foo").show mustBe "https://foo.example.com//foo"
-        (url / Some("foo")).show mustBe "https://foo.example.com/foo"
-        (url / Path("foo")).show mustBe "https://foo.example.com/foo"
-        (url / Path("/foo")).show mustBe "https://foo.example.com/foo"
-        (url `//` "foo").show mustBe "https://foo.example.com/foo/"
-        (url / "foo").withPath(Path("bar/baz/")).show mustBe "https://foo.example.com/bar/baz/"
-        (url / "foo").withAuthority(Authority.unsafe("bar.example.com")).show mustBe "https://bar.example.com/foo"
-    }
+    val parsed = Url.parse(fileLike)
+
+    expect(parsed.isValid) and parsed.map { url =>
+      expect.all(
+        (url / "foo").show == "https://foo.example.com/foo",
+        (url / "/foo").show == "https://foo.example.com/foo",
+        (url / "//foo").show == "https://foo.example.com//foo",
+        (url / Some("foo")).show == "https://foo.example.com/foo",
+        (url / Path("foo")).show == "https://foo.example.com/foo",
+        (url / Path("/foo")).show == "https://foo.example.com/foo",
+        (url `//` "foo").show == "https://foo.example.com/foo/",
+        (url / "foo").withPath(Path("bar/baz/")).show == "https://foo.example.com/bar/baz/",
+        (url / "foo").withAuthority(Authority.unsafe("bar.example.com")).show == "https://bar.example.com/foo"
+      )
+    }.combineAll
   }
 
-  it should "render correctly with toString" in {
+  test("render correctly with toString") {
     val url1 = Url(
       scheme = "https",
       authority = Authority(Host.unsafe("foo.com"), UserInfo("foo", Some("bar")).some, Some(Port.unsafe(8080))),
@@ -57,26 +58,34 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
       path = Path("foo")
     )
 
-    url1.toString mustBe "https://foo@foo.com:8080/foo"
-    url1.toStringMasked mustBe "https://foo:*****@foo.com:8080/foo"
-    url1.toStringWithPassword mustBe "https://foo:bar@foo.com:8080/foo"
+    val e1 = expect.all(
+      url1.toString == "https://foo@foo.com:8080/foo",
+      url1.toStringMasked == "https://foo:*****@foo.com:8080/foo",
+      url1.toStringWithPassword == "https://foo:bar@foo.com:8080/foo"
+    )
 
-    url2.toString mustBe "https://foo@foo.com:8080/foo"
-    url2.toStringMasked mustBe "https://foo@foo.com:8080/foo"
-    url2.toStringWithPassword mustBe "https://foo@foo.com:8080/foo"
+    val e2 = expect.all(
+      url2.toString == "https://foo@foo.com:8080/foo",
+      url2.toStringMasked == "https://foo@foo.com:8080/foo",
+      url2.toStringWithPassword == "https://foo@foo.com:8080/foo"
+    )
 
-    url3.toString mustBe "https://foo.com:8080/foo"
-    url3.toStringMasked mustBe "https://foo.com:8080/foo"
-    url3.toStringWithPassword mustBe "https://foo.com:8080/foo"
+    val e3 = expect.all(
+      url3.toString == "https://foo.com:8080/foo",
+      url3.toStringMasked == "https://foo.com:8080/foo",
+      url3.toStringWithPassword == "https://foo.com:8080/foo"
+    )
 
-    url4.toString mustBe "https://foo.com/foo"
-    url4.toStringMasked mustBe "https://foo.com/foo"
-    url4.toStringWithPassword mustBe "https://foo.com/foo"
+    val e4 = expect.all(
+      url4.toString == "https://foo.com/foo",
+      url4.toStringMasked == "https://foo.com/foo",
+      url4.toStringWithPassword == "https://foo.com/foo"
+    )
+
+    e1 and e2 and e3 and e4
   }
 
-  behavior of "parsing"
-
-  it should "parse valid urls" in {
+  test("parse valid urls") {
     val schemes = List("gs", "s3", "sftp", "http", "https")
     val validUrls = List(
       "foo",
@@ -89,49 +98,52 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
       "foo/bar/baz.gz?something"
     )
 
-    schemes.flatMap(s => validUrls.map(s + "://" + _)).foreach { url =>
-      withClue(show"URL: $url") {
-        inside(Url.parse(url)) {
-          case Valid(u) =>
-            u.scheme mustBe url.takeWhile(_ != ':')
-            u.authority.host.show mustBe "foo"
-            u.authority.userInfo mustBe None
-            u.authority.port mustBe None
-        }
-
-        inside(Url.parse(url)) {
-          case Valid(u) =>
-            u.scheme mustBe url.takeWhile(_ != ':')
-            u.authority.host.show mustBe "foo"
-        }
-      }
-    }
+    schemes.flatMap(s => validUrls.map(s ++ "://" ++ _)).map { s =>
+      val parsed = Url.parse(s)
+      expect(parsed.isValid) and parsed.map { url =>
+        expect.all(
+          url.scheme == s.takeWhile(_ != ':'),
+          url.authority.host.show == "foo",
+          url.authority.userInfo.isEmpty,
+          url.authority.port.isEmpty
+        )
+      }.combineAll
+    }.combineAll
   }
 
-  it should "parse file uris" in {
-    inside(Url.parse("file:/bar")) {
-      case Valid(u) =>
-        u.scheme mustBe "file"
-        u.authority.host.show mustBe "localhost"
-        u.path.show mustBe "/bar"
-    }
+  test("parse file uris") {
+    val p1 = Url.parse("file:/bar")
+    val e1 = expect(p1.isValid) and p1.map { url =>
+      expect.all(
+        url.scheme == "file",
+        url.authority.host.show == "localhost",
+        url.path.show == "/bar"
+      )
+    }.combineAll
 
-    inside(Url.parse("file://bar")) {
-      case Valid(u) =>
-        u.scheme mustBe "file"
-        u.authority.host.show mustBe "localhost"
-        u.path.show mustBe "bar"
-    }
+    val p2 = Url.parse("file://bar")
+    val e2 = expect(p2.isValid) and p2.map { url =>
+      expect.all(
+        url.scheme == "file",
+        url.authority.host.show == "localhost",
+        url.path.show == "bar"
+      )
+    }.combineAll
 
-    inside(Url.parse("file:///bar")) {
-      case Valid(u) =>
-        u.scheme mustBe "file"
-        u.authority.host.show mustBe "localhost"
-        u.path.show mustBe "/bar"
-    }
+    val p3 = Url.parse("file:///bar")
+    val e3 = expect(p3.isValid) and p3.map { url =>
+      expect.all(
+        url.scheme == "file",
+        url.authority.host.show == "localhost",
+        url.path.show == "/bar"
+      )
+    }.combineAll
+
+    e1 and e2 and e3
   }
 
-  it should "userinfo and port are allowed for standard urls, but not buckets" in {
+  // scalafix:off
+  test("userinfo and port are allowed for standard urls, but not buckets") {
     val values = List(User("foo"), Password("bar"), Port(8080))
     val cross  = values.flatMap(v => values.map(v -> _))
 
@@ -155,54 +167,51 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         val v = show"https://$u@example.com:$p/foo/"
         val url = Url(
           "https",
-          Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), blobstore.url.Port.unsafe(p).some),
+          Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), Port.unsafe(p).some),
           Path("foo/")
         )
         (v -> url).some
       case (Port(p), Port(_)) =>
         val v = show"https://example.com:$p/foo/"
         val url =
-          Url("https", Authority(Host.unsafe("example.com"), None, blobstore.url.Port.unsafe(p).some), Path("foo/"))
+          Url("https", Authority(Host.unsafe("example.com"), None, Port.unsafe(p).some), Path("foo/"))
         (v -> url).some
       case _ => None
     }
 
-    ((all, allExpected).some :: candidates).flattenOption.foreach { case (value, expected) =>
-      Url.parse(value) mustBe expected.valid[UrlParseError]
-      Url.parseF[Try](value) mustBe Success(expected)
-      Url.parse(value) mustBe expected.valid
+    ((all, allExpected).some :: candidates).flattenOption.map { case (value, expected) =>
+      expect.all(
+        Url.parse(value) == expected.valid[UrlParseError],
+        Url.parseF[Try](value) == Success(expected),
+        Url.unsafe(value) == expected
+      )
+    }.combineAll
+  }
+
+  test("give correct error messaages") {
+    expect {
+      Url.parse("foo") == NonEmptyChain.of(MissingScheme("foo", None), MissingHost("foo")).invalid
     }
-  }
-
-  it should "give correct error messaages" in {
-    inside(Url.parse("foo")) {
-      case Invalid(e) =>
-        val missingScheme = e.toList.collect {
-          case m @ MissingScheme(_, _) => m
-        }
-        missingScheme mustBe List(MissingScheme("foo", None))
-    }
-  }
-
-  it should "parse to rootless paths by default" in {
-    val url = Url.unsafe("https://example.com/foo/bar")
-    url.path mustBe a[RootlessPath[_]]
-  }
-
-  it should "convert between schemes" in {
-    val url    = Url.unsafe("https://example.com/foo/bar")
-    val bucket = Hostname.unsafe("foo")
-    url.toAzure(bucket).show mustBe "https://foo/foo/bar"
-    url.toS3(bucket).show mustBe "s3://foo/foo/bar"
-    url.toGcs(bucket).show mustBe "gs://foo/foo/bar"
-    url.toSftp(bucket.authority).show mustBe "sftp://foo/foo/bar"
   }
   // scalafix:on
-}
 
-object UrlTest {
-  sealed trait UrlComponent
-  case class User(v: String)     extends UrlComponent
-  case class Password(v: String) extends UrlComponent
-  case class Port(v: Int)        extends UrlComponent
+  test("parse to rootless paths by default") {
+    val url = Url.unsafe("https://example.com/foo/bar")
+    expect(url.path match {
+      case _: RootlessPath[_] => true
+      case _                  => false
+    })
+  }
+
+  test("convert between schemes") {
+    val url    = Url.unsafe("https://example.com/foo/bar")
+    val bucket = Hostname.unsafe("foo")
+    expect.all(
+      url.toAzure(bucket).show == "https://foo/foo/bar",
+      url.toS3(bucket).show == "s3://foo/foo/bar",
+      url.toGcs(bucket).show == "gs://foo/foo/bar",
+      url.toSftp(bucket.authority).show == "sftp://foo/foo/bar"
+    )
+  }
+
 }

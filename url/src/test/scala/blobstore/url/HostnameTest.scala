@@ -1,15 +1,11 @@
 package blobstore.url
 
-import cats.data.Validated.{Invalid, Valid}
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.must.Matchers
-import org.scalatest.Inside
+import cats.syntax.all._
+import weaver.FunSuite
 
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 
-class HostnameTest extends AnyFlatSpec with Matchers with Inside {
-
-  behavior of "Hostname"
+object HostnameTest extends FunSuite {
 
   private val validHostnames = List(
     "foo",
@@ -29,27 +25,21 @@ class HostnameTest extends AnyFlatSpec with Matchers with Inside {
     "foob#r".repeat(64)
   )
 
-  it should "allow valid hostnames" in {
-    validHostnames.foreach { h =>
-      inside(Hostname.parse(h)) {
-        case Valid(_) => // noop
-      }
-
-      inside(Hostname.parseF[Try](h)) {
-        case Success(_) => // noop
-      }
-    }
+  test("allow valid hostnames") {
+    validHostnames.map { h =>
+      expect.all(
+        Hostname.parse(h).isValid,
+        Hostname.parseF[Try](h).isSuccess
+      )
+    }.combineAll
   }
 
-  it should "not allow invalid hostnames" in {
-    invalidHostnames.foreach { h =>
-      inside(Hostname.parse(h)) {
-        case Invalid(_) => // noop
-      }
-
-      inside(Hostname.parseF[Try](h)) {
-        case Failure(_) => // noop
-      }
-    }
+  test("not allow invalid hostnames") {
+    invalidHostnames.map { h =>
+      expect.all(
+        Hostname.parse(h).isInvalid,
+        Hostname.parseF[Try](h).isFailure
+      )
+    }.combineAll
   }
 }

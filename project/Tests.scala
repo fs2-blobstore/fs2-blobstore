@@ -6,9 +6,10 @@ object Tests extends AutoPlugin {
 
   override def buildSettings: Seq[Def.Setting[_]] = Seq(
     libraryDependencies ++= Seq(
-      "org.scalatest"     %% "scalatest"       % "3.2.9"   % Test,
-      "org.scalatestplus" %% "scalacheck-1-15" % "3.2.9.0" % Test
-    )
+      "com.disneystreaming" %% "weaver-cats"       % "0.7.3" % Test,
+      "com.disneystreaming" %% "weaver-scalacheck" % "0.7.3" % Test
+    ),
+    testFrameworks += new TestFramework("weaver.framework.CatsEffect")
   )
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(

@@ -172,11 +172,7 @@ class S3Store[F[_]: Async](
         queue <- Resource.eval(Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
         _ <- Resource.make(
           Async[F].start(
-            Stream.fromQueueNoneTerminatedChunk(
-              queue,
-              // TODO: Remove this limit once https://github.com/aws/aws-sdk-java-v2/issues/953 is resolved.
-              (limit / 2).toInt.min(S3Store.mb / 2)
-            ).through(put(path)).compile.drain
+            Stream.fromQueueNoneTerminatedChunk(queue).through(put(path)).compile.drain
           )
         )(_.join.flatMap(_.fold(Async[F].unit, e => Async[F].raiseError[Unit](e), identity)))
         _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
@@ -246,7 +242,7 @@ class S3Store[F[_]: Async](
     size: Long,
     in: Stream[F, Byte]
   ): Stream[F, Unit] =
-    Stream.resource(in.chunks.map(chunk => chunk.toByteBuffer).toUnicastPublisher).flatMap { publisher =>
+    Stream.resource(in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher).flatMap { publisher =>
       val request = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, size)
 
       val requestBody = AsyncRequestBody.fromPublisher(publisher)
@@ -262,7 +258,7 @@ class S3Store[F[_]: Async](
   ): Pull[F, INothing, Unit] =
     Pull.eval(Async[F].fromCompletableFuture(Async[F].delay(s3.putObject(
       S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, chunk.size.toLong),
-      AsyncRequestBody.fromByteBuffer(chunk.toByteBuffer)
+      AsyncRequestBody.fromBytes(chunk.toArray)
     ))).void)
 
   private def putUnknownSize(
@@ -474,7 +470,7 @@ object S3Store {
           )
         } else {
           Pull
-            .eval(Async[F].delay(byteBuffer.put(hd.toByteBuffer)))
+            .eval(Async[F].delay(byteBuffer.put(hd.toArray)))
             .flatMap { _ =>
               if (byteBuffer.position() < byteBuffer.capacity()) {
                 multipartGo(
