@@ -43,13 +43,13 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
 
     store.putContent(url, "test").unsafeRunSync()
 
-    store.stat(url).map { path =>
-      path.fullName mustBe show"$testRunRoot/foo/bar/file"
-      path.size mustBe Some("test".getBytes(StandardCharsets.UTF_8).length)
-      path.isDir mustBe false
-      path.lastModified must not be None
-      path.storageClass mustBe None // Not supported by minio
-      path.dirName mustBe None
+    store.stat(url).map { url =>
+      url.path.fullName mustBe show"$testRunRoot/foo/bar/file"
+      url.path.size mustBe Some("test".getBytes(StandardCharsets.UTF_8).length)
+      url.path.isDir mustBe false
+      url.path.lastModified must not be None
+      url.path.storageClass mustBe None // Not supported by minio
+      url.path.dirName mustBe None
     }.compile.lastOrError.unsafeRunSync()
   }
 

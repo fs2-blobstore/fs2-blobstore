@@ -24,6 +24,7 @@ import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
+import software.amazon.awssdk.services.s3.model.StorageClass
 
 class S3StoreS3MockTest extends AbstractS3StoreTest {
 
@@ -47,14 +48,14 @@ class S3StoreS3MockTest extends AbstractS3StoreTest {
 
     store.putContent(fileUrl, "test").unsafeRunSync()
 
-    s3Store.listWithHead(dir).map { u =>
-      u.path.storageClass mustBe None // Not supported by s3mock
+    s3Store.listUnderlying(dir, false, false, true).map { u =>
+      u.path.storageClass mustBe Some(StorageClass.STANDARD)
     }.compile.lastOrError.unsafeRunSync()
 
     val storeGeneric: Store.Generic[IO] = store
 
     storeGeneric.list(dir).map { u =>
-      u.path.storageClass mustBe None // S3 doesn't return this by default for list
+      u.path.storageClass mustBe None // S3Mock doesn't return this by default for list, it's a bug in S3Mock. S3 does this.
     }.compile.lastOrError.unsafeRunSync()
   }
 
