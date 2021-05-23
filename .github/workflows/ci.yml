@@ -12,69 +12,82 @@ on:
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  local-test:
-    name: Checks & local tests
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        scala: [2.12.12, 2.13.5]
-        java: ['adopt:11']
-    runs-on: ${{ matrix.os }}
+  scalafmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - id: scala-major-minor
-        run: |
-          v=$(echo ${{matrix.scala}} | cut -d'.' -f1-2)
-          echo "::set-output name=version::$v"
+      - uses: actions/checkout@v2.3.4
+      - uses: AvaPL/scalafmt-native-formatter@v0.1.2
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [scalafmt]
+    steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2
+        uses: actions/checkout@v2.3.4
 
-      - uses: laughedelic/coursier-setup@v1
-        with:
-          jvm: ${{ matrix.java }}
+      - name: Cache project dependencies between workflow runs
+        uses: coursier/cache-action@v6
 
-      - uses: coursier/cache-action@v5
+      - name: Enable coverage instrumentation
+        run: sbt --client + coverage
 
-      - name: Checks
-        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafixCheck'
+      - name: Compile all sources
+        run: sbt --client + all compile Test/compile IntegrationTest/compile doc
+
+      - name: Compile readme
+        run: sbt --client + docs/mdoc
+
+      - name: Run Scalafix
+        run: sbt --client + scalafixAll --check
 
       - name: Create tmp directory
         run: mkdir tmp
 
       - name: Test
-        run: sbtn ++${{ matrix.scala }}! 'coverage; testOnly * -- -l blobstore.IntegrationTest; coverageAggregate'
+        run: sbt --client + 'testOnly * -- -l blobstore.IntegrationTest'
+
+      - name: Publish JUnit test report
+        if: always() # publish report when tests fail
+        uses: mikepenz/action-junit-report@v2.4.1
+        with:
+          github_token: ${{ github.token }}
+          report_paths: '**/target/test-reports/*.xml'
+
+      - name: Generate coverage report
+        run: sbt --client + coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v1.5.0
         with:
-          flags: local-scala-${{ steps.scala-major-minor.outputs.version }}
+          flags: scala
 
-  all-test:
-    name: Checks & all tests
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        scala: [2.12.12, 2.13.5]
-        java: ['adopt:11']
-    runs-on: ${{ matrix.os }}
+  integration-tests:
+    name: Integration tests
+    if: github.actor != 'dependabot[bot]' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [scalafmt, tests]
     steps:
-      - id: scala-major-minor
-        run: |
-          v=$(echo ${{matrix.scala}} | cut -d'.' -f1-2)
-          echo "::set-output name=version::$v"
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2
+        uses: actions/checkout@v2.3.4
 
-      - uses: laughedelic/coursier-setup@v1
-        with:
-          jvm: ${{ matrix.java }}
+      - name: Cache project dependencies between workflow runs
+        uses: coursier/cache-action@v6
 
-      - uses: coursier/cache-action@v5
+      - name: Enable coverage instrumentation
+        run: sbt --client coverage
 
-      - name: Checks
-        run: sbtn ++${{ matrix.scala }}! 'scalafmtSbtCheck; scalafmtCheckAll; compile; doc; docs/mdoc; scalafixCheck'
+      - name: Compile all sources
+        run: sbt --client all compile Test/compile IntegrationTest/compile doc
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -83,9 +96,19 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Test
-        run: sbtn ++${{ matrix.scala }}! 'coverage; test; coverageAggregate'
+        run: sbt --client 'testOnly * -- -n blobstore.IntegrationTest'
+
+      - name: Publish JUnit test report
+        if: always() # publish report when tests fail
+        uses: mikepenz/action-junit-report@v2.4.1
+        with:
+          github_token: ${{ github.token }}
+          report_paths: '**/target/test-reports/*.xml'
+
+      - name: Generate coverage report
+        run: sbt --client coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v1.5.0
         with:
-          flags: all-scala-${{ steps.scala-major-minor.outputs.version }}
+          flags: scala-it
