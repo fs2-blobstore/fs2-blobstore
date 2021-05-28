@@ -29,7 +29,7 @@
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 
-Minimal, idiomatic, Scala interface based on [fs2](https://fs2.io) for blob- and file store implementations. This library provides sources as sinks for a variety of stores (S3, GCS, Azure, SFTP, Box) that you can compose with fs2 programs.
+Minimal, idiomatic, Scala interface based on [fs2](https://fs2.io) for blob- and file store implementations. This library provides sources as sinks for a variety of stores (S3, GCS, Azure, SFTP, Box) that you can compose to fs2 programs.
 
 ## Installing
 
