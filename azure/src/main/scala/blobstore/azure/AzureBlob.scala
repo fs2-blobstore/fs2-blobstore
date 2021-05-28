@@ -1,9 +1,8 @@
 package blobstore.azure
 
 import java.time.Instant
-
-import blobstore.url.general.GeneralStorageClass
-import blobstore.url.FsObject
+import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
+import blobstore.url.{FsObject, FsObjectLowPri}
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties}
 
 case class AzureBlob(
@@ -22,11 +21,17 @@ case class AzureBlob(
 
   override def lastModified: Option[Instant] = properties.flatMap(bp => Option(bp.getLastModified).map(_.toInstant))
 
-  override def storageClass: Option[AccessTier] = properties.flatMap(bp => Option(bp.getAccessTier))
-
-  override def generalStorageClass: Option[GeneralStorageClass] =
+  override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] =
     storageClass.map {
       case AccessTier.ARCHIVE => GeneralStorageClass.ColdStorage
       case _                  => GeneralStorageClass.Standard
     }
+}
+
+object AzureBlob extends FsObjectLowPri {
+  implicit val storageClassLookup: StorageClassLookup.Aux[AzureBlob, AccessTier] = new StorageClassLookup[AzureBlob] {
+    override type StorageClassType = AccessTier
+
+    override def storageClass(a: AzureBlob): Option[AccessTier] = a.properties.flatMap(bp => Option(bp.getAccessTier))
+  }
 }

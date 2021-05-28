@@ -17,11 +17,14 @@ package blobstore
 package s3
 
 import cats.effect.unsafe.implicits.global
+import cats.effect.IO
+
 import java.net.URI
 import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
+import software.amazon.awssdk.services.s3.model.StorageClass
 
 class S3StoreS3MockTest extends AbstractS3StoreTest {
 
@@ -36,6 +39,25 @@ class S3StoreS3MockTest extends AbstractS3StoreTest {
     .endpointOverride(URI.create(s"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("a", "s")))
     .build()
+
+  behavior of "S3 - S3 Mock"
+
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("foo")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    s3Store.listUnderlying(dir, false, false, true).map { u =>
+      u.path.storageClass mustBe Some(StorageClass.STANDARD)
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(dir).map { u =>
+      u.path.storageClass mustBe None // S3Mock doesn't return this by default for list, it's a bug in S3Mock. S3 does this.
+    }.compile.lastOrError.unsafeRunSync()
+  }
 
   it should "handle files with trailing / in name" in {
     val dir      = dirUrl("trailing-slash")

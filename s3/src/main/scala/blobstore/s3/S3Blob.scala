@@ -1,9 +1,8 @@
 package blobstore.s3
 
 import java.time.Instant
-
-import blobstore.url.FsObject
-import blobstore.url.general.GeneralStorageClass
+import blobstore.url.{FsObject, FsObjectLowPri}
+import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
 import software.amazon.awssdk.services.s3.model.StorageClass
 
 case class S3Blob(bucket: String, key: String, meta: Option[S3MetaInfo]) extends FsObject {
@@ -17,11 +16,17 @@ case class S3Blob(bucket: String, key: String, meta: Option[S3MetaInfo]) extends
 
   override def lastModified: Option[Instant] = meta.flatMap(_.lastModified)
 
-  override def storageClass: Option[StorageClass] = meta.flatMap(_.storageClass)
-
-  override def generalStorageClass: Option[GeneralStorageClass] =
-    storageClass.map {
+  override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] =
+    meta.flatMap(_.storageClass).map {
       case StorageClass.GLACIER | StorageClass.DEEP_ARCHIVE => GeneralStorageClass.ColdStorage
       case _                                                => GeneralStorageClass.Standard
     }
+}
+
+object S3Blob extends FsObjectLowPri {
+  implicit val storageClassLookup: StorageClassLookup.Aux[S3Blob, StorageClass] = new StorageClassLookup[S3Blob] {
+    override type StorageClassType = StorageClass
+
+    override def storageClass(a: S3Blob): Option[StorageClass] = a.meta.flatMap(_.storageClass)
+  }
 }
