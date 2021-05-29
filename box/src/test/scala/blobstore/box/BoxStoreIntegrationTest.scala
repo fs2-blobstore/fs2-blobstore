@@ -90,6 +90,23 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
 
   behavior of "BoxStore"
 
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("trailing-slash")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    store.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+  }
+
   it should "expose underlying metadata" in {
     val dirP = dirUrl("expose-underlying")
 

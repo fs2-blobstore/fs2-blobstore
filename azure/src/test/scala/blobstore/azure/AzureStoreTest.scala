@@ -4,6 +4,7 @@ package azure
 import java.util.concurrent.TimeUnit
 import blobstore.url.Path.Plain
 import blobstore.url.{Authority, Path}
+import blobstore.url.general.GeneralStorageClass
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import fs2.Stream
@@ -51,6 +52,23 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   }
 
   behavior of "AzureStore"
+
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("storage-class")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    store.list(fileUrl).map { u =>
+      u.path.storageClass mustBe Some(AccessTier.HOT)
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(fileUrl).map { u =>
+      u.path.storageClass mustBe Some(GeneralStorageClass.Standard)
+    }.compile.lastOrError.unsafeRunSync()
+  }
 
   it should "handle files with trailing / in name" in {
     val dir      = dirUrl("trailing-slash")

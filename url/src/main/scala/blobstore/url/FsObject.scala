@@ -1,8 +1,8 @@
 package blobstore.url
 
-import java.time.Instant
+import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
 
-import blobstore.url.general.GeneralStorageClass
+import java.time.Instant
 
 trait FsObject {
   type StorageClassType
@@ -15,11 +15,20 @@ trait FsObject {
 
   def lastModified: Option[Instant]
 
-  def storageClass: Option[StorageClassType]
+  def storageClass(implicit scl: StorageClassLookup[this.type]): Option[scl.StorageClassType] =
+    scl.storageClass(this)
 
-  def generalStorageClass: Option[GeneralStorageClass]
+  private[blobstore] def generalStorageClass: Option[GeneralStorageClass]
 }
 
-object FsObject {
+object FsObject extends FsObjectLowPri {
   type Aux[R] = FsObject { type StorageClassType = R }
+}
+
+trait FsObjectLowPri {
+  implicit val dependent: StorageClassLookup.Aux[FsObject, GeneralStorageClass] = new StorageClassLookup[FsObject] {
+    override type StorageClassType = GeneralStorageClass
+
+    override def storageClass(fso: FsObject): Option[GeneralStorageClass] = fso.generalStorageClass
+  }
 }

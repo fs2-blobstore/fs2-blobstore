@@ -61,6 +61,23 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
   behavior of "Sftp store"
 
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("trailing-slash")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    store.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(fileUrl).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+  }
+
   it should "list files in current working directory" in {
     val empty = Path("")
     val dot   = Path(".")
