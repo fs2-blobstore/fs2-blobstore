@@ -15,7 +15,7 @@ Copyright 2018 LendUp Global, Inc.
  */
 package blobstore
 
-import blobstore.url.{Path, Url}
+import blobstore.url.{FsObject, Path, Url}
 import cats.MonadError
 import cats.data.Validated
 import cats.effect.Concurrent
@@ -94,6 +94,8 @@ trait Store[F[_], +BlobType] {
 }
 
 object Store {
+  type Generic[F[_]] = Store[F, FsObject]
+
   implicit def syntax[F[_]: Files: Concurrent, B](store: Store[F, B]): StoreOps[F, B] =
     new StoreOps[F, B](store)
 

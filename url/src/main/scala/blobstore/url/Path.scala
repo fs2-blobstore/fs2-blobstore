@@ -1,6 +1,7 @@
 package blobstore.url
 
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
+import blobstore.url.general.StorageClassLookup
 import cats.Show
 import cats.data.Chain
 import cats.kernel.Order
@@ -143,13 +144,14 @@ sealed trait Path[+A] {
     }
   }
 
-  def fullName(implicit ev: A <:< FsObject): String                  = ev(representation).name
-  def size(implicit ev: A <:< FsObject): Option[Long]                = ev(representation).size
-  def isDir(implicit ev: A <:< FsObject): Boolean                    = ev(representation).isDir
-  def lastModified(implicit ev: A <:< FsObject): Option[Instant]     = ev(representation).lastModified
-  def storageClass[R](implicit ev: A <:< FsObject.Aux[R]): Option[R] = ev(representation).storageClass
-  def fileName(implicit ev: A <:< FsObject): Option[String]          = if (isDir) None else lastSegment
-  def dirName(implicit ev: A <:< FsObject): Option[String]           = if (!isDir) None else lastSegment
+  def fullName(implicit ev: A <:< FsObject): String              = ev(representation).name
+  def size(implicit ev: A <:< FsObject): Option[Long]            = ev(representation).size
+  def isDir(implicit ev: A <:< FsObject): Boolean                = ev(representation).isDir
+  def lastModified(implicit ev: A <:< FsObject): Option[Instant] = ev(representation).lastModified
+  def storageClass[SC](implicit storageClassLookup: StorageClassLookup.Aux[A, SC]): Option[SC] =
+    storageClassLookup.storageClass(representation)
+  def fileName(implicit ev: A <:< FsObject): Option[String] = if (isDir) None else lastSegment
+  def dirName(implicit ev: A <:< FsObject): Option[String]  = if (!isDir) None else lastSegment
 
 }
 

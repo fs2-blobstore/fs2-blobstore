@@ -1,5 +1,6 @@
 package blobstore.s3
 
+import cats.syntax.all._
 import blobstore.url.{Path, Url}
 import cats.effect.IO
 import cats.effect.std.Random
@@ -12,6 +13,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
 
 import java.net.URI
+import java.nio.charset.StandardCharsets
 
 class S3StoreMinioTest extends AbstractS3StoreTest {
   override val container: GenericContainer = GenericContainer(
@@ -33,6 +35,23 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
       "minio_secret_key"
     )))
     .build()
+
+  behavior of "S3 - MinIO test"
+
+  it should "pick up metadata from resolved blob" in {
+    val url = dirUrl("foo") / "bar" / "file"
+
+    store.putContent(url, "test").unsafeRunSync()
+
+    store.stat(url).map { url =>
+      url.path.fullName mustBe show"$testRunRoot/foo/bar/file"
+      url.path.size mustBe Some("test".getBytes(StandardCharsets.UTF_8).length)
+      url.path.isDir mustBe false
+      url.path.lastModified must not be None
+      url.path.storageClass mustBe None // Not supported by minio
+      url.path.dirName mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+  }
 
   it should "set underlying metadata on write" in {
     val ct = "text/plain"
