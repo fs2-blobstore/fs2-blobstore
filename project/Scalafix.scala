@@ -15,6 +15,6 @@ object Scalafix extends AutoPlugin {
       "-P:semanticdb:synthetics:on"
     ),
     semanticdbVersion := scalafixSemanticdb.revision,
-    scalafixDependencies += "com.github.vovapolu" %% "scaluzzi" % "0.1.18"
+    scalafixDependencies += "com.github.vovapolu" %% "scaluzzi" % "0.1.20"
   )
 }
