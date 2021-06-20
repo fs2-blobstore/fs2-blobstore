@@ -73,7 +73,7 @@ class AzureStore[F[_]: Async](
     properties: Option[BlobItemProperties],
     meta: Map[String, String]
   ): Pipe[F, Byte, Unit] = in =>
-    Stream.resource(in.chunks.map(_.toByteBuffer).toUnicastPublisher).flatMap { publisher =>
+    Stream.resource(in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher).flatMap { publisher =>
       val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
       val blobClient = azure
         .getBlobContainerAsyncClient(container)
@@ -176,7 +176,7 @@ class AzureStore[F[_]: Async](
         )
       _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
     } yield queue
-    putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(bytes.toByteBuffer)))
+    putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(ByteBuffer.wrap(bytes.toArray))))
   }
 
   override def stat[A](url: Url[A]): Stream[F, Url[AzureBlob]] = {
