@@ -12,6 +12,8 @@ import org.scalatest.{Assertion, Inside}
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 
+import scala.concurrent.duration.FiniteDuration
+
 abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside {
   def container: GenericContainer
   def client: S3AsyncClient
@@ -64,16 +66,20 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
         .to(Array)
       path = Path(s"$authority/test-$testRun/multipart-upload/") / name
       url  = Url("s3", authority, path)
-      _         <- Stream.chunk(Chunk.ArraySlice(bytes)).through(store.put(url, size = None)).compile.drain
+      result    <- Stream.chunk(Chunk.ArraySlice(bytes)).through(store.put(url, size = None)).compile.drain.attempt
+      _         <- IO.sleep(FiniteDuration(5, "s"))
       readBytes <- store.get(url, 4096).compile.to(Array)
       _         <- store.remove(url)
-    } yield readBytes mustBe bytes
+    } yield {
+      result.isRight mustBe true
+      readBytes mustBe bytes
+    }
 
   it should "put content with no size when aligned with multi-upload boundaries 5mb" in {
     testUploadNoSize(5 * 1024 * 1024, "5mb").unsafeRunSync()
   }
 
-  it should "put content with no size when aligned with multi-upload boundaries 15mb" in {
+  it should "put content with no size when aligned with multi-upload boundaries 10mb" in {
     testUploadNoSize(10 * 1024 * 1024, "10mb").unsafeRunSync()
   }
 
