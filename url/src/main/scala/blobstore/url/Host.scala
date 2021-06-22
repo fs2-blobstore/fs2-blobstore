@@ -75,8 +75,10 @@ object IpV4Address {
     case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
+  private def intOctets(ip: IpV4Address) = (ip.octet1 & 0xff, ip.octet2 & 0xff, ip.octet3 & 0xff, ip.octet4 & 0xff)
+
   def compare(x: IpV4Address, y: IpV4Address): Int =
-    x.bytes.toList.zip(y.bytes.toList).map(((_: Byte) - (_: Byte)).tupled).find(_ != 0).getOrElse(0)
+    intOctets(x) compare intOctets(y)
 
   implicit val ordering: Ordering[IpV4Address] = compare
   implicit val order: Order[IpV4Address]       = Order.fromOrdering[IpV4Address]
