@@ -37,7 +37,7 @@ jobs:
           PGP_SECRET: ${{ secrets.PGP_SECRET }}
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-        run: sbt --client + ci-release
+        run: sbt ci-release
 
   readme:
     name: Update Readme
@@ -52,7 +52,7 @@ jobs:
       - uses: coursier/cache-action@v6
 
       - name: Generate updated README.md
-        run: sbt --client 'docs/mdoc --out .'
+        run: sbt 'docs/mdoc --out .'
 
       - uses: EndBug/add-and-commit@v7.2.1
         with:

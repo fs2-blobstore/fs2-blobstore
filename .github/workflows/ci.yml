@@ -38,22 +38,22 @@ jobs:
         uses: coursier/cache-action@v6
 
       - name: Enable coverage instrumentation
-        run: sbt --client + coverage
+        run: sbt + coverage
 
       - name: Compile all sources
-        run: sbt --client + all compile Test/compile IntegrationTest/compile doc
+        run: sbt + all compile Test/compile IntegrationTest/compile doc
 
       - name: Compile readme
-        run: sbt --client + docs/mdoc
+        run: sbt + docs/mdoc
 
       - name: Run Scalafix
-        run: sbt --client + scalafixAll --check
+        run: sbt + scalafixAll --check
 
       - name: Create tmp directory
         run: mkdir tmp
 
       - name: Test
-        run: sbt --client + 'testOnly * -- -l blobstore.IntegrationTest'
+        run: sbt + 'testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -63,7 +63,7 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        run: sbt --client + coverageReport
+        run: sbt + coverageReport
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1.5.2
@@ -84,10 +84,10 @@ jobs:
         uses: coursier/cache-action@v6
 
       - name: Enable coverage instrumentation
-        run: sbt --client coverage
+        run: sbt coverage
 
       - name: Compile all sources
-        run: sbt --client all compile Test/compile IntegrationTest/compile doc
+        run: sbt all compile Test/compile IntegrationTest/compile doc
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -96,7 +96,7 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Test
-        run: sbt --client 'testOnly * -- -n blobstore.IntegrationTest'
+        run: sbt 'testOnly * -- -n blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -106,7 +106,7 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        run: sbt --client coverageReport
+        run: sbt coverageReport
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1.5.2
