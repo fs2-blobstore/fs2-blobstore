@@ -1,6 +1,6 @@
 package blobstore.gcs
 
-import blobstore.{putRotateBase, Store, StoreOps}
+import blobstore.{putRotateBase, Store}
 import blobstore.url.{Path, Url}
 import cats.effect.{Async, Resource}
 import cats.syntax.all._
@@ -11,6 +11,7 @@ import fs2.{Chunk, Pipe, Stream}
 
 import java.io.OutputStream
 import java.nio.channels.Channels
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 /** @param storage configured instance of GCS Storage
@@ -54,8 +55,17 @@ class GcsStore[F[_]: Async](
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), closeAfterUse = true)
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] =
-    if (recursive) new StoreOps[F, GcsBlob](this).removeAll(url).void
-    else Async[F].blocking(storage.delete(GcsStore.toBlobId(url))).void
+    if (recursive) {
+      list(url, recursive = true)
+        .groupWithin(100, FiniteDuration(1, "s"))
+        .evalMap { chunk =>
+          val batch   = storage.batch()
+          val results = chunk.toList.map(u => batch.delete(u.representation.blob.getBlobId))
+          Async[F].blocking(batch.submit()).flatMap { _ =>
+            results.traverse_(result => Async[F].catchNonFatal(result.get()))
+          }
+        }.compile.drain
+    } else Async[F].blocking(storage.delete(GcsStore.toBlobId(url))).void
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
