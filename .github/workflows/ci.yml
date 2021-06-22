@@ -37,23 +37,20 @@ jobs:
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
-      - name: Enable coverage instrumentation
-        run: sbt + coverage
-
       - name: Compile all sources
-        run: sbt + all compile Test/compile IntegrationTest/compile doc
+        run: sbt + 'all compile Test/compile IntegrationTest/compile doc'
 
       - name: Compile readme
         run: sbt + docs/mdoc
 
       - name: Run Scalafix
-        run: sbt + scalafixAll --check
+        run: sbt + 'scalafixAll --check'
 
       - name: Create tmp directory
         run: mkdir tmp
 
       - name: Test
-        run: sbt + 'testOnly * -- -l blobstore.IntegrationTest'
+        run: sbt + '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -83,11 +80,8 @@ jobs:
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
-      - name: Enable coverage instrumentation
-        run: sbt coverage
-
       - name: Compile all sources
-        run: sbt all compile Test/compile IntegrationTest/compile doc
+        run: sbt 'all compile Test/compile IntegrationTest/compile doc'
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -96,7 +90,7 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Test
-        run: sbt 'testOnly * -- -n blobstore.IntegrationTest'
+        run: sbt '; coverage ; testOnly * -- -n blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
