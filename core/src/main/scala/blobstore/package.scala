@@ -15,19 +15,25 @@ Copyright 2018 LendUp Global, Inc.
  */
 
 import blobstore.url.{FsObject, Path, Url}
-import cats.effect.std.Hotswap
-import cats.effect.{Concurrent, MonadCancelThrow, Resource}
+import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
 import cats.implicits._
-import fs2.io.file.Files
-import fs2.{Chunk, Compiler, Pipe, Pull, RaiseThrowable, Stream}
+import fs2.{Chunk, Hotswap, Pipe, Pull, RaiseThrowable, Stream}
+
+import java.nio.file.Files
 
 package object blobstore {
 
-  protected[blobstore] def bufferToDisk[F[_]: MonadCancelThrow: Files](
-    chunkSize: Int
-  ): Pipe[F, Byte, (Long, Stream[F, Byte])] = { in =>
-    Stream.resource(Files[F].tempFile(prefix = "bufferToDisk")).flatMap { p =>
-      in.through(Files[F].writeAll(p)).drain ++ Stream.emit((p.toFile.length, Files[F].readAll(p, chunkSize)))
+  protected[blobstore] def bufferToDisk[F[_]: Sync](
+    chunkSize: Int,
+    blocker: Blocker
+  )(implicit CS: ContextShift[F]): Pipe[F, Byte, (Long, Stream[F, Byte])] = { in =>
+    Stream.bracket(Sync[F].delay(Files.createTempFile("bufferToDisk", ".bin")))(p =>
+      Sync[F].delay(p.toFile.delete).void
+    ).flatMap { p =>
+      in.through(fs2.io.file.writeAll(p, blocker)).drain ++ Stream.emit((
+        p.toFile.length,
+        fs2.io.file.readAll(p, blocker, chunkSize)
+      ))
     }
   }
 
@@ -75,7 +81,7 @@ package object blobstore {
     }
   }
 
-  private[blobstore] def defaultTransferTo[F[_]: Compiler.Target, B, P, C, A](
+  private[blobstore] def defaultTransferTo[F[_]: Sync, B, P, C, A](
     selfStore: PathStore[F, C],
     dstStore: Store[F, B],
     srcPath: Path[P],

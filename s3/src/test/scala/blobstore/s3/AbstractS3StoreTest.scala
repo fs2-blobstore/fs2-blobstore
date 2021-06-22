@@ -3,8 +3,7 @@ package blobstore.s3
 import blobstore.AbstractStoreTest
 import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
-import cats.effect.std.Random
-import cats.effect.unsafe.implicits.global
+import cats.effect.concurrent.Ref
 import cats.syntax.all._
 import com.dimafeng.testcontainers.GenericContainer
 import fs2.{Chunk, Stream}
@@ -13,6 +12,7 @@ import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 
 import scala.concurrent.duration.FiniteDuration
+import scala.util.Random
 
 abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside {
   def container: GenericContainer
@@ -56,17 +56,14 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
     }
   }
 
-  def testUploadNoSize(size: Long, name: String): IO[Assertion] =
+  def testUploadNoSize(size: Long, name: String): IO[Assertion] = {
+    val arr = new Array[Byte](size.toInt)
+    Random.nextBytes(arr)
     for {
-      r <- Random.scalaUtilRandom[IO]
-      bytes <- Stream.repeatEval(r.nextInt)
-        .flatMap(n => Stream.chunk(Chunk.ArraySlice(n.toString.getBytes())))
-        .take(size)
-        .compile
-        .to(Array)
+      bytes <- Stream.emits(arr).covary[IO].take(size).compile.to(Array)
       path = Path(s"$authority/test-$testRun/multipart-upload/") / name
       url  = Url("s3", authority, path)
-      result    <- Stream.chunk(Chunk.ArraySlice(bytes)).through(store.put(url, size = None)).compile.drain.attempt
+      result    <- Stream.chunk(Chunk.bytes(bytes)).through(store.put(url, size = None)).compile.drain.attempt
       _         <- IO.sleep(FiniteDuration(5, "s"))
       readBytes <- store.get(url, 4096).compile.to(Array)
       _         <- store.remove(url)
@@ -74,6 +71,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
       result.isRight mustBe true
       readBytes mustBe bytes
     }
+  }
 
   it should "put content with no size when aligned with multi-upload boundaries 5mb" in {
     testUploadNoSize(5 * 1024 * 1024, "5mb").unsafeRunSync()
@@ -97,7 +95,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
     val data    = Stream.emits(content)
 
     val test = for {
-      counter <- IO.ref(0)
+      counter <- Ref.of[IO, Int](0)
       _ <- data
         .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), 6 * 1024 * 1024))
         .compile

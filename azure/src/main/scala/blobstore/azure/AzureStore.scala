@@ -2,13 +2,14 @@ package blobstore
 package azure
 
 import blobstore.url.{Path, Url}
-import cats.effect.{Async, Resource}
-import cats.effect.std.Queue
+import blobstore.util.{fromQueueNoneTerminated, liftJavaFuture}
+import cats.effect.{Async, ConcurrentEffect, Resource}
 import cats.syntax.all._
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
 import com.azure.storage.blob.models.{BlobItemProperties, _}
 import com.azure.storage.common.implementation.Constants
+import fs2.concurrent.Queue
 import fs2.{Chunk, Pipe, Stream}
 import fs2.interop.reactivestreams._
 import reactor.core.publisher.{Flux, Mono}
@@ -36,7 +37,7 @@ import scala.jdk.CollectionConverters._
   *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
   *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
   */
-class AzureStore[F[_]: Async](
+class AzureStore[F[_]: ConcurrentEffect](
   azure: BlobServiceAsyncClient,
   defaultFullMetadata: Boolean = false,
   defaultTrailingSlashFiles: Boolean = false,
@@ -72,38 +73,38 @@ class AzureStore[F[_]: Async](
     overwrite: Boolean,
     properties: Option[BlobItemProperties],
     meta: Map[String, String]
-  ): Pipe[F, Byte, Unit] = in =>
-    Stream.resource(in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher).flatMap { publisher =>
-      val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-      val blobClient = azure
-        .getBlobContainerAsyncClient(container)
-        .getBlobAsyncClient(blobName)
-      val flux = Flux.from(publisher)
-      val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
-      val (overwriteCheck, requestConditions) =
-        if (overwrite) {
-          Mono.empty -> null // scalafix:ok
-        } else {
-          blobClient.exists.flatMap((exists: java.lang.Boolean) =>
-            if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
-            else Mono.empty[Unit]
-          ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
-        }
+  ): Pipe[F, Byte, Unit] = in => {
+    val publisher             = in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher
+    val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
+    val blobClient = azure
+      .getBlobContainerAsyncClient(container)
+      .getBlobAsyncClient(blobName)
+    val flux = Flux.from(publisher)
+    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+    val (overwriteCheck, requestConditions) =
+      if (overwrite) {
+        Mono.empty -> null // scalafix:ok
+      } else {
+        blobClient.exists.flatMap((exists: java.lang.Boolean) =>
+          if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
+          else Mono.empty[Unit]
+        ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
+      }
 
-      val headers = properties.map(AzureStore.toHeaders)
+    val headers = properties.map(AzureStore.toHeaders)
 
-      val upload = overwriteCheck
-        .`then`(blobClient.uploadWithResponse(
-          flux,
-          pto,
-          headers.orNull,
-          meta.asJava,
-          properties.flatMap(bip => Option(bip.getAccessTier)).orNull,
-          requestConditions
-        ))
-        .flatMap(resp => FluxUtil.toMono(resp))
-      Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(upload.toFuture)).void)
-    }
+    val upload = overwriteCheck
+      .`then`(blobClient.uploadWithResponse(
+        flux,
+        pto,
+        headers.orNull,
+        meta.asJava,
+        properties.flatMap(bip => Option(bip.getAccessTier)).orNull,
+        requestConditions
+      ))
+      .flatMap(resp => FluxUtil.toMono(resp))
+    Stream.eval(liftJavaFuture(Async[F].delay(upload.toFuture)).void)
+  }
 
   override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     copy(src, dst) >> remove(
@@ -122,7 +123,7 @@ class AzureStore[F[_]: Async](
       .getBlobContainerAsyncClient(dstContainer)
       .getBlobAsyncClient(dstBlob)
     val copy = blobClient.beginCopy(srcUrl, Duration.of(1, ChronoUnit.SECONDS))
-    Async[F].fromCompletableFuture(Async[F].delay(copy.next().flatMap(_.getFinalResult).toFuture)).void
+    liftJavaFuture(Async[F].delay(copy.next().flatMap(_.getFinalResult).toFuture)).void
   }
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
@@ -153,36 +154,31 @@ class AzureStore[F[_]: Async](
       } else {
         recoverNotFound(containerClient.getBlobAsyncClient(blobOrPrefix).delete())
       }
-    Async[F].fromCompletableFuture(Async[F].delay(mono.toFuture)).void
+    liftJavaFuture(Async[F].delay(mono.toFuture)).void
   }
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile = for {
       computed <- Resource.eval(computeUrl)
       (container, blob) = AzureStore.urlToContainerAndBlob(computed)
-      queue     <- Resource.eval(Queue.bounded[F, Option[ByteBuffer]](queueSize))
-      publisher <- Stream.fromQueueNoneTerminated(queue).toUnicastPublisher
+      queue <- Resource.eval(Queue.bounded[F, Option[ByteBuffer]](queueSize))
+      publisher = fromQueueNoneTerminated(queue).toUnicastPublisher
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
       pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
       flux   = Flux.from(publisher)
       upload = blobClient.upload(flux, pto, true)
-      _ <-
-        Resource.make(
-          Async[F].start(Async[F].fromCompletableFuture(Async[F].delay(upload.toFuture)).void)
-        )(
-          _.join.flatMap(_.fold(Async[F].unit, e => Async[F].raiseError[Unit](e), identity))
-        )
-      _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
+      _ <- Resource.make(ConcurrentEffect[F].start(liftJavaFuture(Async[F].delay(upload.toFuture)).void))(_.join)
+      _ <- Resource.make(Async[F].unit)(_ => queue.enqueue1(None))
     } yield queue
-    putRotateBase(limit, openNewFile)(queue => bytes => queue.offer(Some(ByteBuffer.wrap(bytes.toArray))))
+    putRotateBase(limit, openNewFile)(queue => bytes => queue.enqueue1(Some(ByteBuffer.wrap(bytes.toArray))))
   }
 
   override def stat[A](url: Url[A]): Stream[F, Url[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
     val mono                  = azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).getProperties
-    Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(mono.toFuture)).attempt).evalMap {
+    Stream.eval(liftJavaFuture(Async[F].delay(mono.toFuture)).attempt).evalMap {
       case Right(props) =>
         val (bip, meta) = AzureStore.toBlobItemProperties(props)
         val path        = Path.of(blobName, AzureBlob(container, blobName, bip.some, meta))
@@ -236,7 +232,7 @@ object AzureStore {
     *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
     *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
     */
-  def apply[F[_]: Async](
+  def apply[F[_]: ConcurrentEffect](
     azure: BlobServiceAsyncClient,
     defaultFullMetadata: Boolean = false,
     defaultTrailingSlashFiles: Boolean = false,

@@ -2,16 +2,15 @@ package blobstore
 
 import blobstore.url.{Path, Url}
 import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import fs2.io.file.Files
 import fs2.{Pipe, Stream}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 
 import java.nio.charset.{Charset, StandardCharsets}
+import java.nio.file.Files
 import scala.collection.mutable.ArrayBuffer
 
-class StoreOpsTest extends AnyFlatSpec with Matchers {
+class StoreOpsTest extends AnyFlatSpec with Matchers with IOTest {
 
   behavior of "PutOps"
   it should "buffer contents and compute size before calling Store.put" in {
@@ -21,7 +20,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     Stream
       .emits(bytes)
       .covary[IO]
-      .through(store.bufferedPut(Url.unsafe("foo://bucket/path/to/file.txt"), true, 4096))
+      .through(store.bufferedPut(Url.unsafe("foo://bucket/path/to/file.txt"), true, 4096, blocker))
       .compile
       .drain
       .unsafeRunSync()
@@ -34,10 +33,10 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     val store = DummyStore()
 
     Stream
-      .resource(Files[IO].tempFile())
+      .bracket(IO(Files.createTempFile("test-file", ".bin")))(p => IO(p.toFile.delete).void)
       .flatMap { p =>
-        Stream.emits(bytes).covary[IO].through(Files[IO].writeAll(p)).drain ++
-          Stream.eval(store.putFromNio(p, Url.unsafe("foo://bucket/path/to/file.txt"), true))
+        Stream.emits(bytes).covary[IO].through(fs2.io.file.writeAll(p, blocker)).drain ++
+          Stream.eval(store.putFromNio(p, Url.unsafe("foo://bucket/path/to/file.txt"), true, blocker))
       }
       .compile
       .drain
@@ -52,10 +51,10 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     Stream.emits(bytes).through(store.put(path)).compile.drain.unsafeRunSync()
 
     Stream
-      .resource(Files[IO].tempFile())
+      .bracket(IO(Files.createTempFile("test-file", ".bin")))(p => IO(p.toFile.delete).void)
       .flatMap { nioPath =>
-        Stream.eval(store.getToNio(path, nioPath, 4096)) >> Stream.eval {
-          Files[IO].readAll(nioPath, 4096).compile.to(Array).map(_ mustBe bytes)
+        Stream.eval(store.getToNio(path, nioPath, 4096, blocker)) >> Stream.eval {
+          fs2.io.file.readAll[IO](nioPath, blocker, 4096).compile.to(Array).map(_ mustBe bytes)
         }
       }
       .compile

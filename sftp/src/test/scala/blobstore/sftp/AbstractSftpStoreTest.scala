@@ -19,7 +19,6 @@ package sftp
 import java.nio.file.Paths
 import blobstore.url.{Authority, Host, Path, Port}
 import cats.effect.IO
-import cats.effect.unsafe.implicits.global
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{Session, SftpException}
 
@@ -38,7 +37,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
   private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
 
   lazy val sftpStore: SftpStore[IO] =
-    SftpStore[IO](session).allocated.map(_._1).unsafeRunSync()
+    SftpStore[IO](session, blocker).allocated.map(_._1).unsafeRunSync()
 
   def mkStore(): Store[IO, SftpFile] = sftpStore.lift
 

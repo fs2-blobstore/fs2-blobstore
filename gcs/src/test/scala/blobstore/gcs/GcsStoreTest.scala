@@ -3,9 +3,7 @@ package gcs
 
 import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Path.Plain
-import blobstore.Store
 import cats.effect.IO
-import cats.effect.unsafe.implicits.global
 import cats.syntax.all._
 import com.google.cloud.storage.{BlobInfo, StorageClass}
 import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
@@ -22,6 +20,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
   val gcsStore: GcsStore[IO] = GcsStore[IO](
     LocalStorageHelper.getOptions.getService,
+    blocker,
     defaultTrailingSlashFiles = true,
     defaultDirectDownload = false
   )

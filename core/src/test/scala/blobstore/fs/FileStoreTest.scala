@@ -18,12 +18,11 @@ package fs
 
 import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
-import cats.effect.unsafe.implicits.global
 import cats.syntax.all._
 
 class FileStoreTest extends AbstractStoreTest[NioPath] {
 
-  private val localStore: FileStore[IO] = FileStore[IO]
+  private val localStore: FileStore[IO] = FileStore[IO](blocker)
 
   override def mkStore(): Store[IO, NioPath] =
     localStore.lift((u: Url.Plain) => u.path.valid)

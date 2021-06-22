@@ -16,7 +16,6 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package s3
 
-import cats.effect.unsafe.implicits.global
 import cats.effect.IO
 
 import java.net.URI

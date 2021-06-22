@@ -2,7 +2,7 @@ package blobstore.gcs
 
 import blobstore.{putRotateBase, Store, StoreOps}
 import blobstore.url.{Path, Url}
-import cats.effect.{Async, Resource}
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
 import cats.syntax.all._
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
@@ -24,8 +24,9 @@ import scala.jdk.CollectionConverters._
   *                              This controls behaviour of `get` method from Store trait.
   *                              Use [[getUnderlying]] to control on per-invocation basis.
   */
-class GcsStore[F[_]: Async](
+class GcsStore[F[_]: ConcurrentEffect: ContextShift](
   storage: Storage,
+  blocker: Blocker,
   acls: List[Acl] = Nil,
   defaultTrailingSlashFiles: Boolean = false,
   defaultDirectDownload: Boolean = false
@@ -45,23 +46,23 @@ class GcsStore[F[_]: Async](
   }
 
   override def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
-    fs2.io.writeOutputStream(newOutputStream(url, overwrite, List.empty), closeAfterUse = true)
+    fs2.io.writeOutputStream(newOutputStream(url, overwrite, List.empty), blocker, closeAfterUse = true)
 
   def put[A](url: Url[A], overwrite: Boolean, options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
-    fs2.io.writeOutputStream(newOutputStream(url, overwrite, options), closeAfterUse = true)
+    fs2.io.writeOutputStream(newOutputStream(url, overwrite, options), blocker, closeAfterUse = true)
 
   def put[A](path: Path[GcsBlob], options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
-    fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), closeAfterUse = true)
+    fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] =
     if (recursive) new StoreOps[F, GcsBlob](this).removeAll(url).void
-    else Async[F].blocking(storage.delete(GcsStore.toBlobId(url))).void
+    else blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
-      Resource.make(computeUrl.flatMap(newOutputStream(_)))(os => Async[F].blocking(os.close()))
+      Resource.make(computeUrl.flatMap(newOutputStream(_)))(os => blocker.delay(os.close()))
 
-    putRotateBase(limit, openNewFile)(os => bytes => Async[F].blocking(os.write(bytes.toArray)))
+    putRotateBase(limit, openNewFile)(os => bytes => blocker.delay(os.write(bytes.toArray)))
   }
 
   def getUnderlying[A](
@@ -70,7 +71,7 @@ class GcsStore[F[_]: Async](
     direct: Boolean,
     options: BlobGetOption*
   ): Stream[F, Byte] =
-    Stream.eval(Async[F].blocking(Option(storage.get(GcsStore.toBlobId(url), options: _*)))).flatMap {
+    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(url), options: _*)))).flatMap {
       case None => Stream.raiseError[F](new StorageException(404, show"Object not found, ${url.copy(scheme = "gs")}"))
       case Some(blob) =>
         if (direct)
@@ -83,13 +84,14 @@ class GcsStore[F[_]: Async](
               reader
             }.pure[F],
             chunkSize,
+            blocker,
             closeAfterUse = true
           )
 
     }
 
   private def getDirect(blob: Blob, chunkSize: Int): Stream[F, Byte] =
-    fs2.io.readOutputStream(chunkSize)(os => Async[F].blocking(blob.downloadTo(os)))
+    fs2.io.readOutputStream(blocker, chunkSize)(os => blocker.delay(blob.downloadTo(os)))
 
   def listUnderlying[A](
     url: Url[A],
@@ -104,13 +106,13 @@ class GcsStore[F[_]: Async](
     Stream.unfoldChunkEval[F, () => Option[Page[Blob]], Path[Blob]] { () =>
       Some(storage.list(blobId.getBucket, blobListOptions: _*))
     } { getPage =>
-      Async[F].blocking(getPage()).flatMap {
+      blocker.delay(getPage()).flatMap {
         case None => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
         case Some(page) =>
           page.getValues.asScala.toList
             .traverse {
               case blob if blob.isDirectory =>
-                if (expectTrailingSlashFiles) Async[F].blocking(Option(storage.get(blob.getBlobId)).getOrElse(blob))
+                if (expectTrailingSlashFiles) blocker.delay(Option(storage.get(blob.getBlobId)).getOrElse(blob))
                 else blob.pure[F]
               case blob =>
                 blob.pure[F]
@@ -140,7 +142,7 @@ class GcsStore[F[_]: Async](
   }
 
   private def newOutputStream[A](blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
-    Async[F].blocking(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
+    blocker.delay(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
 
   /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     *
@@ -158,10 +160,10 @@ class GcsStore[F[_]: Async](
     * @return F[Unit]
     */
   override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-    Async[F].blocking(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
+    blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
 
   override def stat[A](url: Url[A]): Stream[F, Url[GcsBlob]] =
-    Stream.eval(Async[F].blocking(Option(storage.get(GcsStore.toBlobId(url)))))
+    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(url)))))
       .unNone
       .map(b => url.withPath(Path.of(b.getName, GcsBlob(b))))
 
@@ -180,14 +182,16 @@ object GcsStore {
     *                              This controls behaviour of `GcsStore.get` method from Store trait.
     *                              Use [[GcsStore.getUnderlying]] to control on per-invocation basis.
     */
-  def apply[F[_]: Async](
+  def apply[F[_]: ConcurrentEffect: ContextShift](
     storage: Storage,
+    blocker: Blocker,
     acls: List[Acl] = Nil,
     defaultTrailingSlashFiles: Boolean = false,
     defaultDirectDownload: Boolean = false
   ): GcsStore[F] =
     new GcsStore(
       storage = storage,
+      blocker = blocker,
       acls = acls,
       defaultTrailingSlashFiles = defaultTrailingSlashFiles,
       defaultDirectDownload = defaultDirectDownload

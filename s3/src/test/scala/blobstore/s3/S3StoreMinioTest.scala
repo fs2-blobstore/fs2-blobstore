@@ -3,10 +3,8 @@ package blobstore.s3
 import cats.syntax.all._
 import blobstore.url.{Path, Url}
 import cats.effect.IO
-import cats.effect.std.Random
-import cats.effect.unsafe.implicits.global
 import com.dimafeng.testcontainers.GenericContainer
-import fs2.{Chunk, Stream}
+import fs2.Stream
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
@@ -14,6 +12,7 @@ import software.amazon.awssdk.services.s3.model.StorageClass
 
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import scala.util.Random
 
 class S3StoreMinioTest extends AbstractS3StoreTest {
   override val container: GenericContainer = GenericContainer(
@@ -81,14 +80,13 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
     val filePath = Path(s"test-$testRun/set-underlying/file2")
-    Random.scalaUtilRandom[IO].flatMap(r =>
-      Stream.repeatEval(r.nextInt)
-        .flatMap(n => Stream.chunk(Chunk.ArraySlice(n.toString.getBytes())))
-        .take(6 * 1024 * 1024)
-        .through(s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta)))
-        .compile
-        .drain
-    )
+    val arr      = new Array[Byte](6 * 1024 * 1024)
+    Random.nextBytes(arr)
+    Stream.emits(arr).covary[IO]
+      .take(6 * 1024 * 1024)
+      .through(s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta)))
+      .compile
+      .drain
       .unsafeRunSync()
 
     val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
