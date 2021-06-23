@@ -9,14 +9,36 @@ import cats.syntax.all.*
 import com.dimafeng.testcontainers.GenericContainer
 import fs2.{Chunk, Stream}
 import org.scalatest.{Assertion, Inside}
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
+import software.amazon.awssdk.core.retry.RetryPolicy
+import software.amazon.awssdk.core.retry.conditions.RetryCondition
+import software.amazon.awssdk.http.async.SdkAsyncHttpClient
+import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 
+import java.time.Duration
 import scala.concurrent.duration.FiniteDuration
 
 abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside {
   def container: GenericContainer
   def client: S3AsyncClient
+
+  val httpClient: SdkAsyncHttpClient = NettyNioAsyncHttpClient.builder()
+    .connectionTimeout(Duration.ofSeconds(20))
+    .connectionAcquisitionTimeout(Duration.ofSeconds(20))
+    .connectionMaxIdleTime(Duration.ofSeconds(10))
+    .build()
+
+  val overrideConfiguration: ClientOverrideConfiguration =
+    ClientOverrideConfiguration.builder()
+      .apiCallTimeout(Duration.ofSeconds(30))
+      .apiCallAttemptTimeout(Duration.ofSeconds(20))
+      .retryPolicy(RetryPolicy.builder()
+        .numRetries(5)
+        .retryCondition(RetryCondition.defaultRetryCondition())
+        .build())
+      .build()
 
   override val scheme: String             = "s3"
   override val authority: Authority       = Authority.unsafe("blobstore-test-bucket")

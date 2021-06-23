@@ -34,6 +34,8 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
       "minio_access_key",
       "minio_secret_key"
     )))
+    .overrideConfiguration(overrideConfiguration)
+    .httpClient(httpClient)
     .build()
 
   behavior of "S3 - MinIO test"
