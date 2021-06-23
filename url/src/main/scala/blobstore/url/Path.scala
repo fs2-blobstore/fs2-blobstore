@@ -17,7 +17,8 @@ import scala.annotation.tailrec
   * Examples of storage provider types would be `software.amazon.awssdk.services.s3.internal.resource.S3ObjectResource`
   * for S3, com.google.storage.Blob for GCS, etc.
   *
-  * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.3, Path
+  * @see
+  *   https://www.ietf.org/rfc/rfc3986.txt chapter 3.3, Path
   */
 sealed trait Path[+A] {
   def representation: A
@@ -43,14 +44,15 @@ sealed trait Path[+A] {
 
   /** Compose with string to form a new Path
     *
-    * The underlying representation must be String in order for the representation and the path to be kept in sync.
-    * Use [[addSegment]] to modify paths backed by non-String types
+    * The underlying representation must be String in order for the representation and the path to be kept in sync. Use
+    * [[addSegment]] to modify paths backed by non-String types
     *
-    * @see addSegment
+    * @see
+    *   addSegment
     */
   def /(segment: String): Path[String] = {
-    val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList *)
-    val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList *)
+    val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList*)
+    val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList*)
 
     val stripSuffix = segments.initLast match {
       case Some((init, "")) => init
@@ -173,7 +175,7 @@ object Path {
         val nonEmpty = s.stripPrefix("/").split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         val concat   = nonEmpty ++ empty
-        val chain    = Chain(concat *)
+        val chain    = Chain(concat*)
 
         AbsolutePath("/" + chain.mkString_("/"), chain)
       }
@@ -184,7 +186,7 @@ object Path {
         val nonEmpty = s.stripPrefix("/").split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         val concat   = nonEmpty ++ empty
-        Some(AbsolutePath(s, Chain(concat *)))
+        Some(AbsolutePath(s, Chain(concat*)))
       } else None
     }
 
@@ -203,7 +205,7 @@ object Path {
         val nonEmpty = s.split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         val concat   = nonEmpty ++ empty
-        Some(RootlessPath(s, Chain(concat *)))
+        Some(RootlessPath(s, Chain(concat*)))
       } else None
 
     @tailrec
@@ -214,7 +216,7 @@ object Path {
         val nonEmpty = s.split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
         val concat   = nonEmpty ++ empty
-        RootlessPath(s, Chain(concat *))
+        RootlessPath(s, Chain(concat*))
       }
     }
 
@@ -230,12 +232,12 @@ object Path {
 
   def createAbsolute(path: String): AbsolutePath[String] = {
     val noPrefix = path.stripPrefix("/")
-    AbsolutePath("/" + noPrefix, Chain(noPrefix.split("/").toList *))
+    AbsolutePath("/" + noPrefix, Chain(noPrefix.split("/").toList*))
   }
 
   def createRootless(path: String): RootlessPath[String] = {
     val noPrefix = path.stripPrefix("/")
-    RootlessPath(noPrefix, Chain(noPrefix.split("/").toList *))
+    RootlessPath(noPrefix, Chain(noPrefix.split("/").toList*))
   }
 
   def absolute(path: String): Option[AbsolutePath[String]] = AbsolutePath.parse(path)
@@ -248,7 +250,7 @@ object Path {
     AbsolutePath.parse(s).widen[Path.Plain].orElse(RootlessPath.parse(s)).getOrElse(
       RootlessPath(
         s,
-        Chain(s.split("/").toList *)
+        Chain(s.split("/").toList*)
       ) // Paths either have a root or they don't, this block is never executed
     )
   }

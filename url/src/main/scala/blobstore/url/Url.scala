@@ -41,7 +41,8 @@ case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
 
   /** Safe toString implementation.
     *
-    * @return Outputs user segment if any, will not print passwords
+    * @return
+    *   Outputs user segment if any, will not print passwords
     */
   override val toString: String = {
     val sep = "://"
@@ -57,7 +58,8 @@ case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
 
   /** Safe toString implementation
     *
-    * @return Outputs masked passwords
+    * @return
+    *   Outputs masked passwords
     */
   val toStringMasked: String = {
     val sep = "://"

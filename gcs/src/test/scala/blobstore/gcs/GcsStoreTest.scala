@@ -105,7 +105,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       .setMetadata(Map("key" -> "value").asJava)
       .build()
 
-    Stream("data".getBytes.toIndexedSeq *).through(
+    Stream("data".getBytes.toIndexedSeq*).through(
       gcsStore.put(url.path.as(GcsBlob(blobInfo)), List.empty)
     ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()

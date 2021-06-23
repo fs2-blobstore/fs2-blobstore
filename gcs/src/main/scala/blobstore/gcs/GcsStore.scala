@@ -14,16 +14,17 @@ import java.nio.channels.Channels
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
 
-/** @param storage configured instance of GCS Storage
-  * @param acls list of Access Control List objects to be set on all uploads.
-  * @param defaultTrailingSlashFiles test if folders returned by `list` are files with trailing slashes in their names.
-  *                                  This controls behaviour of `list` method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param defaultDirectDownload use direct download.
-  *                              When enabled the whole media content is downloaded in a single request (but still streamed).
-  *                              Otherwise use the resumable media download protocol to download in data chunks.
-  *                              This controls behaviour of `get` method from Store trait.
-  *                              Use [[getUnderlying]] to control on per-invocation basis.
+/** @param storage
+  *   configured instance of GCS Storage
+  * @param acls
+  *   list of Access Control List objects to be set on all uploads.
+  * @param defaultTrailingSlashFiles
+  *   test if folders returned by `list` are files with trailing slashes in their names. This controls behaviour of
+  *   `list` method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  * @param defaultDirectDownload
+  *   use direct download. When enabled the whole media content is downloaded in a single request (but still streamed).
+  *   Otherwise use the resumable media download protocol to download in data chunks. This controls behaviour of `get`
+  *   method from Store trait. Use [[getUnderlying]] to control on per-invocation basis.
   */
 class GcsStore[F[_]: Async](
   storage: Storage,
@@ -36,13 +37,13 @@ class GcsStore[F[_]: Async](
     list(url, recursive, List.empty)
 
   def list[A](url: Url[A], recursive: Boolean, options: List[BlobListOption]): Stream[F, Url[GcsBlob]] =
-    listUnderlying(url, defaultTrailingSlashFiles, recursive, options *)
+    listUnderlying(url, defaultTrailingSlashFiles, recursive, options*)
 
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] =
     get(url, chunkSize, List.empty)
 
   def get[A](url: Url[A], chunkSize: Int, options: List[BlobGetOption]): Stream[F, Byte] = {
-    getUnderlying(url, chunkSize, defaultDirectDownload, options *)
+    getUnderlying(url, chunkSize, defaultDirectDownload, options*)
   }
 
   override def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
@@ -80,7 +81,7 @@ class GcsStore[F[_]: Async](
     direct: Boolean,
     options: BlobGetOption*
   ): Stream[F, Byte] =
-    Stream.eval(Async[F].blocking(Option(storage.get(GcsStore.toBlobId(url), options *)))).flatMap {
+    Stream.eval(Async[F].blocking(Option(storage.get(GcsStore.toBlobId(url), options*)))).flatMap {
       case None => Stream.raiseError[F](new StorageException(404, show"Object not found, ${url.copy(scheme = "gs")}"))
       case Some(blob) =>
         if (direct)
@@ -112,7 +113,7 @@ class GcsStore[F[_]: Async](
     val options         = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ inputOptions
     val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
     Stream.unfoldChunkEval[F, () => Option[Page[Blob]], Path[Blob]] { () =>
-      Some(storage.list(blobId.getBucket, blobListOptions *))
+      Some(storage.list(blobId.getBucket, blobListOptions*))
     } { getPage =>
       Async[F].blocking(getPage()).flatMap {
         case None => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
@@ -150,22 +151,28 @@ class GcsStore[F[_]: Async](
   }
 
   private def newOutputStream[A](blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
-    Async[F].blocking(Channels.newOutputStream(storage.writer(blobInfo, options *)))
+    Async[F].blocking(Channels.newOutputStream(storage.writer(blobInfo, options*)))
 
   /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     *
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
+    * @param src
+    *   path
+    * @param dst
+    *   path
+    * @return
+    *   F[Unit]
     */
   override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     copy(src, dst) >> remove(src, recursive = true)
 
   /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     *
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
+    * @param src
+    *   path
+    * @param dst
+    *   path
+    * @return
+    *   F[Unit]
     */
   override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     Async[F].blocking(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
@@ -179,16 +186,19 @@ class GcsStore[F[_]: Async](
 
 object GcsStore {
 
-  /** @param storage configured instance of GCS Storage
-    * @param acls list of Access Control List objects to be set on all uploads.
-    * @param defaultTrailingSlashFiles test if folders returned by `GcsStore.list` are files with trailing slashes in their names.
-    *                                  This controls behaviour of `GcsStore.list` method from Store trait.
-    *                                  Use [[GcsStore.listUnderlying]] to control on per-invocation basis.
-    * @param defaultDirectDownload use direct download.
-    *                              When enabled the whole media content is downloaded in a single request (but still streamed).
-    *                              Otherwise use the resumable media download protocol to download in data chunks.
-    *                              This controls behaviour of `GcsStore.get` method from Store trait.
-    *                              Use [[GcsStore.getUnderlying]] to control on per-invocation basis.
+  /** @param storage
+    *   configured instance of GCS Storage
+    * @param acls
+    *   list of Access Control List objects to be set on all uploads.
+    * @param defaultTrailingSlashFiles
+    *   test if folders returned by `GcsStore.list` are files with trailing slashes in their names. This controls
+    *   behaviour of `GcsStore.list` method from Store trait. Use [[GcsStore.listUnderlying]] to control on
+    *   per-invocation basis.
+    * @param defaultDirectDownload
+    *   use direct download. When enabled the whole media content is downloaded in a single request (but still
+    *   streamed). Otherwise use the resumable media download protocol to download in data chunks. This controls
+    *   behaviour of `GcsStore.get` method from Store trait. Use [[GcsStore.getUnderlying]] to control on per-invocation
+    *   basis.
     */
   def apply[F[_]: Async](
     storage: Storage,

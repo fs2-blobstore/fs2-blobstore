@@ -17,11 +17,16 @@ import scala.util.Try
 
 /** Safely initialize SftpStore and disconnect Session upon finish.
   *
-  * @param authority – process used to connect to SFTP server.
-  * @param session – connected jsch Session.
-  * @param queue – queue to hold channels to be reused
-  * @param semaphore – optional semaphore to limit the number of concurrently open channels.
-  * @param connectTimeout – override for channel connect timeout.
+  * @param authority
+  *   – process used to connect to SFTP server.
+  * @param session
+  *   – connected jsch Session.
+  * @param queue
+  *   – queue to hold channels to be reused
+  * @param semaphore
+  *   – optional semaphore to limit the number of concurrently open channels.
+  * @param connectTimeout
+  *   – override for channel connect timeout.
   */
 class SftpStore[F[_]: Async] private (
   val authority: Authority,
@@ -218,10 +223,14 @@ object SftpStore {
 
   /** Safely initialize SftpStore and disconnect Session upon finish.
     *
-    * @param fSession – process used to connect to SFTP server, obtain Session.
-    * @param maxChannels – optional upper limit on the number of concurrently open channels.
-    * @param connectTimeout – override for channel connect timeout.
-    * @return Resource[F, [SftpStore[F]], session open on start is going to be close in resource finalization.
+    * @param fSession
+    *   – process used to connect to SFTP server, obtain Session.
+    * @param maxChannels
+    *   – optional upper limit on the number of concurrently open channels.
+    * @param connectTimeout
+    *   – override for channel connect timeout.
+    * @return
+    *   Resource[F, [SftpStore[F]], session open on start is going to be close in resource finalization.
     */
   def apply[F[_]: Async](
     fSession: F[Session],

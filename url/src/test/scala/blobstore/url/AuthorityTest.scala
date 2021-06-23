@@ -1,6 +1,5 @@
 package blobstore.url
 
-import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import cats.syntax.all._
@@ -25,12 +24,8 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
       "aa"
     ).traverse(Authority.parse)
 
-    inside(valid) {
-      case Valid(_) => // ok
-    }
+    valid.isValid mustBe true
 
-    inside(invalid) {
-      case Invalid(_) => // ok
-    }
+    invalid.isInvalid mustBe true
   }
 }

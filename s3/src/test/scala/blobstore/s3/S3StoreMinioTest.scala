@@ -60,7 +60,7 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
     val filePath = Path(s"test-$testRun/set-underlying/file1")
-    Stream("data".getBytes.toIndexedSeq *).through(
+    Stream("data".getBytes.toIndexedSeq*).through(
       s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta))
     ).compile.drain.unsafeRunSync()
     val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()

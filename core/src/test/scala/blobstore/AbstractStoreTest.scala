@@ -375,7 +375,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = writeFile(store, dir)("existing.txt")
 
     fs2
-      .Stream("new content".getBytes().toIndexedSeq *)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path))
       .compile
       .drain
@@ -396,7 +396,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = writeFile(store, dir)("existing.txt")
 
     val result = fs2
-      .Stream("new content".getBytes().toIndexedSeq *)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path, overwrite = false))
       .compile
       .drain
@@ -411,7 +411,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = dir / "new.txt"
 
     fs2
-      .Stream("new content".getBytes().toIndexedSeq *)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path, overwrite = false))
       .compile
       .drain
