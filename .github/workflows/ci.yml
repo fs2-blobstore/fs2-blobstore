@@ -23,9 +23,17 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v2.3.4
-      - uses: AvaPL/scalafmt-native-formatter@v0.1.2
-        with:
-          conf-path: ~/.scalafmt.conf
+      - name: Check format
+        run: |
+          version=$(sed -E "s/(\/\/|#).*//g" .scalafmt.conf | grep "version" | sed -E "s/version|=|\"|\s*//g")
+          curl https://raw.githubusercontent.com/scalameta/scalafmt/master/bin/install-scalafmt-native.sh | \
+          sudo bash -s -- $version /usr/local/bin/scalafmt-native
+          echo "=============================================================================="
+          echo "Config:"
+          cat .scalafmt.conf
+          echo "=============================================================================="
+          echo "scalafmt-native --list"
+          scalafmt-native --list
 
   tests:
     name: Tests
