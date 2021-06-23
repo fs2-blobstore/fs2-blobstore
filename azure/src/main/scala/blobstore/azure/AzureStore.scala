@@ -6,6 +6,7 @@ import blobstore.util.{fromQueueNoneTerminated, liftJavaFuture}
 import cats.effect.{Async, ConcurrentEffect, Resource}
 import cats.syntax.all._
 import com.azure.core.util.FluxUtil
+import com.azure.storage.blob.batch.BlobBatchClientBuilder
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
 import com.azure.storage.blob.models.{BlobItemProperties, _}
 import com.azure.storage.common.implementation.Constants
@@ -45,7 +46,6 @@ class AzureStore[F[_]: ConcurrentEffect](
   numBuffers: Int = 2,
   queueSize: Int = 32
 ) extends Store[F, AzureBlob] {
-  require(numBuffers >= 2, "Number of buffers must be at least 2")
 
   override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[AzureBlob]] =
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
@@ -80,7 +80,7 @@ class AzureStore[F[_]: ConcurrentEffect](
       .getBlobContainerAsyncClient(container)
       .getBlobAsyncClient(blobName)
     val flux = Flux.from(publisher)
-    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers.max(2))
     val (overwriteCheck, requestConditions) =
       if (overwrite) {
         Mono.empty -> null // scalafix:ok
@@ -141,14 +141,17 @@ class AzureStore[F[_]: ConcurrentEffect](
     val containerClient = azure.getBlobContainerAsyncClient(container)
     val mono: Mono[Void] =
       if (recursive) {
+        val blobBatchClient = new BlobBatchClientBuilder(azure).buildAsyncClient()
         val options = {
           val opts = new ListBlobsOptions
           opts.setPrefix(blobOrPrefix)
         }
-        containerClient.listBlobs(options).flatMap[Void] {
-          new JavaFunction[BlobItem, Mono[Void]] {
-            def apply(item: BlobItem): Mono[Void] =
-              recoverNotFound(containerClient.getBlobAsyncClient(item.getName).delete())
+        containerClient.listBlobs(options).buffer(256).flatMap {
+          new JavaFunction[java.util.List[BlobItem], Flux[Void]] {
+            def apply(blobs: java.util.List[BlobItem]): Flux[Void] = {
+              val urls = blobs.asScala.map(b => containerClient.getBlobAsyncClient(b.getName).getBlobUrl).asJava
+              blobBatchClient.deleteBlobs(urls, DeleteSnapshotsOptionType.INCLUDE).map(_.getValue)
+            }
           }
         }.ignoreElements()
       } else {
@@ -166,7 +169,7 @@ class AzureStore[F[_]: ConcurrentEffect](
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers)
+      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers.max(2))
       flux   = Flux.from(publisher)
       upload = blobClient.upload(flux, pto, true)
       _ <- Resource.make(ConcurrentEffect[F].start(liftJavaFuture(Async[F].delay(upload.toFuture)).void))(_.join)
@@ -239,9 +242,8 @@ object AzureStore {
     blockSize: Int = 50 * 1024 * 1024,
     numBuffers: Int = 2,
     queueSize: Int = 32
-  ): F[AzureStore[F]] =
-    if (numBuffers < 2) new IllegalArgumentException(s"Number of buffers must be at least 2").raiseError
-    else new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize).pure[F]
+  ): AzureStore[F] =
+    new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize)
 
   private def urlToContainerAndBlob[A](url: Url[A]): (String, String) =
     (url.authority.show, url.path.show.stripPrefix("/"))

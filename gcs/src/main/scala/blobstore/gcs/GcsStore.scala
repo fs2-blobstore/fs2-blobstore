@@ -1,8 +1,8 @@
 package blobstore.gcs
 
-import blobstore.{putRotateBase, Store, StoreOps}
+import blobstore.{putRotateBase, Store}
 import blobstore.url.{Path, Url}
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Timer}
 import cats.syntax.all._
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
@@ -11,6 +11,7 @@ import fs2.{Chunk, Pipe, Stream}
 
 import java.io.OutputStream
 import java.nio.channels.Channels
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 /** @param storage configured instance of GCS Storage
@@ -24,7 +25,7 @@ import scala.jdk.CollectionConverters._
   *                              This controls behaviour of `get` method from Store trait.
   *                              Use [[getUnderlying]] to control on per-invocation basis.
   */
-class GcsStore[F[_]: ConcurrentEffect: ContextShift](
+class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
   storage: Storage,
   blocker: Blocker,
   acls: List[Acl] = Nil,
@@ -55,8 +56,17 @@ class GcsStore[F[_]: ConcurrentEffect: ContextShift](
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), blocker, closeAfterUse = true)
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] =
-    if (recursive) new StoreOps[F, GcsBlob](this).removeAll(url).void
-    else blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
+    if (recursive) {
+      list(url, recursive = true)
+        .groupWithin(100, FiniteDuration(1, "s"))
+        .evalMap { chunk =>
+          val batch   = storage.batch()
+          val results = chunk.toList.map(u => batch.delete(u.representation.blob.getBlobId))
+          blocker.delay(batch.submit()).flatMap { _ =>
+            results.traverse_(result => ConcurrentEffect[F].catchNonFatal(result.get()))
+          }
+        }.compile.drain
+    } else blocker.delay(storage.delete(GcsStore.toBlobId(url))).void
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] =
@@ -182,7 +192,7 @@ object GcsStore {
     *                              This controls behaviour of `GcsStore.get` method from Store trait.
     *                              Use [[GcsStore.getUnderlying]] to control on per-invocation basis.
     */
-  def apply[F[_]: ConcurrentEffect: ContextShift](
+  def apply[F[_]: ConcurrentEffect: Timer: ContextShift](
     storage: Storage,
     blocker: Blocker,
     acls: List[Acl] = Nil,

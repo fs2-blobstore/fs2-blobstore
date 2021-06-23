@@ -19,7 +19,7 @@ package s3
 import blobstore.url.{Path, Url}
 import blobstore.util.{fromQueueNoneTerminated, fromQueueNoneTerminatedChunk, liftJavaFuture}
 import cats.effect.concurrent.{Ref, Semaphore}
-import cats.effect.{Async, ConcurrentEffect, ContextShift, ExitCase, Resource}
+import cats.effect.{Async, ConcurrentEffect, ExitCase, Resource, Timer}
 import cats.syntax.all._
 import fs2.concurrent.Queue
 import fs2.{Chunk, Pipe, Pull, Stream}
@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.s3.model._
 
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 import scala.util.Random
 
@@ -47,7 +48,7 @@ import scala.util.Random
   * @param bufferSize – size of the buffer for multipart uploading (used for large streams without size known in advance).
   *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
   */
-class S3Store[F[_]: ConcurrentEffect: ContextShift](
+class S3Store[F[_]: ConcurrentEffect: Timer](
   s3: S3AsyncClient,
   objectAcl: Option[ObjectCannedACL] = None,
   sseAlgorithm: Option[String] = None,
@@ -154,11 +155,28 @@ class S3Store[F[_]: ConcurrentEffect: ContextShift](
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
     val bucket = url.authority.show
-    val key    = url.path.relative.show
-    val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
-    if (recursive) new StoreOps[F, S3Blob](this).removeAll(url).void
-    else liftJavaFuture(Async[F].delay(s3.deleteObject(req))).void
+    if (recursive) {
+      list(url, recursive).groupWithin(1000, FiniteDuration(1, "ms")).evalMap { chunk =>
+        val objects = chunk.map(u => ObjectIdentifier.builder().key(u.path.relative.show).build()).toList
+        val req =
+          DeleteObjectsRequest.builder().bucket(bucket).delete(Delete.builder().objects(objects.asJava).build()).build()
+        liftJavaFuture(Async[F].delay(s3.deleteObjects(req))).flatMap[Unit] {
+          case resp if resp.hasErrors =>
+            def msg(e: S3Error): String = s"S3 error(${e.code()}) – ${e.message()}"
+            resp.errors().asScala.toList match {
+              case Nil      => Async[F].unit
+              case e :: Nil => Async[F].raiseError(new RuntimeException(msg(e)))
+              case es       => Async[F].raiseError(new RuntimeException(es.map(msg).mkString("Errors: [", ", ", "]")))
+            }
+          case _ => Async[F].unit
+        }
+      }.compile.drain
+    } else {
+      val key = url.path.relative.show
+      val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
+      liftJavaFuture(Async[F].delay(s3.deleteObject(req))).void
+    }
   }
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {
@@ -441,7 +459,7 @@ object S3Store {
     * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
     *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
     */
-  def apply[F[_]: ConcurrentEffect: ContextShift](
+  def apply[F[_]: ConcurrentEffect: Timer](
     s3: S3AsyncClient,
     objectAcl: Option[ObjectCannedACL] = None,
     sseAlgorithm: Option[String] = None,
