@@ -2,9 +2,9 @@ package blobstore.s3
 
 import java.time.Instant
 
-import software.amazon.awssdk.services.s3.model._
+import software.amazon.awssdk.services.s3.model.*
 
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
 trait S3MetaInfo {
   def tags: Option[Tagging]                                        = None
@@ -208,103 +208,170 @@ object S3MetaInfo {
     override val sseCustomerKey: Option[String]                               = constSseCustomerKey
   }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.var"))
-  def putObjectRequest(b: PutObjectRequest.Builder)(metaInfo: S3MetaInfo): PutObjectRequest.Builder = {
-    var builder = b
-    builder = metaInfo.acl.fold(builder)(builder.acl)
-    builder = metaInfo.cacheControl.fold(builder)(builder.cacheControl)
-    builder = metaInfo.contentDisposition.fold(builder)(builder.contentDisposition)
-    builder = metaInfo.contentEncoding.fold(builder)(builder.contentEncoding)
-    builder = metaInfo.contentLanguage.fold(builder)(builder.contentLanguage)
-    builder = metaInfo.contentMD5.fold(builder)(builder.contentMD5)
-    builder = metaInfo.contentType.fold(builder)(builder.contentType)
-    builder = metaInfo.expires.fold(builder)(builder.expires)
-    builder = if (metaInfo.metadata.isEmpty) builder else builder.metadata(metaInfo.metadata.asJava)
-    builder = metaInfo.serverSideEncryption.fold(builder)(builder.serverSideEncryption)
-    builder = metaInfo.storageClass.fold(builder)(builder.storageClass)
-    builder = metaInfo.websiteRedirectLocation.fold(builder)(builder.websiteRedirectLocation)
-    builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
-    builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
-    builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
-    builder = metaInfo.sseKmsKeyId.fold(builder)(builder.ssekmsKeyId)
-    builder = metaInfo.sseKmsEncryptionContext.fold(builder)(builder.ssekmsEncryptionContext)
-    builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
-    builder = metaInfo.tags.fold(builder)(builder.tagging)
-    builder = metaInfo.objectLockMode.fold(builder)(builder.objectLockMode)
-    builder = metaInfo.objectLockRetainUntilDate.fold(builder)(builder.objectLockRetainUntilDate)
-    metaInfo.objectLockLegalHoldStatus.fold(builder)(builder.objectLockLegalHoldStatus)
+  def mkPutObjectRequest(
+    sseAlgorithm: Option[String],
+    objectAcl: Option[ObjectCannedACL],
+    bucket: String,
+    key: String,
+    meta: Option[S3MetaInfo],
+    size: Long
+  ): PutObjectRequest = {
+    val builder = PutObjectRequest.builder()
+    val withAcl = objectAcl.fold(builder)(builder.acl)
+    val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
+
+    def addMeta(b: PutObjectRequest.Builder)(metaInfo: S3MetaInfo): PutObjectRequest.Builder = {
+      var builder = b // scalafix:ok
+      builder = metaInfo.acl.fold(builder)(builder.acl)
+      builder = metaInfo.cacheControl.fold(builder)(builder.cacheControl)
+      builder = metaInfo.contentDisposition.fold(builder)(builder.contentDisposition)
+      builder = metaInfo.contentEncoding.fold(builder)(builder.contentEncoding)
+      builder = metaInfo.contentLanguage.fold(builder)(builder.contentLanguage)
+      builder = metaInfo.contentMD5.fold(builder)(builder.contentMD5)
+      builder = metaInfo.contentType.fold(builder)(builder.contentType)
+      builder = metaInfo.expires.fold(builder)(builder.expires)
+      builder = if (metaInfo.metadata.isEmpty) builder else builder.metadata(metaInfo.metadata.asJava)
+      builder = metaInfo.serverSideEncryption.fold(builder)(builder.serverSideEncryption)
+      builder = metaInfo.storageClass.fold(builder)(builder.storageClass)
+      builder = metaInfo.websiteRedirectLocation.fold(builder)(builder.websiteRedirectLocation)
+      builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
+      builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
+      builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+      builder = metaInfo.sseKmsKeyId.fold(builder)(builder.ssekmsKeyId)
+      builder = metaInfo.sseKmsEncryptionContext.fold(builder)(builder.ssekmsEncryptionContext)
+      builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
+      builder = metaInfo.tags.fold(builder)(builder.tagging)
+      builder = metaInfo.objectLockMode.fold(builder)(builder.objectLockMode)
+      builder = metaInfo.objectLockRetainUntilDate.fold(builder)(builder.objectLockRetainUntilDate)
+      metaInfo.objectLockLegalHoldStatus.fold(builder)(builder.objectLockLegalHoldStatus)
+    }
+
+    meta
+      .fold(withSSE)(addMeta(withSSE))
+      .contentLength(size)
+      .bucket(bucket)
+      .key(key)
+      .build()
   }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.var"))
-  def createMultipartUploadRequest(
-    b: CreateMultipartUploadRequest.Builder
-  )(metaInfo: S3MetaInfo): CreateMultipartUploadRequest.Builder = {
-    var builder = b
-    builder = metaInfo.acl.fold(builder)(builder.acl)
-    builder = metaInfo.cacheControl.fold(builder)(builder.cacheControl)
-    builder = metaInfo.contentDisposition.fold(builder)(builder.contentDisposition)
-    builder = metaInfo.contentEncoding.fold(builder)(builder.contentEncoding)
-    builder = metaInfo.contentLanguage.fold(builder)(builder.contentLanguage)
-    builder = metaInfo.contentType.fold(builder)(builder.contentType)
-    builder = metaInfo.expires.fold(builder)(builder.expires)
-    builder = if (metaInfo.metadata.isEmpty) builder else builder.metadata(metaInfo.metadata.asJava)
-    builder = metaInfo.serverSideEncryption.fold(builder)(builder.serverSideEncryption)
-    builder = metaInfo.storageClass.fold(builder)(builder.storageClass)
-    builder = metaInfo.websiteRedirectLocation.fold(builder)(builder.websiteRedirectLocation)
-    builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
-    builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
-    builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
-    builder = metaInfo.sseKmsKeyId.fold(builder)(builder.ssekmsKeyId)
-    builder = metaInfo.sseKmsEncryptionContext.fold(builder)(builder.ssekmsEncryptionContext)
-    builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
-    builder = metaInfo.tags.fold(builder)(builder.tagging)
-    builder = metaInfo.objectLockMode.fold(builder)(builder.objectLockMode)
-    builder = metaInfo.objectLockRetainUntilDate.fold(builder)(builder.objectLockRetainUntilDate)
-    metaInfo.objectLockLegalHoldStatus.fold(builder)(builder.objectLockLegalHoldStatus)
+  def mkPutMultiPartRequest(
+    sseAlgorithm: Option[String],
+    objectAcl: Option[ObjectCannedACL],
+    bucket: String,
+    key: String,
+    meta: Option[S3MetaInfo]
+  ): CreateMultipartUploadRequest = {
+    val builder = CreateMultipartUploadRequest.builder()
+    val withAcl = objectAcl.fold(builder)(builder.acl)
+    val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
+
+    def addMeta(b: CreateMultipartUploadRequest.Builder)(metaInfo: S3MetaInfo): CreateMultipartUploadRequest.Builder = {
+      var builder = b // scalafix:ok
+      builder = metaInfo.acl.fold(builder)(builder.acl)
+      builder = metaInfo.cacheControl.fold(builder)(builder.cacheControl)
+      builder = metaInfo.contentDisposition.fold(builder)(builder.contentDisposition)
+      builder = metaInfo.contentEncoding.fold(builder)(builder.contentEncoding)
+      builder = metaInfo.contentLanguage.fold(builder)(builder.contentLanguage)
+      builder = metaInfo.contentType.fold(builder)(builder.contentType)
+      builder = metaInfo.expires.fold(builder)(builder.expires)
+      builder = if (metaInfo.metadata.isEmpty) builder else builder.metadata(metaInfo.metadata.asJava)
+      builder = metaInfo.serverSideEncryption.fold(builder)(builder.serverSideEncryption)
+      builder = metaInfo.storageClass.fold(builder)(builder.storageClass)
+      builder = metaInfo.websiteRedirectLocation.fold(builder)(builder.websiteRedirectLocation)
+      builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
+      builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
+      builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+      builder = metaInfo.sseKmsKeyId.fold(builder)(builder.ssekmsKeyId)
+      builder = metaInfo.sseKmsEncryptionContext.fold(builder)(builder.ssekmsEncryptionContext)
+      builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
+      builder = metaInfo.tags.fold(builder)(builder.tagging)
+      builder = metaInfo.objectLockMode.fold(builder)(builder.objectLockMode)
+      builder = metaInfo.objectLockRetainUntilDate.fold(builder)(builder.objectLockRetainUntilDate)
+      metaInfo.objectLockLegalHoldStatus.fold(builder)(builder.objectLockLegalHoldStatus)
+    }
+
+    meta
+      .fold(withSSE)(addMeta(withSSE))
+      .bucket(bucket)
+      .key(key)
+      .build()
   }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.var"))
-  def copyObjectRequest(b: CopyObjectRequest.Builder)(metaInfo: S3MetaInfo): CopyObjectRequest.Builder = {
-    var builder = b
-    builder = metaInfo.acl.fold(builder)(builder.acl)
-    builder = metaInfo.cacheControl.fold(builder)(builder.cacheControl)
-    builder = metaInfo.contentDisposition.fold(builder)(builder.contentDisposition)
-    builder = metaInfo.contentEncoding.fold(builder)(builder.contentEncoding)
-    builder = metaInfo.contentLanguage.fold(builder)(builder.contentLanguage)
-    builder = metaInfo.contentType.fold(builder)(builder.contentType)
-    builder = metaInfo.expires.fold(builder)(builder.expires)
-    builder = if (metaInfo.metadata.isEmpty) builder else builder.metadata(metaInfo.metadata.asJava)
-    builder = metaInfo.serverSideEncryption.fold(builder)(builder.serverSideEncryption)
-    builder = metaInfo.storageClass.fold(builder)(builder.storageClass)
-    builder = metaInfo.websiteRedirectLocation.fold(builder)(builder.websiteRedirectLocation)
-    builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
-    builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
-    builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
-    builder = metaInfo.sseKmsKeyId.fold(builder)(builder.ssekmsKeyId)
-    builder = metaInfo.sseKmsEncryptionContext.fold(builder)(builder.ssekmsEncryptionContext)
-    builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
-    builder = metaInfo.tags.fold(builder)(builder.tagging)
-    builder = metaInfo.objectLockMode.fold(builder)(builder.objectLockMode)
-    builder = metaInfo.objectLockRetainUntilDate.fold(builder)(builder.objectLockRetainUntilDate)
-    metaInfo.objectLockLegalHoldStatus.fold(builder)(builder.objectLockLegalHoldStatus)
+  def mkCopyObjectRequest(
+    sseAlgorithm: Option[String],
+    objectAcl: Option[ObjectCannedACL],
+    source: String,
+    dstBucket: String,
+    dstKey: String,
+    meta: Option[S3MetaInfo]
+  ): CopyObjectRequest = {
+    val builder = CopyObjectRequest.builder()
+    val withAcl = objectAcl.fold(builder)(builder.acl)
+    val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
+
+    def addMeta(b: CopyObjectRequest.Builder)(metaInfo: S3MetaInfo): CopyObjectRequest.Builder = {
+      var builder = b // scalafix:ok
+      builder = metaInfo.acl.fold(builder)(builder.acl)
+      builder = metaInfo.cacheControl.fold(builder)(builder.cacheControl)
+      builder = metaInfo.contentDisposition.fold(builder)(builder.contentDisposition)
+      builder = metaInfo.contentEncoding.fold(builder)(builder.contentEncoding)
+      builder = metaInfo.contentLanguage.fold(builder)(builder.contentLanguage)
+      builder = metaInfo.contentType.fold(builder)(builder.contentType)
+      builder = metaInfo.expires.fold(builder)(builder.expires)
+      builder = if (metaInfo.metadata.isEmpty) builder else builder.metadata(metaInfo.metadata.asJava)
+      builder = metaInfo.serverSideEncryption.fold(builder)(builder.serverSideEncryption)
+      builder = metaInfo.storageClass.fold(builder)(builder.storageClass)
+      builder = metaInfo.websiteRedirectLocation.fold(builder)(builder.websiteRedirectLocation)
+      builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
+      builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
+      builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+      builder = metaInfo.sseKmsKeyId.fold(builder)(builder.ssekmsKeyId)
+      builder = metaInfo.sseKmsEncryptionContext.fold(builder)(builder.ssekmsEncryptionContext)
+      builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
+      builder = metaInfo.tags.fold(builder)(builder.tagging)
+      builder = metaInfo.objectLockMode.fold(builder)(builder.objectLockMode)
+      builder = metaInfo.objectLockRetainUntilDate.fold(builder)(builder.objectLockRetainUntilDate)
+      metaInfo.objectLockLegalHoldStatus.fold(builder)(builder.objectLockLegalHoldStatus)
+    }
+
+    meta
+      .fold(withSSE)(addMeta(withSSE))
+      .copySource(source)
+      .destinationBucket(dstBucket)
+      .destinationKey(dstKey)
+      .build()
   }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.var"))
-  def getObjectRequest(metaInfo: S3MetaInfo): GetObjectRequest.Builder = {
-    var builder = GetObjectRequest.builder()
+  def mkGetObjectRequest(bucket: String, key: String, metaInfo: S3MetaInfo): GetObjectRequest = {
+    var builder = GetObjectRequest.builder() // scalafix:ok
     builder = metaInfo.range.fold(builder)(builder.range)
     builder = metaInfo.versionId.fold(builder)(builder.versionId)
     builder = metaInfo.requestPayer.fold(builder)(builder.requestPayer)
     builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
     builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
-    metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+    builder = metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+    builder.bucket(bucket).key(key).build()
   }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.var"))
-  def uploadPartRequest(metaInfo: S3MetaInfo): UploadPartRequest.Builder = {
-    var builder = UploadPartRequest.builder()
-    builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
-    builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
-    metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+  def mkUploadPartRequestBuilder(
+    bucket: String,
+    key: String,
+    uploadId: String,
+    meta: Option[S3MetaInfo],
+    part: Int,
+    length: Option[Long]
+  ): UploadPartRequest = {
+    val builder = UploadPartRequest.builder()
+
+    def addMeta(b: UploadPartRequest.Builder)(metaInfo: S3MetaInfo): UploadPartRequest.Builder = {
+      var builder = b // scalafix:ok
+      builder = metaInfo.sseCustomerAlgorithm.fold(builder)(builder.sseCustomerAlgorithm)
+      builder = metaInfo.sseCustomerKey.fold(builder)(builder.sseCustomerKey)
+      metaInfo.sseCustomerKeyMD5.fold(builder)(builder.sseCustomerKeyMD5)
+    }
+
+    val b = meta.fold(builder)(addMeta(builder)).bucket(bucket).key(key).uploadId(uploadId).partNumber(part)
+
+    length.fold(b)(l => b.contentLength(l)).build()
   }
 }

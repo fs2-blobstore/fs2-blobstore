@@ -2,7 +2,7 @@ package blobstore
 
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.{Pipe, Stream}
 
 import java.nio.charset.StandardCharsets

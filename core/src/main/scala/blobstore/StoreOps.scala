@@ -17,7 +17,7 @@ package blobstore
 
 import blobstore.url.{FsObject, Url}
 import cats.effect.Concurrent
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.Pipe
 import fs2.io.file.Files
 

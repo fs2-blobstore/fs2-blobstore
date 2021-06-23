@@ -20,11 +20,11 @@ import blobstore.url.Path.Plain
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.Async
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.{Pipe, Stream}
 import fs2.io.file.Files
 
-import java.nio.file.{StandardOpenOption, Files => JFiles, Path => JPath}
+import java.nio.file.{StandardOpenOption, Files as JFiles, Path as JPath}
 
 class FileStore[F[_]: Files: Async] extends PathStore[F, NioPath] {
 

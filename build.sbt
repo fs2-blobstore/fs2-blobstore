@@ -1,7 +1,7 @@
 inThisBuild(
   Seq(
     scalaVersion := "2.13.6",
-    crossScalaVersions := Seq("2.12.14", "2.13.6"),
+    crossScalaVersions := Seq("2.12.14", "2.13.6", "3.0.0"),
     organization := "com.github.fs2-blobstore",
     licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
@@ -12,8 +12,6 @@ inThisBuild(
     ),
     homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
-    addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1"),
-    addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.13.0" cross CrossVersion.full),
     javacOptions ++= {
       val javaVersion: Int = {
         var sysVersion = System.getProperty("java.version")

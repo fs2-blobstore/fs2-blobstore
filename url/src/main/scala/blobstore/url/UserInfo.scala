@@ -1,7 +1,7 @@
 package blobstore.url
 
 import cats.{Order, Show}
-import cats.syntax.all._
+import cats.syntax.all.*
 
 case class UserInfo(user: String, password: Option[String] = None) {
   override def toString: String = show"$user${password.as(":*****").getOrElse("").show}"
@@ -11,7 +11,7 @@ case class UserInfo(user: String, password: Option[String] = None) {
 
 object UserInfo {
 
-  implicit val order: Order[UserInfo] = Order.by { userInfo: UserInfo =>
+  implicit val order: Order[UserInfo] = Order.by { (userInfo: UserInfo) =>
     (userInfo.user, userInfo.password.getOrElse(""))
   }
   implicit val ordering: Ordering[UserInfo] = order.toOrdering

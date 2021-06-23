@@ -29,7 +29,7 @@ class AuthorityTest extends AnyFlatSpec with Matchers with Inside {
       case Valid(_) => // ok
     }
 
-    inside(invalid) { // scalafix:ok
+    inside(invalid) {
       case Invalid(_) => // ok
     }
   }

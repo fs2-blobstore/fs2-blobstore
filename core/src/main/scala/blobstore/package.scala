@@ -17,7 +17,7 @@ Copyright 2018 LendUp Global, Inc.
 import blobstore.url.{FsObject, Path, Url}
 import cats.effect.std.Hotswap
 import cats.effect.{Concurrent, MonadCancelThrow, Resource}
-import cats.implicits._
+import cats.implicits.*
 import fs2.io.file.Files
 import fs2.{Chunk, Compiler, Pipe, Pull, RaiseThrowable, Stream}
 

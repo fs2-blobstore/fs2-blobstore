@@ -19,7 +19,7 @@ package fs
 import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.syntax.all._
+import cats.syntax.all.*
 
 class FileStoreTest extends AbstractStoreTest[NioPath] {
 

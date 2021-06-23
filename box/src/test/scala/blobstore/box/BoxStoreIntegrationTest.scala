@@ -72,8 +72,8 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
     super.beforeAll()
     val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
 
-    rootFolder.getResource // scalafix:ok
-      .getChildren(BoxFolder.ALL_FIELDS: _*)
+    rootFolder.getResource
+      .getChildren(BoxFolder.ALL_FIELDS *)
       .asScala
       .toList
       .filter(_.getCreatedAt.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))

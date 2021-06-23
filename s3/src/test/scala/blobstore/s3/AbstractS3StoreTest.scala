@@ -5,7 +5,7 @@ import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
 import cats.effect.std.Random
 import cats.effect.unsafe.implicits.global
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.dimafeng.testcontainers.GenericContainer
 import fs2.{Chunk, Stream}
 import org.scalatest.{Assertion, Inside}
@@ -103,7 +103,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
         .compile
         .drain
       files        <- store.list(dir, recursive = true).compile.toList
-      fileContents <- files.traverse(u => store.get(u, 1024).compile.to(Array))
+      fileContents <- files.traverse(u => store.get(u, 1024).compile.toList)
     } yield {
       files must have size 2
       files.flatMap(_.path.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)

@@ -1,6 +1,6 @@
 package blobstore.url.exception
 
-import cats.syntax.all._
+import cats.syntax.all.*
 import cats.Show
 import cats.kernel.Semigroup
 

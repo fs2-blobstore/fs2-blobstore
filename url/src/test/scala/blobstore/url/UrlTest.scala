@@ -16,8 +16,6 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
 
   behavior of "Url"
 
-  // scalafix:off
-
   it should "compose" in {
     val fileLike = "https://foo.example.com"
 
@@ -132,13 +130,13 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
   }
 
   it should "userinfo and port are allowed for standard urls, but not buckets" in {
-    val values = List(User("foo"), Password("bar"), Port(8080))
+    val values = List(User("foo"), Password("bar"), Port.unsafe(8080))
     val cross  = values.flatMap(v => values.map(v -> _))
 
     val all = show"https://foo:bar@example.com:8080/foo/"
     val allExpected = Url(
       "https",
-      Authority(Host.unsafe("example.com"), Some(UserInfo("foo", "bar".some)), blobstore.url.Port.unsafe(8080).some),
+      Authority(Host.unsafe("example.com"), Some(UserInfo("foo", "bar".some)), Port.unsafe(8080).some),
       Path("foo/")
     )
 
@@ -197,7 +195,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
     url.toGcs(bucket).show mustBe "gs://foo/foo/bar"
     url.toSftp(bucket.authority).show mustBe "sftp://foo/foo/bar"
   }
-  // scalafix:on
+
 }
 
 object UrlTest {

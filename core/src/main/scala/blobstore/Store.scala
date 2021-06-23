@@ -16,10 +16,10 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import blobstore.url.{FsObject, Path, Url}
-import cats.MonadError
+import cats.MonadThrow
 import cats.data.Validated
 import cats.effect.Concurrent
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.io.file.Files
 import fs2.{Pipe, Stream}
 
@@ -106,45 +106,41 @@ object Store {
     * Use `transformPath` to control how paths retrieved from input URLs are converted to paths for FileStores
     */
   //
-  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob](
+  private[blobstore] class DelegatingStore[F[_]: MonadThrow, Blob](
     delegate: PathStore[F, Blob],
     validateInput: Url.Plain => Validated[Throwable, Path.Plain] = (_: Url.Plain).path.valid[Throwable]
   ) extends Store[F, Blob] {
     private def plainUrl[A](url: Url[A]): Url.Plain = url.copy(path = url.path.plain)
 
     override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[Blob]] =
-      validateInput(plainUrl(url))
-        .liftTo[Stream[F, *]]
+      Stream.fromEither(validateInput(plainUrl(url)).toEither)
         .flatMap(delegate.list(_, recursive))
         .map(p => url.copy(path = p))
 
     override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] =
-      validateInput(plainUrl(url)).liftTo[Stream[F, *]].flatMap(delegate.get(_, chunkSize))
+      Stream.fromEither(validateInput(plainUrl(url)).toEither).flatMap(delegate.get(_, chunkSize))
 
     override def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
-      s => validateInput(plainUrl(url)).liftTo[Stream[F, *]].flatMap(p => s.through(delegate.put(p, overwrite, size)))
+      s =>
+        Stream.fromEither(validateInput(plainUrl(url)).toEither).flatMap(p =>
+          s.through(delegate.put(p, overwrite, size))
+        )
 
     override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap(
-        (delegate.move[
-          String,
-          String
-        ] _).tupled
-      )
+      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap {
+        case (src, dst) => delegate.move[String, String](src, dst)
+      }
 
     override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap(
-        (delegate.copy[
-          String,
-          String
-        ] _).tupled
-      )
+      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap {
+        case (src, dst) => delegate.copy[String, String](src, dst)
+      }
 
     override def remove[A](url: Url[A], recursive: Boolean): F[Unit] =
       validateInput(plainUrl(url)).liftTo[F].flatMap(delegate.remove(_, recursive))
 
     override def stat[A](url: Url[A]): Stream[F, Url[Blob]] =
-      validateInput(plainUrl(url)).liftTo[Stream[F, *]].flatMap(s =>
+      Stream.fromEither(validateInput(plainUrl(url)).toEither).flatMap(s =>
         Stream.eval(delegate.stat[String](s)).unNone.map(url.withPath)
       )
 

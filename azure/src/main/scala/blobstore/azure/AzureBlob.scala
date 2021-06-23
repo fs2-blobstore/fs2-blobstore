@@ -4,6 +4,7 @@ import java.time.Instant
 import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
 import blobstore.url.{FsObject, FsObjectLowPri}
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties}
+import blobstore.azure.AzureBlob.storageClassLookup
 
 case class AzureBlob(
   container: String,
@@ -11,6 +12,7 @@ case class AzureBlob(
   properties: Option[BlobItemProperties],
   metadata: Map[String, String]
 ) extends FsObject {
+
   override type StorageClassType = AccessTier
 
   override def name: String = blob

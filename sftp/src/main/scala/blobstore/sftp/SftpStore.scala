@@ -8,8 +8,8 @@ import cats.data.Validated
 import cats.effect.kernel.Async
 import cats.effect.std.{Dispatcher, Queue, Semaphore}
 import cats.effect.Resource
-import cats.syntax.all._
-import com.jcraft.jsch._
+import cats.syntax.all.*
+import com.jcraft.jsch.*
 import fs2.{Pipe, Stream}
 
 import java.io.OutputStream
