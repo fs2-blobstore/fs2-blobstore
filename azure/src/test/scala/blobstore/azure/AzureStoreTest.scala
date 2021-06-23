@@ -1,9 +1,8 @@
 package blobstore
 package azure
 
-import java.util.concurrent.TimeUnit
 import blobstore.url.Path.Plain
-import blobstore.url.{Authority, Path}
+import blobstore.url.{Authority, Path, Url}
 import blobstore.url.general.GeneralStorageClass
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
@@ -13,6 +12,8 @@ import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
 import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
 import org.scalatest.Inside
+
+import java.util.concurrent.TimeUnit
 
 class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
 
@@ -36,7 +37,12 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
     .buildAsyncClient()
 
   override def mkStore(): Store[IO, AzureBlob] =
-    new AzureStore(azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true)
+    new AzureStore[IO](azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true) {
+      // TODO: Remove override when Azurite supports Batch API
+      override def remove[A](url: Url[A], recursive: Boolean): IO[Unit] =
+        if (recursive) new StoreOps[IO, AzureBlob](this).removeAll(url).void
+        else super.remove(url, recursive)
+    }
 
   def azureStore: AzureStore[IO] = store.asInstanceOf[AzureStore[IO]] // scalafix:ok
 

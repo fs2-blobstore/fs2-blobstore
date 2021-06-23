@@ -30,6 +30,7 @@ import software.amazon.awssdk.services.s3.model._
 
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 import scala.util.Random
 
@@ -153,11 +154,28 @@ class S3Store[F[_]: Async](
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
     val bucket = url.authority.show
-    val key    = url.path.relative.show
-    val req    = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
 
-    if (recursive) new StoreOps[F, S3Blob](this).removeAll(url).void
-    else Async[F].fromCompletableFuture(Async[F].delay(s3.deleteObject(req))).void
+    if (recursive) {
+      list(url, recursive).groupWithin(1000, FiniteDuration(1, "ms")).evalMap { chunk =>
+        val objects = chunk.map(u => ObjectIdentifier.builder().key(u.path.relative.show).build()).toList
+        val req =
+          DeleteObjectsRequest.builder().bucket(bucket).delete(Delete.builder().objects(objects.asJava).build()).build()
+        Async[F].fromCompletableFuture(Async[F].delay(s3.deleteObjects(req))).flatMap[Unit] {
+          case resp if resp.hasErrors =>
+            def msg(e: S3Error): String = s"S3 error(${e.code()}) – ${e.message()}"
+            resp.errors().asScala.toList match {
+              case Nil      => Async[F].unit
+              case e :: Nil => Async[F].raiseError(new RuntimeException(msg(e)))
+              case es       => Async[F].raiseError(new RuntimeException(es.map(msg).mkString("Errors: [", ", ", "]")))
+            }
+          case _ => Async[F].unit
+        }
+      }.compile.drain
+    } else {
+      val key = url.path.relative.show
+      val req = DeleteObjectRequest.builder().bucket(bucket).key(key).build()
+      Async[F].fromCompletableFuture(Async[F].delay(s3.deleteObject(req))).void
+    }
   }
 
   override def putRotate[A](computeUrl: F[Url[A]], limit: Long): Pipe[F, Byte, Unit] = {

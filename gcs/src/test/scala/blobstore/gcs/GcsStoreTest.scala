@@ -7,8 +7,10 @@ import blobstore.Store
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all._
-import com.google.cloud.storage.{BlobInfo, StorageClass}
-import com.google.cloud.storage.contrib.nio.testing.LocalStorageHelper
+import com.google.cloud.ServiceRpc
+import com.google.cloud.spi.ServiceRpcFactory
+import com.google.cloud.storage.{BlobInfo, StorageClass, StorageOptions}
+import com.google.cloud.storage.contrib.nio.testing.FixedFakeStorageRpc
 import fs2.Stream
 import org.scalatest.Inside
 
@@ -21,7 +23,12 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   override val fileSystemRoot: Plain = Path("")
 
   val gcsStore: GcsStore[IO] = GcsStore[IO](
-    LocalStorageHelper.getOptions.getService,
+    StorageOptions
+      .newBuilder().setServiceRpcFactory(
+        new ServiceRpcFactory[StorageOptions]() {
+          override def create(options: StorageOptions): ServiceRpc = new FixedFakeStorageRpc(true)
+        }
+      ).build().getService,
     defaultTrailingSlashFiles = true,
     defaultDirectDownload = false
   )
