@@ -24,12 +24,17 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.4
       - uses: AvaPL/scalafmt-native-formatter@v0.1.2
+        with:
+          conf-path: ~/.scalafmt.conf
 
   tests:
     name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [scalafmt]
+    strategy:
+      matrix:
+        scala: [ 2.12.14, 2.13.6, 3.0.0 ]
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2.3.4
@@ -38,19 +43,24 @@ jobs:
         uses: coursier/cache-action@v6
 
       - name: Compile all sources
-        run: sbt + 'all compile Test/compile IntegrationTest/compile doc'
+        run: sbt ++${{ matrix.scala }} 'all compile Test/compile IntegrationTest/compile doc'
 
       - name: Compile readme
-        run: sbt + docs/mdoc
+        run: sbt ++${{ matrix.scala }} docs/mdoc
 
       - name: Run Scalafix
-        run: sbt + 'scalafixAll --check'
+        run: sbt ++${{ matrix.scala }} 'scalafixAll --check'
 
       - name: Create tmp directory
         run: mkdir tmp
 
-      - name: Test
-        run: sbt + '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
+      - name: Test with coverage
+        if: ${{ matrix.scala != '3.0.0' }}
+        run: sbt ++${{ matrix.scala }} '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
+
+      - name: Test without coverage
+        if: ${{ matrix.scala == '3.0.0' }}
+        run: sbt ++${{ matrix.scala }} 'testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -60,12 +70,13 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        run: sbt + coverageReport
+        if: ${{ matrix.scala != '3.0.0' }}
+        run: sbt ++${{ matrix.scala }} coverageReport
 
       - name: Upload code coverage to codecov
         uses: codecov/codecov-action@v1.5.2
         with:
-          flags: scala
+          flags: scala-${{ matrix.scala }}
 
   integration-tests:
     name: Integration tests
