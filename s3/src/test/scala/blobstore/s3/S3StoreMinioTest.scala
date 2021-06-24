@@ -1,6 +1,6 @@
 package blobstore.s3
 
-import cats.syntax.all._
+import cats.syntax.all.*
 import blobstore.url.{Path, Url}
 import cats.effect.IO
 import cats.effect.std.Random
@@ -34,6 +34,8 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
       "minio_access_key",
       "minio_secret_key"
     )))
+    .overrideConfiguration(overrideConfiguration)
+    .httpClient(httpClient)
     .build()
 
   behavior of "S3 - MinIO test"
@@ -60,7 +62,7 @@ class S3StoreMinioTest extends AbstractS3StoreTest {
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
     val filePath = Path(s"test-$testRun/set-underlying/file1")
-    Stream("data".getBytes.toIndexedSeq: _*).through(
+    Stream("data".getBytes.toIndexedSeq*).through(
       s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta))
     ).compile.drain.unsafeRunSync()
     val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()

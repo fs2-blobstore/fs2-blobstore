@@ -27,7 +27,8 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   override val authority: Authority  = Authority.unsafe("container")
   override val fileSystemRoot: Plain = Path("")
 
-  val options = new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 2, 2, null, null, null) // scalafix:ok
+  val options =
+    new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 5, null.asInstanceOf[Integer], null, null, null) // scalafix:ok
 
   lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
     .connectionString(
@@ -115,7 +116,7 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
     val at         = AccessTier.COOL
     val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
     val fileUrl    = dirUrl("set-underlying") / "file"
-    Stream("data".getBytes.toIndexedSeq: _*).through(azureStore.put(
+    Stream("data".getBytes.toIndexedSeq*).through(azureStore.put(
       fileUrl,
       overwrite = true,
       properties = Some(properties),

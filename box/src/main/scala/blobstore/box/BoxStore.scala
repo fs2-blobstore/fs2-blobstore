@@ -19,16 +19,19 @@ package box
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.{Async, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
 import fs2.{Pipe, Stream}
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
-/** @param api - underlying configured BoxAPIConnection
-  * @param rootFolderId – override for Root Folder Id, default – "0"
-  * @param largeFileThreshold – override for the threshold on the file size to be considered "large", default – 50MiB
+/** @param api
+  *   - underlying configured BoxAPIConnection
+  * @param rootFolderId
+  *   – override for Root Folder Id, default – "0"
+  * @param largeFileThreshold
+  *   – override for the threshold on the file size to be considered "large", default – 50MiB
   */
 class BoxStore[F[_]: Async](
   api: BoxAPIConnection,
@@ -59,7 +62,7 @@ class BoxStore[F[_]: Async](
         streams._1.close()
       })
       val readInput = fs2.io.readInputStream(Async[F].delay(streams._2), chunkSize, closeAfterUse = true)
-      readInput concurrently dl
+      readInput.concurrently(dl)
     }
 
     Stream.eval(boxFileAtPath(path)).flatMap {
@@ -104,7 +107,7 @@ class BoxStore[F[_]: Async](
               in.through(fs2.io.writeOutputStream(ios._1.pure, closeAfterUse = false)) ++
                 Stream.eval(Async[F].delay(ios._1.close()))
             }
-            putToBox concurrently writeBytes
+            putToBox.concurrently(writeBytes)
           }
 
           val release: ((OutputStream, InputStream, Either[BoxFile, BoxFolder])) => F[Unit] = ios =>
@@ -188,7 +191,6 @@ class BoxStore[F[_]: Async](
     putRotateBase(limit, openNewFile)(os => bytes => Async[F].blocking(os.write(bytes.toArray)))
   }
 
-  @SuppressWarnings(Array("scalafix:DisableSyntax.asInstanceOf"))
   def listUnderlying[A](
     path: Path[A],
     fields: Array[String] = Array.empty,
@@ -206,9 +208,11 @@ class BoxStore[F[_]: Async](
                 64
               )
               .map {
+                // scalafix:off
                 case i if BoxStore.isFile(i)   => i.asInstanceOf[BoxFile#Info].asLeft.some
                 case i if BoxStore.isFolder(i) => i.asInstanceOf[BoxFolder#Info].asRight.some
                 case _                         => none
+                // scalafix:on
               }
               .unNone
               .map { fileOrFolder =>
@@ -304,10 +308,11 @@ class BoxStore[F[_]: Async](
   }
 
   /** Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
-    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this
+    * store.
     *
-    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
-    * to this store.
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and
+    * passed to this store.
     */
   override def lift(g: Url.Plain => Validated[Throwable, Path.Plain]): Store[F, BoxPath] =
     new Store.DelegatingStore[F, BoxPath](this, g)
@@ -321,8 +326,10 @@ class BoxStore[F[_]: Async](
 
 object BoxStore {
 
-  /** @param api - underlying configured BoxAPIConnection
-    * @param rootFolderId – override for Root Folder Id, default – "0"
+  /** @param api
+    *   - underlying configured BoxAPIConnection
+    * @param rootFolderId
+    *   – override for Root Folder Id, default – "0"
     */
   def apply[F[_]: Async](
     api: BoxAPIConnection,
@@ -344,7 +351,7 @@ object BoxStore {
   )
 
   private def blockingIterator(folder: BoxFolder, fields: Array[String]): Iterator[BoxItem#Info] =
-    folder.getChildren((fields ++ requiredFields).distinct: _*).iterator().asScala
+    folder.getChildren((fields ++ requiredFields).distinct*).iterator().asScala
 
   private def isFile(info: BoxItem#Info): Boolean = info.getType == BoxStore.fileResourceType
 

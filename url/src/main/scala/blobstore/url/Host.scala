@@ -5,7 +5,7 @@ import blobstore.url.Hostname.Label
 import cats.{ApplicativeThrow, ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
-import cats.syntax.all._
+import cats.syntax.all.*
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -13,7 +13,8 @@ import scala.util.matching.Regex
 /** A Host is any device or computer on a computer network. It can be an IP address or any string that can appear in a
   * A, AAAA or CNAME DNS record.
   *
-  * @see https://www.ietf.org/rfc/rfc1123.txt 2.1 "Host names and numbers"
+  * @see
+  *   https://www.ietf.org/rfc/rfc1123.txt 2.1 "Host names and numbers"
   */
 sealed trait Host {
   def authority: Authority = Authority(this, None, None)
@@ -24,7 +25,7 @@ object Host {
   def parse(s: String): ValidatedNec[HostParseError, Host] = IpV4Address.parse(s).widen[Host].orElse(Hostname.parse(s))
 
   def parseF[F[_]: ApplicativeThrow](s: String) =
-    parse(s).toEither.leftMap(new MultipleUrlValidationException(_)).liftTo[F]
+    parse(s).toEither.leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
   def unsafe(s: String): Host = parse(s) match {
     case Valid(v)   => v
@@ -78,11 +79,13 @@ object IpV4Address {
   private def intOctets(ip: IpV4Address) = (ip.octet1 & 0xff, ip.octet2 & 0xff, ip.octet3 & 0xff, ip.octet4 & 0xff)
 
   def compare(x: IpV4Address, y: IpV4Address): Int =
-    intOctets(x) compare intOctets(y)
+    intOctets(x).compare(intOctets(y))
 
-  implicit val ordering: Ordering[IpV4Address] = compare
-  implicit val order: Order[IpV4Address]       = Order.fromOrdering[IpV4Address]
-  implicit val show: Show[IpV4Address]         = Show.fromToString[IpV4Address]
+  implicit val ordering: Ordering[IpV4Address] = new Ordering[IpV4Address] {
+    def compare(x: IpV4Address, y: IpV4Address): Int = IpV4Address.compare(x, y)
+  }
+  implicit val order: Order[IpV4Address] = Order.fromOrdering[IpV4Address]
+  implicit val show: Show[IpV4Address]   = Show.fromToString[IpV4Address]
 }
 
 case class Hostname private (labels: NonEmptyChain[Label]) extends Host {
@@ -95,12 +98,13 @@ object Hostname {
   /** Label component of a hostname.
     *
     * Rules
-    * - 1 to 63 characters
-    * - Only consists of characters a-z, A-Z, 0-9 or a hyphen
+    *   - 1 to 63 characters
+    *   - Only consists of characters a-z, A-Z, 0-9 or a hyphen
     *
     * RFC1123, section 2.1 "Host Names and Numbers"
     *
-    * @see http://www.ietf.org/rfc/rfc1123.txt
+    * @see
+    *   http://www.ietf.org/rfc/rfc1123.txt
     */
   case class Label private[Hostname] (value: String) {
     override def toString: String = value
@@ -110,12 +114,12 @@ object Hostname {
     val Regex: Regex = "[-_a-zA-Z0-9]+".r
 
     implicit val show: Show[Label]         = _.value
-    implicit val order: Order[Label]       = _.value compare _.value
+    implicit val order: Order[Label]       = (x: Label, y: Label) => x.value.compare(y.value)
     implicit val ordering: Ordering[Label] = order.toOrdering
   }
 
   def parseF[F[_]: ApplicativeThrow](value: String): F[Hostname] =
-    parse(value).toEither.leftMap(MultipleUrlValidationException(_)).liftTo[F]
+    parse(value).toEither.leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
   def parse(value: String): ValidatedNec[HostParseError, Hostname] = {
     val labels: ValidatedNec[HostParseError, List[Label]] = value.split('.').toList.traverse { el =>
@@ -135,8 +139,8 @@ object Hostname {
     }
 
     val labelsNec: ValidatedNec[HostParseError, NonEmptyChain[Label]] = labels.toEither.flatMap {
-      case h :: t => NonEmptyChain(h, t: _*).asRight[NonEmptyChain[HostParseError]]
-      case Nil    => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
+      case h :: t => NonEmptyChain(h, t*).asRight[NonEmptyChain[HostParseError]]
+      case Nil => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
     }.toValidated
 
     val length: ValidatedNec[HostParseError, Unit] =
@@ -161,9 +165,11 @@ object Hostname {
     case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
-  def compare(a: Hostname, b: Hostname): Int = a.show compare b.show
+  def compare(a: Hostname, b: Hostname): Int = a.show.compare(b.show)
 
-  implicit val ordering: Ordering[Hostname] = compare
-  implicit val order: Order[Hostname]       = Order.fromOrdering[Hostname]
-  implicit val show: Show[Hostname]         = _.labels.toList.mkString(".")
+  implicit val ordering: Ordering[Hostname] = new Ordering[Hostname] {
+    def compare(x: Hostname, y: Hostname): Int = Hostname.compare(x, y)
+  }
+  implicit val order: Order[Hostname] = Order.fromOrdering[Hostname]
+  implicit val show: Show[Hostname]   = _.labels.toList.mkString(".")
 }

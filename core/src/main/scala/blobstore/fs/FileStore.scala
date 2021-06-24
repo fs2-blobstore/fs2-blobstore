@@ -20,11 +20,11 @@ import blobstore.url.Path.Plain
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.Async
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.{Pipe, Stream}
 import fs2.io.file.Files
 
-import java.nio.file.{StandardOpenOption, Files => JFiles, Path => JPath}
+import java.nio.file.{StandardOpenOption, Files as JFiles, Path as JPath}
 
 class FileStore[F[_]: Files: Async] extends PathStore[F, NioPath] {
 
@@ -100,11 +100,11 @@ class FileStore[F[_]: Files: Async] extends PathStore[F, NioPath] {
     )
   }
 
-  /** Lifts this FileStore to a Store accepting URLs and exposing blobs of type `B`. You must provide
-    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+  /** Lifts this FileStore to a Store accepting URLs and exposing blobs of type `B`. You must provide a mapping from
+    * this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
     *
-    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
-    * to this store.
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and
+    * passed to this store.
     */
   override def lift(g: Url.Plain => Validated[Throwable, Plain]): Store[F, NioPath] =
     new Store.DelegatingStore[F, NioPath](this, g)

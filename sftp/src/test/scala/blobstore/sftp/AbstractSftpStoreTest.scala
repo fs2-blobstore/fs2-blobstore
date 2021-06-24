@@ -30,7 +30,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
   override val scheme = "sftp"
   override def authority: Authority =
-    Authority(Host.unsafe(container.containerIpAddress), None, Some(Port(container.mappedPort(22))))
+    Authority(Host.unsafe(container.containerIpAddress), None, Some(Port.unsafe(container.mappedPort(22))))
 
   override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
   override val fileSystemRoot: Path.Plain   = Path("sftp_tests")

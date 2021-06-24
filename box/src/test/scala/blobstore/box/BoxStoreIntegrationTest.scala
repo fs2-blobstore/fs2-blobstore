@@ -13,8 +13,8 @@ import org.slf4j.LoggerFactory
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
-/** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
-  * See AbstractStoreTest to see what operations performed here.
+/** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server. See
+  * AbstractStoreTest to see what operations performed here.
   */
 @IntegrationTest
 class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
@@ -73,7 +73,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
     val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
 
     rootFolder.getResource // scalafix:ok
-      .getChildren(BoxFolder.ALL_FIELDS: _*)
+      .getChildren(BoxFolder.ALL_FIELDS*)
       .asScala
       .toList
       .filter(_.getCreatedAt.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))

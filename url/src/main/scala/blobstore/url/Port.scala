@@ -4,8 +4,8 @@ import blobstore.url.exception.{PortParseError, SingleValidationException}
 import cats.data.Validated
 import cats.data.Validated.{Invalid, Valid}
 import cats.kernel.Order
-import cats.syntax.all._
-import cats.{ApplicativeError, Show}
+import cats.syntax.all.*
+import cats.{ApplicativeThrow, Show}
 
 import scala.util.Try
 
@@ -27,10 +27,10 @@ object Port {
     else new Port(i).asRight
   }.toValidated
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Port] =
+  def parseF[F[_]: ApplicativeThrow](c: String): F[Port] =
     parse(c).toEither.leftMap(SingleValidationException(_)).liftTo[F]
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](i: Int): F[Port] =
+  def parseF[F[_]: ApplicativeThrow](i: Int): F[Port] =
     parse(i).toEither.leftMap(SingleValidationException(_)).liftTo[F]
 
   def unsafe(c: String): Port = parse(c) match {
@@ -43,9 +43,9 @@ object Port {
     case Invalid(e) => throw SingleValidationException(e) // scalafix:ok
   }
 
-  def compare(one: Port, two: Port): Int = one.portNumber compare two.portNumber
+  def compare(one: Port, two: Port): Int = one.portNumber.compare(two.portNumber)
 
-  implicit val ordering: Ordering[Port] = compare
+  implicit val ordering: Ordering[Port] = (x: Port, y: Port) => Port.compare(x, y)
   implicit val order: Order[Port]       = Order.fromOrdering
   implicit val show: Show[Port]         = _.portNumber.show
 }

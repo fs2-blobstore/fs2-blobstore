@@ -1,19 +1,23 @@
 package blobstore.url
 
 import blobstore.url.exception.{AuthorityParseError, MultipleUrlValidationException}
-import cats.{ApplicativeError, Order, Show}
+import cats.{ApplicativeThrow, Order, Show}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
 import cats.kernel.Eq
-import cats.syntax.all._
+import cats.syntax.all.*
 
 /** An authority as defined by RFC3986. Can point to any valid host on a computer network. Characterized by supporting
   * userinfo, port as well as IP addresses in addition to normal hostnames.
   *
-  * @param host A valid host. This is either a domain name, or an IPv4 or IPv6 address
-  * @param userInfo Optional userinfo component holding username and optionally password
-  * @param port Optional port component
-  * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.2 Authority
+  * @param host
+  *   A valid host. This is either a domain name, or an IPv4 or IPv6 address
+  * @param userInfo
+  *   Optional userinfo component holding username and optionally password
+  * @param port
+  *   Optional port component
+  * @see
+  *   https://www.ietf.org/rfc/rfc3986.txt chapter 3.2 Authority
   */
 case class Authority(host: Host, userInfo: Option[UserInfo] = None, port: Option[Port] = None) {
 
@@ -32,10 +36,7 @@ object Authority {
     *
     * results in the following subexpression matches
     *
-    * $1 = bob
-    * $2 = vacuum2000
-    * $3 = example.com
-    * $4 = 8080
+    * $1 = bob $2 = vacuum2000 $3 = example.com $4 = 8080
     *
     * Group 3 is mandatory, all other are optional
     */
@@ -48,8 +49,8 @@ object Authority {
 
   def localhost: Authority = unsafe("localhost")
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](host: String): F[Authority] =
-    parse(host).toEither.leftMap(MultipleUrlValidationException).liftTo[F]
+  def parseF[F[_]: ApplicativeThrow](host: String): F[Authority] =
+    parse(host).toEither.leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
   def parse(candidate: String): ValidatedNec[AuthorityParseError, Authority] =
     regex.findFirstMatchIn(candidate).toRight(

@@ -6,7 +6,7 @@ import blobstore.url.Path.Plain
 import blobstore.Store
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.google.cloud.ServiceRpc
 import com.google.cloud.spi.ServiceRpcFactory
 import com.google.cloud.storage.{BlobInfo, StorageClass, StorageOptions}
@@ -14,7 +14,7 @@ import com.google.cloud.storage.contrib.nio.testing.FixedFakeStorageRpc
 import fs2.Stream
 import org.scalatest.Inside
 
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
 class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
@@ -105,7 +105,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       .setMetadata(Map("key" -> "value").asJava)
       .build()
 
-    Stream("data".getBytes.toIndexedSeq: _*).through(
+    Stream("data".getBytes.toIndexedSeq*).through(
       gcsStore.put(url.path.as(GcsBlob(blobInfo)), List.empty)
     ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()

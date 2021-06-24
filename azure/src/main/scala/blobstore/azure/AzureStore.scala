@@ -4,38 +4,42 @@ package azure
 import blobstore.url.{Path, Url}
 import cats.effect.{Async, Resource}
 import cats.effect.std.Queue
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.batch.BlobBatchClientBuilder
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
-import com.azure.storage.blob.models.{BlobItemProperties, _}
+import com.azure.storage.blob.models.*
 import com.azure.storage.common.implementation.Constants
 import fs2.{Chunk, Pipe, Stream}
-import fs2.interop.reactivestreams._
+import fs2.interop.reactivestreams.*
 import reactor.core.publisher.{Flux, Mono}
 
 import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.temporal.ChronoUnit
-import java.util.function.{Function => JavaFunction}
-import scala.jdk.CollectionConverters._
+import java.util.function.{Function as JavaFunction}
+import scala.jdk.CollectionConverters.*
 
-/** @param azure - Azure Blob Service Async Client
-  * @param defaultFullMetadata – return full object metadata on [[list]], requires additional request per object.
-  *                              Metadata returned by default: size, lastModified, eTag, storageClass.
-  *                              This controls behaviour of [[list]] method from Store trait.
-  *                              Use [[listUnderlying]] to control on per-invocation basis.
-  * @param defaultTrailingSlashFiles - test if folders returned by [[list]] are files with trailing slashes in their names.
-  *                                  This controls behaviour of [[list]] method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param blockSize - for upload, The block size is the size of each block that will be staged.
-  *                   This value also determines the number of requests that need to be made.
-  *                   If block size is large, upload will make fewer network calls, but each individual call will send more data and will therefore take longer.
-  *                   This parameter also determines the size that each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up to blockSize * numBuffers.
-  * @param numBuffers - for buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
-  *                   Memory will be allocated lazily as needed. Must be at least two.
-  *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
-  *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
+/** @param azure
+  *   - Azure Blob Service Async Client
+  * @param defaultFullMetadata
+  *   – return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
+  *   size, lastModified, eTag, storageClass. This controls behaviour of [[list]] method from Store trait. Use
+  *   [[listUnderlying]] to control on per-invocation basis.
+  * @param defaultTrailingSlashFiles
+  *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
+  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  * @param blockSize
+  *   - for upload, The block size is the size of each block that will be staged. This value also determines the number
+  *   of requests that need to be made. If block size is large, upload will make fewer network calls, but each
+  *   individual call will send more data and will therefore take longer. This parameter also determines the size that
+  *   each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up
+  *   to blockSize * numBuffers.
+  * @param numBuffers
+  *   - for buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
+  *   Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers, the
+  *   more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed by
+  *   methods using this value may be up to blockSize * numBuffers.
   */
 class AzureStore[F[_]: Async](
   azure: BlobServiceAsyncClient,
@@ -79,7 +83,7 @@ class AzureStore[F[_]: Async](
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blobName)
       val flux = Flux.from(publisher)
-      val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers.max(2))
+      val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
       val (overwriteCheck, requestConditions) =
         if (overwrite) {
           Mono.empty -> null // scalafix:ok
@@ -168,7 +172,7 @@ class AzureStore[F[_]: Async](
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers.max(2))
+      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
       flux   = Flux.from(publisher)
       upload = blobClient.upload(flux, pto, true)
       _ <-
@@ -222,22 +226,27 @@ class AzureStore[F[_]: Async](
 
 object AzureStore {
 
-  /** @param azure - Azure Blob Service Async Client
-    * @param defaultFullMetadata – return full object metadata on [[AzureStore.list]], requires additional request per object.
-    *                              Metadata returned by default: size, lastModified, eTag, storageClass.
-    *                              This controls behaviour of [[AzureStore.list]] method from Store trait.
-    *                              Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
-    * @param defaultTrailingSlashFiles - test if folders returned by [[AzureStore.list]] are files with trailing slashes in their names.
-    *                                  This controls behaviour of [[AzureStore.list]] method from Store trait.
-    *                                  Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
-    * @param blockSize  - For upload, The block size is the size of each block that will be staged.
-    *                   This value also determines the number of requests that need to be made.
-    *                   If block size is large, upload will make fewer network calls, but each individual call will send more data and will therefore take longer.
-    *                   This parameter also determines the size that each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up to blockSize * numBuffers.
-    * @param numBuffers - For buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
-    *                   Memory will be allocated lazily as needed. Must be at least two.
-    *                   Typically, the larger the number of buffers, the more parallel, and thus faster, the upload portion  of this operation will be.
-    *                   The amount of memory consumed by methods using this value may be up to blockSize * numBuffers.
+  /** @param azure
+    *   - Azure Blob Service Async Client
+    * @param defaultFullMetadata
+    *   – return full object metadata on [[AzureStore.list]], requires additional request per object. Metadata returned
+    *   by default: size, lastModified, eTag, storageClass. This controls behaviour of [[AzureStore.list]] method from
+    *   Store trait. Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
+    * @param defaultTrailingSlashFiles
+    *   - test if folders returned by [[AzureStore.list]] are files with trailing slashes in their names. This controls
+    *   behaviour of [[AzureStore.list]] method from Store trait. Use [[AzureStore.listUnderlying]] to control on
+    *   per-invocation basis.
+    * @param blockSize
+    *   - For upload, The block size is the size of each block that will be staged. This value also determines the
+    *   number of requests that need to be made. If block size is large, upload will make fewer network calls, but each
+    *   individual call will send more data and will therefore take longer. This parameter also determines the size that
+    *   each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up
+    *   to blockSize * numBuffers.
+    * @param numBuffers
+    *   - For buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
+    *   Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers,
+    *   the more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed
+    *   by methods using this value may be up to blockSize * numBuffers.
     */
   def apply[F[_]: Async](
     azure: BlobServiceAsyncClient,

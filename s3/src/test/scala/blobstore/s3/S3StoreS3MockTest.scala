@@ -38,6 +38,8 @@ class S3StoreS3MockTest extends AbstractS3StoreTest {
     .region(Region.US_EAST_1)
     .endpointOverride(URI.create(s"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("a", "s")))
+    .overrideConfiguration(overrideConfiguration)
+    .httpClient(httpClient)
     .build()
 
   behavior of "S3 - S3 Mock"

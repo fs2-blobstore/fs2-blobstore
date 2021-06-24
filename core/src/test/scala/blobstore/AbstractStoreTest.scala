@@ -16,20 +16,22 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import java.util.UUID
-import java.nio.file.{Path => NioPath}
 import blobstore.fs.FileStore
 import blobstore.url.{Authority, FsObject, Path, Url}
 import org.scalatest.{BeforeAndAfterAll, Inside}
 import cats.effect.IO
-import cats.implicits._
+import cats.implicits.*
 import cats.effect.unsafe.implicits.global
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import fs2.Stream
 import org.scalatestplus.scalacheck.Checkers
+import java.io.IOException
+import java.nio.file.{FileVisitor, FileVisitResult, Files, SimpleFileVisitor, Path as NioPath}
+import java.nio.file.attribute.BasicFileAttributes
 
 import scala.util.Random
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 abstract class AbstractStoreTest[B <: FsObject]
   extends AnyFlatSpec
@@ -58,7 +60,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   lazy val testRunRoot: Path.Plain = Path(s"test-$testRun")
 
   // Store being tested
-  protected final var store: Store[IO, B] = _ // scalafix:ok
+  protected final var store: Store[IO, B] = null // scalafix:ok
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -118,7 +120,6 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "list multiple keys" in {
-    import cats.implicits._
 
     val dir = dirUrl("list-many")
 
@@ -139,7 +140,6 @@ abstract class AbstractStoreTest[B <: FsObject]
   // Worth noting that that most of these tests operate on files that are in nested directories, avoiding
   // any problems that there might be with operating on a root level file/directory.
   it should "listAll lists files in a root level directory" in {
-    import cats.implicits._
     val rootDir = Url(scheme, authority, fileSystemRoot)
     val urls = (1 to 2).toList
       .map(i => s"filename-$i-$testRun.txt")
@@ -375,7 +375,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = writeFile(store, dir)("existing.txt")
 
     fs2
-      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path))
       .compile
       .drain
@@ -396,7 +396,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = writeFile(store, dir)("existing.txt")
 
     val result = fs2
-      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path, overwrite = false))
       .compile
       .drain
@@ -411,7 +411,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = dir / "new.txt"
 
     fs2
-      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path, overwrite = false))
       .compile
       .drain
@@ -563,10 +563,6 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   def cleanup(root: NioPath): Unit = {
-
-    import java.io.IOException
-    import java.nio.file.{FileVisitor, FileVisitResult, Files, SimpleFileVisitor, Path => NioPath}
-    import java.nio.file.attribute.BasicFileAttributes
 
     val fv: FileVisitor[NioPath] = new SimpleFileVisitor[NioPath]() {
       override def postVisitDirectory(dir: NioPath, exc: IOException): FileVisitResult = {

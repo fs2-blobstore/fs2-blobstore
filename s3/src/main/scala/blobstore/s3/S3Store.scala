@@ -20,32 +20,37 @@ import blobstore.url.{Path, Url}
 import cats.effect.kernel.Resource.ExitCase
 import cats.effect.std.{Queue, Semaphore}
 import cats.effect.{Async, Ref, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.{Chunk, Pipe, Pull, Stream}
-import fs2.interop.reactivestreams._
+import fs2.interop.reactivestreams.*
 import org.reactivestreams.Publisher
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
-import software.amazon.awssdk.services.s3.model._
+import software.amazon.awssdk.services.s3.model.*
 
 import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 import scala.util.Random
 
-/** @param s3 - S3 Async Client
-  * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
-  * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
-  * @param defaultFullMetadata       – return full object metadata on [[list]], requires additional request per object.
-  *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
-  *                                  This controls behaviour of [[list]] method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param defaultTrailingSlashFiles - test if folders returned by [[list]] are files with trailing slashes in their names.
-  *                                  This controls behaviour of [[list]] method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param bufferSize – size of the buffer for multipart uploading (used for large streams without size known in advance).
-  *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+/** @param s3
+  *   - S3 Async Client
+  * @param objectAcl
+  *   - optional default ACL to apply to all put, move and copy operations.
+  * @param sseAlgorithm
+  *   - optional default SSE Algorithm to apply to all put, move and copy operations.
+  * @param defaultFullMetadata
+  *   – return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
+  *   size, lastModified, eTag, storageClass. This controls behaviour of [[list]] method from Store trait. Use
+  *   [[listUnderlying]] to control on per-invocation basis.
+  * @param defaultTrailingSlashFiles
+  *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
+  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  * @param bufferSize
+  *   – size of the buffer for multipart uploading (used for large streams without size known in advance).
+  * @see
+  *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
   */
 class S3Store[F[_]: Async](
   s3: S3AsyncClient,
@@ -71,9 +76,7 @@ class S3Store[F[_]: Async](
     val bucket = url.authority.show
     val key    = url.path.relative.show
 
-    val request = S3MetaInfo.getObjectRequest(meta).bucket(bucket).key(key).build()
-
-    performGet(request)
+    performGet(S3MetaInfo.mkGetObjectRequest(bucket, key, meta))
   }
 
   private def performGet(request: GetObjectRequest) = {
@@ -139,15 +142,7 @@ class S3Store[F[_]: Async](
       val dstBucket = dst.authority.show
       val dstKey    = dst.path.relative.show
 
-      val builder = CopyObjectRequest.builder()
-      val withAcl = objectAcl.fold(builder)(builder.acl)
-      val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-      dstMeta
-        .fold(withSSE)(S3MetaInfo.copyObjectRequest(withSSE))
-        .copySource(srcBucket ++ "/" ++ srcKey)
-        .destinationBucket(dstBucket)
-        .destinationKey(dstKey)
-        .build()
+      S3MetaInfo.mkCopyObjectRequest(sseAlgorithm, objectAcl, srcBucket ++ "/" ++ srcKey, dstBucket, dstKey, dstMeta)
     }
     Async[F].fromCompletableFuture(Async[F].delay(s3.copyObject(request))).void
   }
@@ -241,8 +236,8 @@ class S3Store[F[_]: Async](
           Path(s3Object.key()).as(S3Blob(bucket, s3Object.key(), new S3MetaInfo.S3ObjectMetaInfo(s3Object).some)).pure[F]
         }
       }
-      (Stream.eval(fDirs).flatMap(dirs => Stream(dirs: _*)) ++
-        Stream.eval(fFiles).flatMap(files => Stream(files: _*)))
+      (Stream.eval(fDirs).flatMap(dirs => Stream(dirs*)) ++
+        Stream.eval(fFiles).flatMap(files => Stream(files*)))
         .map(p => url.copy(path = p))
     }
   }
@@ -253,7 +248,7 @@ class S3Store[F[_]: Async](
     meta: Option[S3MetaInfo],
     bytes: Array[Byte]
   ): F[Unit] = {
-    val request     = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, bytes.length.toLong)
+    val request     = S3MetaInfo.mkPutObjectRequest(sseAlgorithm, objectAcl, bucket, key, meta, bytes.length.toLong)
     val requestBody = AsyncRequestBody.fromBytes(bytes)
     Async[F].fromCompletableFuture(Async[F].delay(s3.putObject(request, requestBody))).void
   }
@@ -265,26 +260,14 @@ class S3Store[F[_]: Async](
     maybeSize: Option[Long],
     in: Stream[F, Byte]
   ): Stream[F, Unit] = {
-    val request: CreateMultipartUploadRequest = {
-      val builder = CreateMultipartUploadRequest.builder()
-      val withAcl = objectAcl.fold(builder)(builder.acl)
-      val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-      meta
-        .fold(withSSE)(S3MetaInfo.createMultipartUploadRequest(withSSE))
-        .bucket(bucket)
-        .key(key)
-        .build()
-    }
+    val request: CreateMultipartUploadRequest =
+      S3MetaInfo.mkPutMultiPartRequest(sseAlgorithm, objectAcl, bucket, key, meta)
 
     val makeRequest: F[CreateMultipartUploadResponse] =
       Async[F].fromCompletableFuture(Async[F].delay(s3.createMultipartUpload(request)))
 
     Stream.eval((makeRequest, Semaphore(2)).tupled).flatMap { case (muResp, semaphore) =>
-      val uploadPartReqBuilder: UploadPartRequest.Builder = meta
-        .fold(UploadPartRequest.builder())(S3MetaInfo.uploadPartRequest)
-        .bucket(bucket)
-        .key(key)
-        .uploadId(muResp.uploadId())
+//      val uploadPartReqBuilder = S3MetaInfo.mkUploadPartRequestBuilder(bucket, key, muResp.uploadId(), meta)
 
       val partRef                                        = Ref.unsafe(1)
       val completedPartsRef: Ref[F, List[CompletedPart]] = Ref.unsafe(Nil)
@@ -311,10 +294,14 @@ class S3Store[F[_]: Async](
               Async[F].start(
                 Async[F].fromCompletableFuture(Async[F].delay {
                   s3.uploadPart(
-                    uploadPartReqBuilder
-                      .partNumber(part)
-                      .contentLength(if (part == totalParts) lastPartSize else partSize)
-                      .build(),
+                    S3MetaInfo.mkUploadPartRequestBuilder(
+                      bucket,
+                      key,
+                      muResp.uploadId(),
+                      meta,
+                      part,
+                      Some(if (part == totalParts) lastPartSize else partSize)
+                    ),
                     AsyncRequestBody.fromPublisher(publisher)
                   )
                 })
@@ -358,7 +345,14 @@ class S3Store[F[_]: Async](
             _ <- Resource.onFinalize {
               Async[F].fromCompletableFuture(Async[F].delay {
                 s3.uploadPart(
-                  uploadPartReqBuilder.partNumber(part).build(),
+                  S3MetaInfo.mkUploadPartRequestBuilder(
+                    bucket,
+                    key,
+                    muResp.uploadId(),
+                    meta,
+                    part,
+                    None
+                  ),
                   AsyncRequestBody.fromByteBuffer(selectBuffer(part).flip())
                 )
               }).flatMap { resp =>
@@ -443,18 +437,24 @@ class S3Store[F[_]: Async](
 
 object S3Store {
 
-  /** @param s3 - S3 Async Client
-    * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
-    * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
-    * @param defaultFullMetadata       – return full object metadata on [[S3Store.list]], requires additional request per object.
-    *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
-    *                                  This controls behaviour of [[S3Store.list]] method from Store trait.
-    *                                  Use [[S3Store.listUnderlying]] to control on per-invocation basis.
-    * @param defaultTrailingSlashFiles - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names.
-    *                                  This controls behaviour of [[S3Store.list]] method from Store trait.
-    *                                  Use [[S3Store.listUnderlying]] to control on per-invocation basis.
-    * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
-    *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+  /** @param s3
+    *   - S3 Async Client
+    * @param objectAcl
+    *   - optional default ACL to apply to all put, move and copy operations.
+    * @param sseAlgorithm
+    *   - optional default SSE Algorithm to apply to all put, move and copy operations.
+    * @param defaultFullMetadata
+    *   – return full object metadata on [[S3Store.list]], requires additional request per object. Metadata returned by
+    *   default: size, lastModified, eTag, storageClass. This controls behaviour of [[S3Store.list]] method from Store
+    *   trait. Use [[S3Store.listUnderlying]] to control on per-invocation basis.
+    * @param defaultTrailingSlashFiles
+    *   - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names. This controls
+    *   behaviour of [[S3Store.list]] method from Store trait. Use [[S3Store.listUnderlying]] to control on
+    *   per-invocation basis.
+    * @param bufferSize
+    *   - size of buffer for multipart uploading (used for large streams without size known in advance).
+    * @see
+    *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
     */
   def apply[F[_]: Async](
     s3: S3AsyncClient,
@@ -474,24 +474,10 @@ object S3Store {
     queueSize
   )
 
-  private def putObjectRequest(
-    sseAlgorithm: Option[String],
-    objectAcl: Option[ObjectCannedACL]
-  )(bucket: String, key: String, meta: Option[S3MetaInfo], size: Long): PutObjectRequest = {
-    val builder = PutObjectRequest.builder()
-    val withAcl = objectAcl.fold(builder)(builder.acl)
-    val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-    meta
-      .fold(withSSE)(S3MetaInfo.putObjectRequest(withSSE))
-      .contentLength(size)
-      .bucket(bucket)
-      .key(key)
-      .build()
-  }
-
   private val mb: Int = 1024 * 1024
 
-  /** @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+  /** @see
+    *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
     */
   private val multiUploadMinimumPartSize: Long = 5L * mb
   private val multiUploadThreshold: Long       = 100L * mb
