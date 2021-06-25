@@ -107,10 +107,7 @@ class AzureStore[F[_]: ConcurrentEffect](
   }
 
   override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-    copy(src, dst) >> remove(
-      src,
-      recursive = true
-    ) // TODO: Copied recursive = true from gcs store. Does it make sense??
+    copy(src, dst) >> remove(src)
 
   override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] = {
     val (srcContainer, srcBlob) = AzureStore.urlToContainerAndBlob(src)

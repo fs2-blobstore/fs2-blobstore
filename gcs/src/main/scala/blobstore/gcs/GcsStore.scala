@@ -161,7 +161,7 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
     * @return F[Unit]
     */
   override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-    copy(src, dst) >> remove(src, recursive = true)
+    copy(src, dst) >> remove(src)
 
   /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     *
