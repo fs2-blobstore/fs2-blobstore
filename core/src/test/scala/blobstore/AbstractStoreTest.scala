@@ -516,8 +516,9 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "read same data that was written" in {
+    val dir = dirUrl("read-write")
+
     check[List[Byte], Int, Boolean] { case (bytes: List[Byte], n: Int) =>
-      val dir      = dirUrl("read-write")
       val filePath = dir / s"file-$n"
       val blob     = Stream.emits(bytes)
 
@@ -530,6 +531,22 @@ abstract class AbstractStoreTest[B <: FsObject]
         }
       test.unsafeRunSync()
     }
+  }
+
+  it should "mv file to it's suffix path" in {
+    val dir = dirUrl("mv-to-suffix")
+    val src = dir / "original"
+    val dst = dir / "original.moved"
+
+    val test = for {
+      _     <- Stream.empty.through(store.put(src)).compile.drain
+      _     <- store.move(src, dst)
+      files <- store.listAll(dir, recursive = true)
+    } yield {
+      files.map(_.show) must contain only (dst.show)
+    }
+
+    test.unsafeRunSync()
   }
 
   def dirUrl(name: String): Url.Plain = Url(scheme, authority, testRunRoot `//` name)
