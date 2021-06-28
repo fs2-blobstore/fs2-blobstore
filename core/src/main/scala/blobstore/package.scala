@@ -35,15 +35,19 @@ package object blobstore {
     limit: Long,
     openNewFile: Resource[F, T]
   )(consume: T => Chunk[Byte] => F[Unit]): Pipe[F, Byte, Unit] = { in =>
-    Stream
-      .resource(Hotswap(openNewFile))
-      .flatMap {
-        case (hotswap, newFile) =>
-          goRotate(limit, 0L, in, newFile, hotswap, openNewFile)(
-            consume = consumer => bytes => Pull.eval(consume(consumer)(bytes)).as(consumer),
-            extract = Stream.emit
-          ).stream
-      }
+    in.pull.uncons.flatMap {
+      case None => Pull.done
+      case Some((h, t)) =>
+        Pull.eval(Stream
+          .resource(Hotswap(openNewFile))
+          .flatMap {
+            case (hotswap, newFile) =>
+              goRotate(limit, 0L, t.cons(h), newFile, hotswap, openNewFile)(
+                consume = consumer => bytes => Pull.eval(consume(consumer)(bytes)).as(consumer),
+                extract = Stream.emit
+              ).stream
+          }.compile.drain)
+    }.stream
   }
 
   private[blobstore] def goRotate[F[_]: RaiseThrowable, A, B](
@@ -63,10 +67,15 @@ package object blobstore {
         val newAcc = acc + hd.size
         consume(consumer)(hd).flatMap { consumer =>
           if (newAcc >= limit) {
-            Pull
-              .eval(hotswap.swap(resource))
-              .flatMap(a => extract(a).pull.headOrError)
-              .flatMap(nc => goRotate(limit, 0L, tl, nc, hotswap, resource)(consume, extract))
+            tl.pull.uncons.flatMap {
+              case None =>
+                Pull.done
+              case Some((h, t)) =>
+                Pull
+                  .eval(hotswap.swap(resource))
+                  .flatMap(a => extract(a).pull.headOrError)
+                  .flatMap(nc => goRotate(limit, 0L, t.cons(h), nc, hotswap, resource)(consume, extract))
+            }
           } else {
             goRotate(limit, newAcc, tl, consumer, hotswap, resource)(consume, extract)
           }
