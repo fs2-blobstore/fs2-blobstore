@@ -63,10 +63,15 @@ package object blobstore {
         val newAcc = acc + hd.size
         consume(consumer)(hd).flatMap { consumer =>
           if (newAcc >= limit) {
-            Pull
-              .eval(hotswap.swap(resource))
-              .flatMap(a => extract(a).pull.headOrError)
-              .flatMap(nc => goRotate(limit, 0L, tl, nc, hotswap, resource)(consume, extract))
+            tl.pull.uncons.flatMap {
+              case None =>
+                Pull.done
+              case Some((h, t)) =>
+                Pull
+                  .eval(hotswap.swap(resource))
+                  .flatMap(a => extract(a).pull.headOrError)
+                  .flatMap(nc => goRotate(limit, 0L, t.cons(h), nc, hotswap, resource)(consume, extract))
+            }
           } else {
             goRotate(limit, newAcc, tl, consumer, hotswap, resource)(consume, extract)
           }
