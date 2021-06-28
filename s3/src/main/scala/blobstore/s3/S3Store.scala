@@ -33,7 +33,6 @@ import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
-import scala.util.Random
 
 /** @param s3 - S3 Async Client
   * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
@@ -292,13 +291,7 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
 
       val pipe: Pipe[F, Byte, Unit] = maybeSize match {
         case Some(size) =>
-          // TODO: Do something better than this
-          val arbitraryGuess =
-            if (bufferSize == S3Store.multiUploadDefaultPartSize) {
-              size / (1 + Random.nextInt(31))
-            } else bufferSize.toLong
-          val partSize =
-            arbitraryGuess.max(S3Store.multiUploadMinimumPartSize).min(S3Store.multiUploadDefaultPartSize)
+          val partSize     = size.max(S3Store.multiUploadMinimumPartSize).min(S3Store.multiUploadDefaultPartSize)
           val totalParts   = (size.toDouble / partSize).ceil.toInt
           val lastPartSize = size - ((totalParts - 1) * partSize)
           val resource = for {
