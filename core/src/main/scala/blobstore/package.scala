@@ -41,15 +41,19 @@ package object blobstore {
     limit: Long,
     openNewFile: Resource[F, T]
   )(consume: T => Chunk[Byte] => F[Unit]): Pipe[F, Byte, Unit] = { in =>
-    Stream
-      .resource(Hotswap(openNewFile))
-      .flatMap {
-        case (hotswap, newFile) =>
-          goRotate(limit, 0L, in, newFile, hotswap, openNewFile)(
-            consume = consumer => bytes => Pull.eval(consume(consumer)(bytes)).as(consumer),
-            extract = Stream.emit
-          ).stream
-      }
+    in.pull.uncons.flatMap {
+      case None => Pull.done
+      case Some((h, t)) =>
+        Pull.eval(Stream
+          .resource(Hotswap(openNewFile))
+          .flatMap {
+            case (hotswap, newFile) =>
+              goRotate(limit, 0L, t.cons(h), newFile, hotswap, openNewFile)(
+                consume = consumer => bytes => Pull.eval(consume(consumer)(bytes)).as(consumer),
+                extract = Stream.emit
+              ).stream
+          }.compile.drain)
+    }.stream
   }
 
   private[blobstore] def goRotate[F[_]: RaiseThrowable, A, B](
