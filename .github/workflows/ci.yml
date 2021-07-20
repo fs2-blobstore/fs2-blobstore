@@ -42,7 +42,7 @@ jobs:
     needs: [scalafmt]
     strategy:
       matrix:
-        scala: [ 2.12.14, 2.13.6, 3.0.0 ]
+        scala: [ 2.12.14, 2.13.6, 3.0.1 ]
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v2.3.4
@@ -63,11 +63,11 @@ jobs:
         run: mkdir tmp
 
       - name: Test with coverage
-        if: ${{ matrix.scala != '3.0.0' }}
+        if: ${{ matrix.scala != '3.0.1' }}
         run: sbt ++${{ matrix.scala }} '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Test without coverage
-        if: ${{ matrix.scala == '3.0.0' }}
+        if: ${{ matrix.scala == '3.0.1' }}
         run: sbt ++${{ matrix.scala }} 'testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
@@ -78,7 +78,7 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        if: ${{ matrix.scala != '3.0.0' }}
+        if: ${{ matrix.scala != '3.0.1' }}
         run: sbt ++${{ matrix.scala }} coverageReport
 
       - name: Upload code coverage to codecov
