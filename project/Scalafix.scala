@@ -20,8 +20,8 @@ object Scalafix extends AutoPlugin {
   )
 
   override def buildSettings: Seq[Def.Setting[_]] = Seq(
-    semanticdbEnabled := true,
-    semanticdbVersion := scalafixSemanticdb.revision,
+    semanticdbEnabled                             := true,
+    semanticdbVersion                             := scalafixSemanticdb.revision,
     scalafixDependencies += "com.github.vovapolu" %% "scaluzzi" % "0.1.20"
   )
 }
