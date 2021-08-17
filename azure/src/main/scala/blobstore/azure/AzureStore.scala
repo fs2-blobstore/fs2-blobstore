@@ -17,7 +17,7 @@ import reactor.core.publisher.{Flux, Mono}
 import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.temporal.ChronoUnit
-import java.util.function.{Function as JavaFunction}
+import java.util.function.Function as JavaFunction
 import scala.jdk.CollectionConverters.*
 
 /** @param azure
@@ -28,18 +28,18 @@ import scala.jdk.CollectionConverters.*
   *   [[listUnderlying]] to control on per-invocation basis.
   * @param defaultTrailingSlashFiles
   *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
-  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  *     [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
   * @param blockSize
   *   - for upload, The block size is the size of each block that will be staged. This value also determines the number
-  *   of requests that need to be made. If block size is large, upload will make fewer network calls, but each
-  *   individual call will send more data and will therefore take longer. This parameter also determines the size that
-  *   each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up
-  *   to blockSize * numBuffers.
+  *     of requests that need to be made. If block size is large, upload will make fewer network calls, but each
+  *     individual call will send more data and will therefore take longer. This parameter also determines the size that
+  *     each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up
+  *     to blockSize * numBuffers.
   * @param numBuffers
   *   - for buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
-  *   Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers, the
-  *   more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed by
-  *   methods using this value may be up to blockSize * numBuffers.
+  *     Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers,
+  *     the more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed
+  *     by methods using this value may be up to blockSize * numBuffers.
   */
 class AzureStore[F[_]: Async](
   azure: BlobServiceAsyncClient,
@@ -231,19 +231,19 @@ object AzureStore {
     *   Store trait. Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
     * @param defaultTrailingSlashFiles
     *   - test if folders returned by [[AzureStore.list]] are files with trailing slashes in their names. This controls
-    *   behaviour of [[AzureStore.list]] method from Store trait. Use [[AzureStore.listUnderlying]] to control on
-    *   per-invocation basis.
+    *     behaviour of [[AzureStore.list]] method from Store trait. Use [[AzureStore.listUnderlying]] to control on
+    *     per-invocation basis.
     * @param blockSize
     *   - For upload, The block size is the size of each block that will be staged. This value also determines the
-    *   number of requests that need to be made. If block size is large, upload will make fewer network calls, but each
-    *   individual call will send more data and will therefore take longer. This parameter also determines the size that
-    *   each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up
-    *   to blockSize * numBuffers.
+    *     number of requests that need to be made. If block size is large, upload will make fewer network calls, but
+    *     each individual call will send more data and will therefore take longer. This parameter also determines the
+    *     size that each buffer uses when buffering is required and consequently amount of memory consumed by such
+    *     methods may be up to blockSize * numBuffers.
     * @param numBuffers
     *   - For buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
-    *   Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers,
-    *   the more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed
-    *   by methods using this value may be up to blockSize * numBuffers.
+    *     Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers,
+    *     the more parallel, and thus faster, the upload portion of this operation will be. The amount of memory
+    *     consumed by methods using this value may be up to blockSize * numBuffers.
     */
   def apply[F[_]: Async](
     azure: BlobServiceAsyncClient,
