@@ -27,7 +27,7 @@ import org.scalatest.matchers.must.Matchers
 import fs2.Stream
 import org.scalatestplus.scalacheck.Checkers
 import java.io.IOException
-import java.nio.file.{FileVisitor, FileVisitResult, Files, SimpleFileVisitor, Path as NioPath}
+import java.nio.file.{FileVisitResult, FileVisitor, Files, Path as NioPath, SimpleFileVisitor}
 import java.nio.file.attribute.BasicFileAttributes
 
 import scala.util.Random

@@ -1,6 +1,6 @@
 package blobstore.fs
 
-import java.nio.file.{Path as JPath}
+import java.nio.file.Path as JPath
 import java.time.Instant
 import blobstore.url.{FsObject, FsObjectLowPri}
 import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
