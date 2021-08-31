@@ -24,7 +24,7 @@ import cats.syntax.all.*
 import fs2.{Pipe, Stream}
 import fs2.io.file.Files
 
-import java.nio.file.{StandardOpenOption, Files as JFiles, Path as JPath}
+import java.nio.file.{Files as JFiles, Path as JPath, StandardOpenOption}
 
 class FileStore[F[_]: Files: Async] extends PathStore[F, NioPath] {
 
