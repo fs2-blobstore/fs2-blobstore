@@ -12,18 +12,7 @@ inThisBuild(
     ),
     homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
-    javacOptions ++= {
-      val javaVersion: Int = {
-        var sysVersion = System.getProperty("java.version")
-        if (sysVersion.startsWith("1."))
-          sysVersion = sysVersion.drop(2)
-        sysVersion.split('.').head.toInt
-      }
-      javaVersion match {
-        case x if x < 10  => Seq("-source", s"1.$x", "-target", s"1.$x")
-        case x if x >= 10 => Seq("-source", s"$x", "-target", s"$x")
-      }
-    }
+    javacOptions ++= Seq("--release", "8")
   )
 )
 
