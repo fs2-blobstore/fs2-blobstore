@@ -29,7 +29,7 @@ import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransfo
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model._
 
-import java.nio.ByteBuffer
+import java.nio.{Buffer, ByteBuffer}
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
@@ -337,7 +337,7 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
           def acquireBuffer(part: Int) = for {
             _ <- semaphore.acquire
             _ <- ConcurrentEffect[F].delay {
-              selectBuffer(part).clear()
+              selectBuffer(part).asInstanceOf[Buffer].clear() // scalafix:ok
             }
           } yield ()
 
@@ -352,7 +352,9 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
               liftJavaFuture(Async[F].delay {
                 s3.uploadPart(
                   uploadPartReqBuilder.partNumber(part).build(),
-                  AsyncRequestBody.fromByteBuffer(selectBuffer(part).flip())
+                  AsyncRequestBody.fromByteBuffer(
+                    selectBuffer(part).asInstanceOf[Buffer].flip().asInstanceOf[ByteBuffer] // scalafix:ok
+                  )
                 )
               }).flatMap { resp =>
                 completedPartsRef.update(CompletedPart.builder().eTag(resp.eTag()).partNumber(part).build() :: _)
