@@ -343,12 +343,11 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
 
           val resource = for {
             part <- Resource.eval(partRef.getAndUpdate(_ + 1))
-            _    <- Resource.eval(acquireBuffer(part))
             _ <- Resource.eval {
               if (part > S3Store.maxMultipartParts) S3Store.multipartUploadPartsError.raiseError
               else Async[F].unit
             }
-            _ <- Resource.make(ConcurrentEffect[F].unit)(_ => semaphore.release)
+            _ <- Resource.make(acquireBuffer(part))(_ => semaphore.release)
             _ <- Resource.make(ConcurrentEffect[F].unit) { _ =>
               liftJavaFuture(Async[F].delay {
                 s3.uploadPart(
