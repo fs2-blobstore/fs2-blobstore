@@ -74,7 +74,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       listedUrl.path.isDir mustBe false
     }
 
-    store.get(filePath, 4096).through(fs2.text.utf8Decode).compile.string.unsafeRunSync() mustBe "test"
+    store.get(filePath, 4096).through(fs2.text.utf8.decode).compile.string.unsafeRunSync() mustBe "test"
 
     store.remove(filePath).unsafeRunSync()
 
@@ -125,7 +125,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
     val content = gcsStore
       .getUnderlying(path, 4096, direct = true)
-      .through(fs2.text.utf8Decode)
+      .through(fs2.text.utf8.decode)
       .compile
       .toList
       .map(_.mkString)

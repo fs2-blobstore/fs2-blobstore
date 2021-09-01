@@ -8,7 +8,7 @@ import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.Inside
-import cats.syntax.all._
+import cats.syntax.all.*
 
 import scala.util.{Success, Try}
 
@@ -185,7 +185,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
 
   it should "parse to rootless paths by default" in {
     val url = Url.unsafe("https://example.com/foo/bar")
-    url.path mustBe a[RootlessPath[_]]
+    url.path mustBe a[RootlessPath[?]]
   }
 
   it should "convert between schemes" in {

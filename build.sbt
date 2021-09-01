@@ -1,16 +1,16 @@
 inThisBuild(
   Seq(
-    scalaVersion := "2.13.6",
-    crossScalaVersions := Seq("2.12.14", "2.13.6", "3.0.0"),
-    organization := "com.github.fs2-blobstore",
-    licenses := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scalaVersion       := "2.13.6",
+    crossScalaVersions := Seq("2.12.14", "2.13.6", "3.0.2"),
+    organization       := "com.github.fs2-blobstore",
+    licenses           := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
       Developer("rolandomanrique", "Rolando Manrique", "", sbt.url("http://github.com/rolandomanrique")),
       Developer("stew", "Stew O'Connor", "", sbt.url("https://github.com/stew")),
       Developer("gafiatulin", "Victor Gafiatulin", "", sbt.url("https://github.com/gafiatulin")),
       Developer("jgogstad", "Jostein Gogstad", "", sbt.url("https://github.com/jgogstad"))
     ),
-    homepage := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
+    homepage  := Some(sbt.url("https://github.com/fs2-blobstore/fs2-blobstore")),
     startYear := Some(2018),
     javacOptions ++= Seq("--release", "8")
   )
@@ -19,7 +19,7 @@ inThisBuild(
 lazy val fs2blobstore = project
   .in(file("."))
   .settings(
-    moduleName := "root",
+    moduleName     := "root",
     publish / skip := true
   )
   .aggregate(url, core, s3, sftp, gcs, azure, box, `integration-tests`)

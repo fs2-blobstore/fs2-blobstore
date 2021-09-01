@@ -2,7 +2,7 @@ package blobstore.url
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
-import cats.syntax.all._
+import cats.syntax.all.*
 import org.scalatest.Inside
 
 class AuthorityTest extends AnyFlatSpec with Matchers with Inside {

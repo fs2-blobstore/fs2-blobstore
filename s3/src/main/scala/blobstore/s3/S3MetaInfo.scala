@@ -300,7 +300,8 @@ object S3MetaInfo {
   def mkCopyObjectRequest(
     sseAlgorithm: Option[String],
     objectAcl: Option[ObjectCannedACL],
-    source: String,
+    srcBucket: String,
+    srcKey: String,
     dstBucket: String,
     dstKey: String,
     meta: Option[S3MetaInfo]
@@ -336,7 +337,8 @@ object S3MetaInfo {
 
     meta
       .fold(withSSE)(addMeta(withSSE))
-      .copySource(source)
+      .sourceBucket(srcBucket)
+      .sourceKey(srcKey)
       .destinationBucket(dstBucket)
       .destinationKey(dstKey)
       .build()

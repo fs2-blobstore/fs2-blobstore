@@ -321,7 +321,7 @@ class BoxStore[F[_]: Async](
   ev: B <:< FsObject): F[Int] = defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
-    get(path, chunkSize).through(fs2.text.utf8Decode).compile.string
+    get(path, chunkSize).through(fs2.text.utf8.decode).compile.string
 }
 
 object BoxStore {

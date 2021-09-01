@@ -1,6 +1,6 @@
 package blobstore.url
 
-import cats.syntax.all._
+import cats.syntax.all.*
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.Inside

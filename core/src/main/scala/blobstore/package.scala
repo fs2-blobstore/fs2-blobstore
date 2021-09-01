@@ -18,7 +18,7 @@ import blobstore.url.{FsObject, Path, Url}
 import cats.effect.std.Hotswap
 import cats.effect.{Concurrent, MonadCancelThrow, Resource}
 import cats.implicits.*
-import fs2.io.file.Files
+import fs2.io.file.{Files, Flags}
 import fs2.{Chunk, Compiler, Pipe, Pull, RaiseThrowable, Stream}
 
 package object blobstore {
@@ -26,8 +26,13 @@ package object blobstore {
   protected[blobstore] def bufferToDisk[F[_]: MonadCancelThrow: Files](
     chunkSize: Int
   ): Pipe[F, Byte, (Long, Stream[F, Byte])] = { in =>
-    Stream.resource(Files[F].tempFile(prefix = "bufferToDisk")).flatMap { p =>
-      in.through(Files[F].writeAll(p)).drain ++ Stream.emit((p.toFile.length, Files[F].readAll(p, chunkSize)))
+    Stream.resource(
+      Files[F].tempFile(dir = None, prefix = "bufferToDisk", suffix = ".tmp", permissions = None)
+    ).flatMap { p =>
+      in.through(Files[F].writeAll(p)).drain ++ Stream.emit((
+        p.toNioPath.toFile.length,
+        Files[F].readAll(p, chunkSize, Flags.Read)
+      ))
     }
   }
 

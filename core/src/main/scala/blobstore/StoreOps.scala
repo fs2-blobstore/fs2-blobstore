@@ -19,7 +19,7 @@ import blobstore.url.{FsObject, Url}
 import cats.effect.Concurrent
 import cats.syntax.all.*
 import fs2.Pipe
-import fs2.io.file.Files
+import fs2.io.file.{Files, Path}
 
 import java.nio.charset.StandardCharsets
 
@@ -36,17 +36,18 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     *   F[Unit]
     */
   def putFromNio[A](src: java.nio.file.Path, dst: Url[A], overwrite: Boolean): F[Unit] = {
-    val put = Files[F].size(src).flatMap {
+    val fs2Path = Path.fromNioPath(src)
+    val put = Files[F].size(fs2Path).flatMap {
       case size if size > 0 =>
         Files[F]
-          .readAll(src, 4096)
+          .readAll(fs2Path)
           .through(store.put(dst, overwrite, size.some))
           .compile
           .drain
       case _ =>
         ().pure
     }
-    Files[F].isFile(src).ifM(put, new Exception("Not a file").raiseError)
+    Files[F].isRegularFile(fs2Path).ifM(put, new Exception("Not a file").raiseError)
   }
 
   /** Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes to
@@ -72,7 +73,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     *   F[Unit]
     */
   def getToNio[A](src: Url[A], dst: java.nio.file.Path, chunkSize: Int): F[Unit] =
-    store.get(src, chunkSize).through(Files[F].writeAll(dst)).compile.drain
+    store.get(src, chunkSize).through(Files[F].writeAll(Path.fromNioPath(dst))).compile.drain
 
   def putContent[A](url: Url[A], content: String): F[Unit] = {
     val bytes = content.getBytes(StandardCharsets.UTF_8)
@@ -89,7 +90,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     * @return
     *   F[String] with file contents
     */
-  def getContents[A](url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
+  def getContents[A](url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8.decode)
 
   /** Decode get bytes from path into a string using decoder and return concatenated string.
     *
