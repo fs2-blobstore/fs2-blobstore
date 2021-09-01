@@ -144,7 +144,8 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
       val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
       dstMeta
         .fold(withSSE)(S3MetaInfo.copyObjectRequest(withSSE))
-        .copySource(srcBucket ++ "/" ++ srcKey)
+        .sourceBucket(srcBucket)
+        .sourceKey(srcKey)
         .destinationBucket(dstBucket)
         .destinationKey(dstKey)
         .build()

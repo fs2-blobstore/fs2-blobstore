@@ -29,7 +29,11 @@ object RotateTest extends Matchers with IOTest {
     deallocationCounter <- Ref.of[IO, Int](0)
     resource = Resource.make(allocationCounter.update(_ + 1))(_ => deallocationCounter.update(_ + 1))
     r        = Random
-    _ <- fs2.Stream.repeatEval(IO(r.nextBytes(50))).take(chunks).flatMap(bs => fs2.Stream.emits(bs)).through(
+    _ <- fs2.Stream.repeatEval(IO {
+      val bytes = new Array[Byte](50)
+      r.nextBytes(bytes)
+      bytes
+    }).take(chunks).flatMap(bs => fs2.Stream.emits(bs)).through(
       putRotateBase(100, resource)(_ => _ => IO.unit)
     ).compile.drain
     allocations   <- allocationCounter.get

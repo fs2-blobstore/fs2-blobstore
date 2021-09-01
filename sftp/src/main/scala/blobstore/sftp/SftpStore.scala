@@ -57,13 +57,13 @@ class SftpStore[F[_]: ConcurrentEffect: ContextShift] private (
 
   override def list[A](path: Path[A], recursive: Boolean = false): Stream[F, Path[SftpFile]] = {
 
-    def entrySelector(cb: ChannelSftp#LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp#LsEntry) => {
+    def entrySelector(cb: ChannelSftp.LsEntry => Unit): ChannelSftp.LsEntrySelector = (entry: ChannelSftp.LsEntry) => {
       cb(entry)
       ChannelSftp.LsEntrySelector.CONTINUE
     }
 
     val stream = for {
-      q       <- Stream.eval(Queue.bounded[F, Option[ChannelSftp#LsEntry]](64))
+      q       <- Stream.eval(Queue.bounded[F, Option[ChannelSftp.LsEntry]](64))
       channel <- Stream.resource(channelResource)
       entry <- fromQueueNoneTerminated(q)
         .filter(e => e.getFilename != "." && e.getFilename != "..")
