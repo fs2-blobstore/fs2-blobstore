@@ -2,7 +2,7 @@ package blobstore.url
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
-import cats.syntax.all._
+import cats.syntax.all.*
 
 class UserInfoTest extends AnyFlatSpec with Matchers {
   behavior of "Userinfo"

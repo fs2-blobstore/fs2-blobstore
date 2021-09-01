@@ -141,7 +141,7 @@ class S3Store[F[_]: Async](
       val dstBucket = dst.authority.show
       val dstKey    = dst.path.relative.show
 
-      S3MetaInfo.mkCopyObjectRequest(sseAlgorithm, objectAcl, srcBucket ++ "/" ++ srcKey, dstBucket, dstKey, dstMeta)
+      S3MetaInfo.mkCopyObjectRequest(sseAlgorithm, objectAcl, srcBucket, srcKey, dstBucket, dstKey, dstMeta)
     }
     Async[F].fromCompletableFuture(Async[F].delay(s3.copyObject(request))).void
   }

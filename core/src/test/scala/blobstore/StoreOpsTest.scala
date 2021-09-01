@@ -34,10 +34,10 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     val store = DummyStore()
 
     Stream
-      .resource(Files[IO].tempFile())
+      .resource(Files[IO].tempFile)
       .flatMap { p =>
         Stream.emits(bytes).covary[IO].through(Files[IO].writeAll(p)).drain ++
-          Stream.eval(store.putFromNio(p, Url.unsafe("foo://bucket/path/to/file.txt"), true))
+          Stream.eval(store.putFromNio(p.toNioPath, Url.unsafe("foo://bucket/path/to/file.txt"), true))
       }
       .compile
       .drain
@@ -52,10 +52,10 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
     Stream.emits(bytes).through(store.put(path)).compile.drain.unsafeRunSync()
 
     Stream
-      .resource(Files[IO].tempFile())
-      .flatMap { nioPath =>
-        Stream.eval(store.getToNio(path, nioPath, 4096)) >> Stream.eval {
-          Files[IO].readAll(nioPath, 4096).compile.to(Array).map(_ mustBe bytes)
+      .resource(Files[IO].tempFile)
+      .flatMap { fs2Path =>
+        Stream.eval(store.getToNio(path, fs2Path.toNioPath, 4096)) >> Stream.eval {
+          Files[IO].readAll(fs2Path).compile.to(Array).map(_ mustBe bytes)
         }
       }
       .compile

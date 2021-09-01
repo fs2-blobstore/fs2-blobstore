@@ -120,8 +120,8 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
       .unsafeRunSync()
 
     paths.map(_.representation.fileOrFolder).foreach {
-      case Left(file)    => Option(file.getCommentCount) mustBe a[Some[_]]
-      case Right(folder) => Option(folder.getIsWatermarked) mustBe a[Some[_]]
+      case Left(file)    => Option(file.getCommentCount) mustBe a[Some[?]]
+      case Right(folder) => Option(folder.getIsWatermarked) mustBe a[Some[?]]
     }
     (subFolderFile.path :: paths.map(_.plain)).map(boxStore.remove(_, false)).sequence.unsafeRunSync()
   }

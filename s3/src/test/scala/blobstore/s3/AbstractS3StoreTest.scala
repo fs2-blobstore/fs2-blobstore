@@ -72,8 +72,8 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
       inside(s3Url.path.representation.meta) {
         case Some(metaInfo) =>
           // Note: defaultFullMetadata = true in S3Store constructor.
-          metaInfo.contentType mustBe a[Some[_]]
-          metaInfo.eTag mustBe a[Some[_]]
+          metaInfo.contentType mustBe a[Some[?]]
+          metaInfo.eTag mustBe a[Some[?]]
       }
     }
   }
