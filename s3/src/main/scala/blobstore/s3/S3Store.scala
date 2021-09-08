@@ -34,18 +34,23 @@ import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
-/** @param s3 - S3 Async Client
-  * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
-  * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
-  * @param defaultFullMetadata       – return full object metadata on [[list]], requires additional request per object.
-  *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
-  *                                  This controls behaviour of [[list]] method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param defaultTrailingSlashFiles - test if folders returned by [[list]] are files with trailing slashes in their names.
-  *                                  This controls behaviour of [[list]] method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param bufferSize – size of the buffer for multipart uploading (used for large streams without size known in advance).
-  *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+/** @param s3
+  *   - S3 Async Client
+  * @param objectAcl
+  *   - optional default ACL to apply to all put, move and copy operations.
+  * @param sseAlgorithm
+  *   - optional default SSE Algorithm to apply to all put, move and copy operations.
+  * @param defaultFullMetadata
+  *   – return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
+  *   size, lastModified, eTag, storageClass. This controls behaviour of [[list]] method from Store trait. Use
+  *   [[listUnderlying]] to control on per-invocation basis.
+  * @param defaultTrailingSlashFiles
+  *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
+  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  * @param bufferSize
+  *   – size of the buffer for multipart uploading (used for large streams without size known in advance).
+  * @see
+  *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
   */
 class S3Store[F[_]: ConcurrentEffect: Timer](
   s3: S3AsyncClient,
@@ -441,18 +446,24 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
 
 object S3Store {
 
-  /** @param s3 - S3 Async Client
-    * @param objectAcl - optional default ACL to apply to all put, move and copy operations.
-    * @param sseAlgorithm - optional default SSE Algorithm to apply to all put, move and copy operations.
-    * @param defaultFullMetadata       – return full object metadata on [[S3Store.list]], requires additional request per object.
-    *                                  Metadata returned by default: size, lastModified, eTag, storageClass.
-    *                                  This controls behaviour of [[S3Store.list]] method from Store trait.
-    *                                  Use [[S3Store.listUnderlying]] to control on per-invocation basis.
-    * @param defaultTrailingSlashFiles - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names.
-    *                                  This controls behaviour of [[S3Store.list]] method from Store trait.
-    *                                  Use [[S3Store.listUnderlying]] to control on per-invocation basis.
-    * @param bufferSize - size of buffer for multipart uploading (used for large streams without size known in advance).
-    *                     @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+  /** @param s3
+    *   - S3 Async Client
+    * @param objectAcl
+    *   - optional default ACL to apply to all put, move and copy operations.
+    * @param sseAlgorithm
+    *   - optional default SSE Algorithm to apply to all put, move and copy operations.
+    * @param defaultFullMetadata
+    *   – return full object metadata on [[S3Store.list]], requires additional request per object. Metadata returned by
+    *   default: size, lastModified, eTag, storageClass. This controls behaviour of [[S3Store.list]] method from Store
+    *   trait. Use [[S3Store.listUnderlying]] to control on per-invocation basis.
+    * @param defaultTrailingSlashFiles
+    *   - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names. This controls
+    *   behaviour of [[S3Store.list]] method from Store trait. Use [[S3Store.listUnderlying]] to control on
+    *   per-invocation basis.
+    * @param bufferSize
+    *   - size of buffer for multipart uploading (used for large streams without size known in advance).
+    * @see
+    *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
     */
   def apply[F[_]: ConcurrentEffect: Timer](
     s3: S3AsyncClient,
@@ -489,7 +500,8 @@ object S3Store {
 
   private val mb: Int = 1024 * 1024
 
-  /** @see https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
+  /** @see
+    *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
     */
   private val multiUploadMinimumPartSize: Long = 5L * mb
   private val multiUploadThreshold: Long       = 100L * mb

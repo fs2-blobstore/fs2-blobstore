@@ -17,7 +17,8 @@ import scala.annotation.tailrec
   * Examples of storage provider types would be `software.amazon.awssdk.services.s3.internal.resource.S3ObjectResource`
   * for S3, com.google.storage.Blob for GCS, etc.
   *
-  * @see https://www.ietf.org/rfc/rfc3986.txt chapter 3.3, Path
+  * @see
+  *   https://www.ietf.org/rfc/rfc3986.txt chapter 3.3, Path
   */
 sealed trait Path[+A] {
   def representation: A
@@ -31,7 +32,7 @@ sealed trait Path[+A] {
 
   def absolute: AbsolutePath[String] = plain match {
     case p @ AbsolutePath(_, _)    => p
-    case RootlessPath(a, segments) => AbsolutePath("/" + a, segments)
+    case RootlessPath(a, segments) => AbsolutePath.apply("/" + a, segments)
   }
 
   def relative: RootlessPath[String] = plain match {
@@ -43,10 +44,11 @@ sealed trait Path[+A] {
 
   /** Compose with string to form a new Path
     *
-    * The underlying representation must be String in order for the representation and the path to be kept in sync.
-    * Use [[addSegment]] to modify paths backed by non-String types
+    * The underlying representation must be String in order for the representation and the path to be kept in sync. Use
+    * [[addSegment]] to modify paths backed by non-String types
     *
-    * @see addSegment
+    * @see
+    *   addSegment
     */
   def /(segment: String): Path[String] = {
     val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList: _*)
@@ -165,7 +167,7 @@ object Path {
   type AbsolutePlain = AbsolutePath[String]
   type RootlessPlain = RootlessPath[String]
 
-  case class AbsolutePath[A] private (representation: A, segments: Chain[String]) extends Path[A]
+  case class AbsolutePath[A] private[Path] (representation: A, segments: Chain[String]) extends Path[A]
 
   object AbsolutePath {
     def createFrom(s: String): AbsolutePath[String] = {
@@ -194,7 +196,7 @@ object Path {
       (x, y) => Order[A].compare(x.representation, y.representation)
   }
 
-  case class RootlessPath[A] private (representation: A, segments: Chain[String]) extends Path[A]
+  case class RootlessPath[A] private[Path] (representation: A, segments: Chain[String]) extends Path[A]
 
   object RootlessPath {
     def parse(s: String): Option[RootlessPath[String]] =
