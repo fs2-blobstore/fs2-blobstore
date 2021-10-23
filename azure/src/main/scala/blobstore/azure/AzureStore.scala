@@ -55,7 +55,7 @@ class AzureStore[F[_]: Async](
 
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).download())
+    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).download(), 2)
       .flatMap(byteBuffer => Stream.chunk(Chunk.byteBuffer(byteBuffer)))
   }
 
@@ -217,7 +217,7 @@ class AzureStore[F[_]: Async](
       .map[Url[AzureBlob]](new JavaFunction[Path[AzureBlob], Url[AzureBlob]] {
         def apply(p: Path[AzureBlob]): Url[AzureBlob] = url.copy(path = p)
       })
-    fromPublisher(flux)
+    fromPublisher(flux, 16)
   }
 }
 

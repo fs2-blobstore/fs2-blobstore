@@ -95,7 +95,7 @@ class S3Store[F[_]: Async](
       }
     Stream.eval(
       Async[F].fromCompletableFuture(Async[F].delay(s3.getObject(request, transformer)))
-    ).flatMap(publisher => publisher.toStream.flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
+    ).flatMap(publisher => publisher.toStreamBuffered(2).flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
   }
 
   def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
@@ -202,7 +202,7 @@ class S3Store[F[_]: Async](
       val builder = if (recursive) b else b.delimiter("/")
       builder.build()
     }
-    s3.listObjectsV2Paginator(request).toStream.flatMap { ol =>
+    s3.listObjectsV2Paginator(request).toStreamBuffered(16).flatMap { ol =>
       val fDirs =
         ol.commonPrefixes().asScala.toList.flatMap(cp => Option(cp.prefix())).traverse[F, Path[S3Blob]] { prefix =>
           if (expectTrailingSlashFiles) {
