@@ -17,7 +17,7 @@ package blobstore
 
 import blobstore.url.{FsObject, Url}
 import cats.effect.{Blocker, ContextShift, Sync}
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.Pipe
 
 import java.nio.charset.StandardCharsets

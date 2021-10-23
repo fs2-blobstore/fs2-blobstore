@@ -1,7 +1,7 @@
 package blobstore.url.exception
 
 import cats.data.NonEmptyChain
-import cats.syntax.all._
+import cats.syntax.all.*
 
 case class MultipleUrlValidationException(errors: NonEmptyChain[UrlParseError])
   extends Exception(

@@ -5,7 +5,7 @@ import blobstore.url.general.StorageClassLookup
 import cats.Show
 import cats.data.Chain
 import cats.kernel.Order
-import cats.syntax.all._
+import cats.syntax.all.*
 
 import java.nio.file.Paths
 import java.time.Instant
@@ -51,8 +51,8 @@ sealed trait Path[+A] {
     *   addSegment
     */
   def /(segment: String): Path[String] = {
-    val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList: _*)
-    val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList: _*)
+    val nonEmpty      = Chain(segment.stripPrefix("/").split("/").toList*)
+    val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList*)
 
     val stripSuffix = segments.initLast match {
       case Some((init, "")) => init
@@ -97,12 +97,11 @@ sealed trait Path[+A] {
 
   override def toString: String = Show[Path[A]].show(this)
 
-  @SuppressWarnings(Array("scalafix:Disable.Any"))
+  // scalafix:off
   override def equals(obj: Any): Boolean =
-    obj match {
-      case p: Path[_] => p.plain.eqv(plain)
-      case _          => false
-    }
+    obj.isInstanceOf[Path[?]] && obj.asInstanceOf[Path[?]].plain.eqv(plain)
+  // scalafix:on
+
   override def hashCode(): Int = representation.hashCode()
 
   def isEmpty: Boolean = segments.isEmpty
@@ -175,7 +174,8 @@ object Path {
       else {
         val nonEmpty = s.stripPrefix("/").split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
-        val chain    = Chain(nonEmpty ++ empty: _*)
+        val concat   = nonEmpty ++ empty
+        val chain    = Chain(concat*)
 
         AbsolutePath("/" + chain.mkString_("/"), chain)
       }
@@ -185,7 +185,8 @@ object Path {
       else if (s.startsWith("/")) {
         val nonEmpty = s.stripPrefix("/").split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
-        Some(AbsolutePath(s, Chain(nonEmpty ++ empty: _*)))
+        val concat   = nonEmpty ++ empty
+        Some(AbsolutePath(s, Chain(concat*)))
       } else None
     }
 
@@ -203,7 +204,8 @@ object Path {
       if (!s.startsWith("/")) {
         val nonEmpty = s.split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
-        Some(RootlessPath(s, Chain(nonEmpty ++ empty: _*)))
+        val concat   = nonEmpty ++ empty
+        Some(RootlessPath(s, Chain(concat*)))
       } else None
 
     @tailrec
@@ -213,7 +215,8 @@ object Path {
       } else {
         val nonEmpty = s.split("/").toList
         val empty    = s.reverse.takeWhile(_ == '/').map(_ => "").toList
-        RootlessPath(s, Chain(nonEmpty ++ empty: _*))
+        val concat   = nonEmpty ++ empty
+        RootlessPath(s, Chain(concat*))
       }
     }
 
@@ -222,19 +225,19 @@ object Path {
     implicit def show[A]: Show[RootlessPath[A]] = _.segments.mkString_("/")
     implicit def order[A: Order]: Order[RootlessPath[A]] =
       (x, y) => Order[A].compare(x.representation, y.representation)
-    implicit def ordering[A: Ordering]: Ordering[RootlessPath[A]] = order[A](Order.fromOrdering[A]).toOrdering
+    implicit def ordering[A: Order]: Ordering[RootlessPath[A]] = order[A].toOrdering
   }
 
   def empty: RootlessPath[String] = RootlessPath("", Chain.empty)
 
   def createAbsolute(path: String): AbsolutePath[String] = {
     val noPrefix = path.stripPrefix("/")
-    AbsolutePath("/" + noPrefix, Chain(noPrefix.split("/").toList: _*))
+    AbsolutePath("/" + noPrefix, Chain(noPrefix.split("/").toList*))
   }
 
   def createRootless(path: String): RootlessPath[String] = {
     val noPrefix = path.stripPrefix("/")
-    RootlessPath(noPrefix, Chain(noPrefix.split("/").toList: _*))
+    RootlessPath(noPrefix, Chain(noPrefix.split("/").toList*))
   }
 
   def absolute(path: String): Option[AbsolutePath[String]] = AbsolutePath.parse(path)
@@ -247,7 +250,7 @@ object Path {
     AbsolutePath.parse(s).widen[Path.Plain].orElse(RootlessPath.parse(s)).getOrElse(
       RootlessPath(
         s,
-        Chain(s.split("/").toList: _*)
+        Chain(s.split("/").toList*)
       ) // Paths either have a root or they don't, this block is never executed
     )
   }
@@ -255,7 +258,7 @@ object Path {
   def of[B](path: String, b: B): Path[B] = Path(path).as(b)
 
   def cmp[A](one: Path[A], two: Path[A]): Int = {
-    one.show compare two.show
+    one.show.compare(two.show)
   }
 
   def unapply[A](p: Path[A]): Option[(String, A, Chain[String])] = p match {
@@ -266,8 +269,8 @@ object Path {
   implicit def order[A]: Order[Path[A]]       = (x: Path[A], y: Path[A]) => cmp(x, y)
   implicit def ordering[A]: Ordering[Path[A]] = order[A].toOrdering
   implicit def show[A]: Show[Path[A]] = {
-    case a: AbsolutePath[A] => a.show
-    case r: RootlessPath[A] => r.show
+    case a: AbsolutePath[?] => a.show
+    case r: RootlessPath[?] => r.show
   }
 
 }

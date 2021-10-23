@@ -3,7 +3,7 @@ package blobstore.gcs
 import blobstore.{putRotateBase, Store}
 import blobstore.url.{Path, Url}
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Timer}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
 import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
@@ -12,7 +12,7 @@ import fs2.{Chunk, Pipe, Stream}
 import java.io.OutputStream
 import java.nio.channels.Channels
 import scala.concurrent.duration.FiniteDuration
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
 /** @param storage
   *   configured instance of GCS Storage
@@ -38,13 +38,13 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
     list(url, recursive, List.empty)
 
   def list[A](url: Url[A], recursive: Boolean, options: List[BlobListOption]): Stream[F, Url[GcsBlob]] =
-    listUnderlying(url, defaultTrailingSlashFiles, recursive, options: _*)
+    listUnderlying(url, defaultTrailingSlashFiles, recursive, options*)
 
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] =
     get(url, chunkSize, List.empty)
 
   def get[A](url: Url[A], chunkSize: Int, options: List[BlobGetOption]): Stream[F, Byte] = {
-    getUnderlying(url, chunkSize, defaultDirectDownload, options: _*)
+    getUnderlying(url, chunkSize, defaultDirectDownload, options*)
   }
 
   override def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
@@ -82,7 +82,7 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
     direct: Boolean,
     options: BlobGetOption*
   ): Stream[F, Byte] =
-    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(url), options: _*)))).flatMap {
+    Stream.eval(blocker.delay(Option(storage.get(GcsStore.toBlobId(url), options*)))).flatMap {
       case None => Stream.raiseError[F](new StorageException(404, show"Object not found, ${url.copy(scheme = "gs")}"))
       case Some(blob) =>
         if (direct)
@@ -115,7 +115,7 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
     val options         = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ inputOptions
     val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
     Stream.unfoldChunkEval[F, () => Option[Page[Blob]], Path[Blob]] { () =>
-      Some(storage.list(blobId.getBucket, blobListOptions: _*))
+      Some(storage.list(blobId.getBucket, blobListOptions*))
     } { getPage =>
       blocker.delay(getPage()).flatMap {
         case None => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
@@ -153,7 +153,7 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
   }
 
   private def newOutputStream[A](blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
-    blocker.delay(Channels.newOutputStream(storage.writer(blobInfo, options: _*)))
+    blocker.delay(Channels.newOutputStream(storage.writer(blobInfo, options*)))
 
   /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     *

@@ -16,7 +16,7 @@ Copyright 2018 LendUp Global, Inc.
 
 import blobstore.url.{FsObject, Path, Url}
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource, Sync}
-import cats.implicits._
+import cats.implicits.*
 import fs2.{Chunk, Hotswap, Pipe, Pull, RaiseThrowable, Stream}
 
 import java.nio.file.Files

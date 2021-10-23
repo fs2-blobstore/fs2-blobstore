@@ -5,7 +5,7 @@ import blobstore.url.Hostname.Label
 import cats.{ApplicativeThrow, ContravariantMonoidal, Order, Show}
 import cats.data.{NonEmptyChain, Validated, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
-import cats.syntax.all._
+import cats.syntax.all.*
 
 import scala.util.Try
 import scala.util.matching.Regex
@@ -79,9 +79,9 @@ object IpV4Address {
   private def intOctets(ip: IpV4Address) = (ip.octet1 & 0xff, ip.octet2 & 0xff, ip.octet3 & 0xff, ip.octet4 & 0xff)
 
   def compare(x: IpV4Address, y: IpV4Address): Int =
-    intOctets(x) compare intOctets(y)
+    intOctets(x).compare(intOctets(y))
 
-  implicit val ordering: Ordering[IpV4Address] = compare
+  implicit val ordering: Ordering[IpV4Address] = (x: IpV4Address, y: IpV4Address) => IpV4Address.compare(x, y)
   implicit val order: Order[IpV4Address]       = Order.fromOrdering[IpV4Address]
   implicit val show: Show[IpV4Address]         = Show.fromToString[IpV4Address]
 }
@@ -112,7 +112,7 @@ object Hostname {
     val Regex: Regex = "[-_a-zA-Z0-9]+".r
 
     implicit val show: Show[Label]         = _.value
-    implicit val order: Order[Label]       = _.value compare _.value
+    implicit val order: Order[Label]       = (x: Label, y: Label) => x.value.compare(y.value)
     implicit val ordering: Ordering[Label] = order.toOrdering
   }
 
@@ -137,7 +137,7 @@ object Hostname {
     }
 
     val labelsNec: ValidatedNec[HostParseError, NonEmptyChain[Label]] = labels.toEither.flatMap {
-      case h :: t => NonEmptyChain(h, t: _*).asRight[NonEmptyChain[HostParseError]]
+      case h :: t => NonEmptyChain(h, t*).asRight[NonEmptyChain[HostParseError]]
       case Nil => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
     }.toValidated
 
@@ -163,9 +163,9 @@ object Hostname {
     case Invalid(e) => throw MultipleUrlValidationException(e) // scalafix:ok
   }
 
-  def compare(a: Hostname, b: Hostname): Int = a.show compare b.show
+  def compare(a: Hostname, b: Hostname): Int = a.show.compare(b.show)
 
-  implicit val ordering: Ordering[Hostname] = compare
+  implicit val ordering: Ordering[Hostname] = (x: Hostname, y: Hostname) => Hostname.compare(x, y)
   implicit val order: Order[Hostname]       = Order.fromOrdering[Hostname]
   implicit val show: Show[Hostname]         = _.labels.toList.mkString(".")
 }

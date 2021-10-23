@@ -20,19 +20,19 @@ import blobstore.url.{Path, Url}
 import blobstore.util.{fromQueueNoneTerminated, fromQueueNoneTerminatedChunk, liftJavaFuture}
 import cats.effect.concurrent.{Ref, Semaphore}
 import cats.effect.{Async, ConcurrentEffect, ExitCase, Resource, Timer}
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.concurrent.Queue
 import fs2.{Chunk, Pipe, Pull, Stream}
-import fs2.interop.reactivestreams._
+import fs2.interop.reactivestreams.*
 import org.reactivestreams.Publisher
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
-import software.amazon.awssdk.services.s3.model._
+import software.amazon.awssdk.services.s3.model.*
 
 import java.nio.{Buffer, ByteBuffer}
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
 /** @param s3
   *   - S3 Async Client
@@ -76,9 +76,7 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
     val bucket = url.authority.show
     val key    = url.path.relative.show
 
-    val request = S3MetaInfo.getObjectRequest(meta).bucket(bucket).key(key).build()
-
-    performGet(request)
+    performGet(S3MetaInfo.mkGetObjectRequest(bucket, key, meta))
   }
 
   private def performGet(request: GetObjectRequest) = {
@@ -144,16 +142,7 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
       val dstBucket = dst.authority.show
       val dstKey    = dst.path.relative.show
 
-      val builder = CopyObjectRequest.builder()
-      val withAcl = objectAcl.fold(builder)(builder.acl)
-      val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-      dstMeta
-        .fold(withSSE)(S3MetaInfo.copyObjectRequest(withSSE))
-        .sourceBucket(srcBucket)
-        .sourceKey(srcKey)
-        .destinationBucket(dstBucket)
-        .destinationKey(dstKey)
-        .build()
+      S3MetaInfo.mkCopyObjectRequest(sseAlgorithm, objectAcl, srcBucket, srcKey, dstBucket, dstKey, dstMeta)
     }
     liftJavaFuture(Async[F].delay(s3.copyObject(request))).void
   }
@@ -247,8 +236,8 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
           Path(s3Object.key()).as(S3Blob(bucket, s3Object.key(), new S3MetaInfo.S3ObjectMetaInfo(s3Object).some)).pure[F]
         }
       }
-      (Stream.eval(fDirs).flatMap(dirs => Stream(dirs: _*)) ++
-        Stream.eval(fFiles).flatMap(files => Stream(files: _*)))
+      (Stream.eval(fDirs).flatMap(dirs => Stream(dirs*)) ++
+        Stream.eval(fFiles).flatMap(files => Stream(files*)))
         .map(p => url.copy(path = p))
     }
   }
@@ -259,7 +248,7 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
     meta: Option[S3MetaInfo],
     bytes: Array[Byte]
   ): F[Unit] = {
-    val request     = S3Store.putObjectRequest(sseAlgorithm, objectAcl)(bucket, key, meta, bytes.length.toLong)
+    val request     = S3MetaInfo.mkPutObjectRequest(sseAlgorithm, objectAcl, bucket, key, meta, bytes.length.toLong)
     val requestBody = AsyncRequestBody.fromBytes(bytes)
     liftJavaFuture(Async[F].delay(s3.putObject(request, requestBody))).void
   }
@@ -271,26 +260,18 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
     maybeSize: Option[Long],
     in: Stream[F, Byte]
   ): Stream[F, Unit] = {
-    val request: CreateMultipartUploadRequest = {
-      val builder = CreateMultipartUploadRequest.builder()
-      val withAcl = objectAcl.fold(builder)(builder.acl)
-      val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-      meta
-        .fold(withSSE)(S3MetaInfo.createMultipartUploadRequest(withSSE))
-        .bucket(bucket)
-        .key(key)
-        .build()
-    }
+    val request: CreateMultipartUploadRequest =
+      S3MetaInfo.mkPutMultiPartRequest(sseAlgorithm, objectAcl, bucket, key, meta)
 
     val makeRequest: F[CreateMultipartUploadResponse] =
       liftJavaFuture(Async[F].delay(s3.createMultipartUpload(request)))
 
     Stream.eval((makeRequest, Semaphore(2)).tupled).flatMap { case (muResp, semaphore) =>
-      val uploadPartReqBuilder: UploadPartRequest.Builder = meta
-        .fold(UploadPartRequest.builder())(S3MetaInfo.uploadPartRequest)
-        .bucket(bucket)
-        .key(key)
-        .uploadId(muResp.uploadId())
+//      val uploadPartReqBuilder: UploadPartRequest.Builder = meta
+//        .fold(UploadPartRequest.builder())(S3MetaInfo.uploadPartRequest)
+//        .bucket(bucket)
+//        .key(key)
+//        .uploadId(muResp.uploadId())
 
       val partRef                                        = Ref.unsafe(1)
       val completedPartsRef: Ref[F, List[CompletedPart]] = Ref.unsafe(Nil)
@@ -311,10 +292,14 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
               ConcurrentEffect[F].start(
                 liftJavaFuture(Async[F].delay {
                   s3.uploadPart(
-                    uploadPartReqBuilder
-                      .partNumber(part)
-                      .contentLength(if (part == totalParts) lastPartSize else partSize)
-                      .build(),
+                    S3MetaInfo.mkUploadPartRequestBuilder(
+                      bucket,
+                      key,
+                      muResp.uploadId(),
+                      meta,
+                      part,
+                      Some(if (part == totalParts) lastPartSize else partSize)
+                    ),
                     AsyncRequestBody.fromPublisher(publisher)
                   )
                 })
@@ -357,7 +342,14 @@ class S3Store[F[_]: ConcurrentEffect: Timer](
             _ <- Resource.make(ConcurrentEffect[F].unit) { _ =>
               liftJavaFuture(Async[F].delay {
                 s3.uploadPart(
-                  uploadPartReqBuilder.partNumber(part).build(),
+                  S3MetaInfo.mkUploadPartRequestBuilder(
+                    bucket,
+                    key,
+                    muResp.uploadId(),
+                    meta,
+                    part,
+                    None
+                  ),
                   AsyncRequestBody.fromByteBuffer(
                     selectBuffer(part).asInstanceOf[Buffer].flip().asInstanceOf[ByteBuffer] // scalafix:ok
                   )
@@ -482,21 +474,6 @@ object S3Store {
     bufferSize,
     queueSize
   )
-
-  private def putObjectRequest(
-    sseAlgorithm: Option[String],
-    objectAcl: Option[ObjectCannedACL]
-  )(bucket: String, key: String, meta: Option[S3MetaInfo], size: Long): PutObjectRequest = {
-    val builder = PutObjectRequest.builder()
-    val withAcl = objectAcl.fold(builder)(builder.acl)
-    val withSSE = sseAlgorithm.fold(withAcl)(withAcl.serverSideEncryption)
-    meta
-      .fold(withSSE)(S3MetaInfo.putObjectRequest(withSSE))
-      .contentLength(size)
-      .bucket(bucket)
-      .key(key)
-      .build()
-  }
 
   private val mb: Int = 1024 * 1024
 

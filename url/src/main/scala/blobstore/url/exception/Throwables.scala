@@ -4,7 +4,7 @@ import cats.Semigroup
 
 import scala.annotation.tailrec
 import scala.util.Try
-import cats.syntax.show._
+import cats.syntax.show.*
 
 object Throwables {
 

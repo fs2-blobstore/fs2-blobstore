@@ -16,10 +16,10 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import blobstore.url.{FsObject, Path, Url}
-import cats.MonadError
+import cats.MonadThrow
 import cats.data.Validated
 import cats.effect.{ContextShift, Sync}
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.{Pipe, Stream}
 
 trait Store[F[_], +BlobType] {
@@ -120,7 +120,7 @@ object Store {
     * Use `transformPath` to control how paths retrieved from input URLs are converted to paths for FileStores
     */
   //
-  private[blobstore] class DelegatingStore[F[_]: MonadError[*[_], Throwable], Blob](
+  private[blobstore] class DelegatingStore[F[_]: MonadThrow, Blob](
     delegate: PathStore[F, Blob],
     validateInput: Url.Plain => Validated[Throwable, Path.Plain] = (_: Url.Plain).path.valid[Throwable]
   ) extends Store[F, Blob] {
@@ -139,20 +139,14 @@ object Store {
       s => validateInput(plainUrl(url)).liftTo[Stream[F, *]].flatMap(p => s.through(delegate.put(p, overwrite, size)))
 
     override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap(
-        (delegate.move[
-          String,
-          String
-        ] _).tupled
-      )
+      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap {
+        case (src, dst) => delegate.move[String, String](src, dst)
+      }
 
     override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap(
-        (delegate.copy[
-          String,
-          String
-        ] _).tupled
-      )
+      (validateInput(plainUrl(src)).toEither, validateInput(plainUrl(dst)).toEither).tupled.liftTo[F].flatMap {
+        case (src, dst) => delegate.copy[String, String](src, dst)
+      }
 
     override def remove[A](url: Url[A], recursive: Boolean): F[Unit] =
       validateInput(plainUrl(url)).liftTo[F].flatMap(delegate.remove(_, recursive))

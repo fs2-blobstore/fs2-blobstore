@@ -42,7 +42,7 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       ps.foreach { p =>
         inside(p) {
           case Some(p) =>
-            p mustBe a[AbsolutePath[_]]
+            p mustBe a[AbsolutePath[?]]
             p.value mustBe s
         }
       }
@@ -53,7 +53,7 @@ class PathTest extends AnyFlatSpec with Matchers with Inside {
       ps.foreach { p =>
         inside(p) {
           case Some(p) =>
-            p mustBe a[RootlessPath[_]]
+            p mustBe a[RootlessPath[?]]
             p.value mustBe s
         }
       }

@@ -4,22 +4,22 @@ package azure
 import blobstore.url.{Path, Url}
 import blobstore.util.{fromQueueNoneTerminated, liftJavaFuture}
 import cats.effect.{Async, ConcurrentEffect, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.batch.BlobBatchClientBuilder
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
-import com.azure.storage.blob.models.{BlobItemProperties, _}
+import com.azure.storage.blob.models.*
 import com.azure.storage.common.implementation.Constants
 import fs2.concurrent.Queue
 import fs2.{Chunk, Pipe, Stream}
-import fs2.interop.reactivestreams._
+import fs2.interop.reactivestreams.*
 import reactor.core.publisher.{Flux, Mono}
 
 import java.nio.ByteBuffer
 import java.time.Duration
 import java.time.temporal.ChronoUnit
-import java.util.function.{Function => JavaFunction}
-import scala.jdk.CollectionConverters._
+import java.util.function.Function as JavaFunction
+import scala.jdk.CollectionConverters.*
 
 /** @param azure
   *   - Azure Blob Service Async Client
@@ -84,7 +84,7 @@ class AzureStore[F[_]: ConcurrentEffect](
       .getBlobContainerAsyncClient(container)
       .getBlobAsyncClient(blobName)
     val flux = Flux.from(publisher)
-    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers.max(2))
+    val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
     val (overwriteCheck, requestConditions) =
       if (overwrite) {
         Mono.empty -> null // scalafix:ok
@@ -170,7 +170,7 @@ class AzureStore[F[_]: ConcurrentEffect](
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize).setMaxConcurrency(numBuffers.max(2))
+      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
       flux   = Flux.from(publisher)
       upload = blobClient.upload(flux, pto, true)
       _ <- Resource.make(ConcurrentEffect[F].start(liftJavaFuture(Async[F].delay(upload.toFuture)).void))(_.join)

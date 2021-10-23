@@ -19,12 +19,12 @@ package box
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.{Blocker, Concurrent, ContextShift, ExitCase, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
 import fs2.{Pipe, Stream}
 
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 
 /** @param api
   *   - underlying configured BoxAPIConnection
@@ -63,7 +63,7 @@ class BoxStore[F[_]: Concurrent: ContextShift](
         streams._1.close()
       })
       val readInput = fs2.io.readInputStream(Concurrent[F].delay(streams._2), chunkSize, blocker, closeAfterUse = true)
-      readInput concurrently dl
+      readInput.concurrently(dl)
     }
 
     Stream.eval(boxFileAtPath(path)).flatMap {
@@ -108,7 +108,7 @@ class BoxStore[F[_]: Concurrent: ContextShift](
               in.through(fs2.io.writeOutputStream(ios._1.pure, blocker, closeAfterUse = false)) ++
                 Stream.eval(Concurrent[F].delay(ios._1.close()))
             }
-            putToBox concurrently writeBytes
+            putToBox.concurrently(writeBytes)
           }
 
           val release: ((OutputStream, InputStream, Either[BoxFile, BoxFolder])) => F[Unit] = ios =>
@@ -349,7 +349,7 @@ object BoxStore {
   )
 
   private def blockingIterator(folder: BoxFolder, fields: Array[String]): Iterator[BoxItem#Info] =
-    folder.getChildren((fields ++ requiredFields).distinct: _*).iterator().asScala
+    folder.getChildren((fields ++ requiredFields).distinct*).iterator().asScala
 
   private def isFile(info: BoxItem#Info): Boolean = info.getType == BoxStore.fileResourceType
 

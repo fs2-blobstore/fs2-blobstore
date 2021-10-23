@@ -366,7 +366,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   it should "return failed stream when getting non-existing file" in {
     val test = for {
       res <- store.get(dirUrl("foo") / "doesnt-exists.txt", 4096).attempt.compile.lastOrError
-    } yield res mustBe a[Left[_, _]]
+    } yield res mustBe a[Left[?, ?]]
 
     test.unsafeRunSync()
   }
@@ -404,7 +404,7 @@ abstract class AbstractStoreTest[B <: FsObject]
       .attempt
       .unsafeRunSync()
 
-    result mustBe a[Left[_, _]]
+    result mustBe a[Left[?, ?]]
   }
 
   it should "put to new Path without overwrite" in {
@@ -443,8 +443,8 @@ abstract class AbstractStoreTest[B <: FsObject]
       list.map(_.show) must contain only url.show
       list.headOption.flatMap(_.path.fileName) must contain("file with spaces")
       list.headOption.map(_.path.segments.toList.init.last) must contain("path spaces")
-      get mustBe a[Right[_, _]]
-      remove mustBe a[Right[_, _]]
+      get mustBe a[Right[?, ?]]
+      remove mustBe a[Right[?, ?]]
     }
     result.unsafeRunSync()
   }

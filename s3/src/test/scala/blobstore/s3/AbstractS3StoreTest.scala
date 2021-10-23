@@ -50,8 +50,8 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
       inside(s3Url.path.representation.meta) {
         case Some(metaInfo) =>
           // Note: defaultFullMetadata = true in S3Store constructor.
-          metaInfo.contentType mustBe a[Some[_]]
-          metaInfo.eTag mustBe a[Some[_]]
+          metaInfo.contentType mustBe a[Some[?]]
+          metaInfo.eTag mustBe a[Some[?]]
       }
     }
   }
@@ -101,11 +101,11 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
         .compile
         .drain
       files        <- store.list(dir, recursive = true).compile.toList
-      fileContents <- files.traverse(u => store.get(u, 1024).compile.to(Array))
+      fileContents <- files.traverse(u => store.get(u, 1024).compile.toList)
     } yield {
       files must have size 2
       files.flatMap(_.path.size) must contain theSameElementsAs List(6 * 1024 * 1024L, 1024 * 1024L)
-      fileContents.flatten mustBe content.toList
+      fileContents.flatten must contain theSameElementsInOrderAs content.toList
     }
 
     test.unsafeRunSync()

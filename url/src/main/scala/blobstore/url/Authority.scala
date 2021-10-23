@@ -1,11 +1,11 @@
 package blobstore.url
 
 import blobstore.url.exception.{AuthorityParseError, MultipleUrlValidationException}
-import cats.{ApplicativeError, Order, Show}
+import cats.{ApplicativeThrow, Order, Show}
 import cats.data.{NonEmptyChain, ValidatedNec}
 import cats.data.Validated.{Invalid, Valid}
 import cats.kernel.Eq
-import cats.syntax.all._
+import cats.syntax.all.*
 
 /** An authority as defined by RFC3986. Can point to any valid host on a computer network. Characterized by supporting
   * userinfo, port as well as IP addresses in addition to normal hostnames.
@@ -49,8 +49,8 @@ object Authority {
 
   def localhost: Authority = unsafe("localhost")
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](host: String): F[Authority] =
-    parse(host).toEither.leftMap(MultipleUrlValidationException).liftTo[F]
+  def parseF[F[_]: ApplicativeThrow](host: String): F[Authority] =
+    parse(host).toEither.leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
   def parse(candidate: String): ValidatedNec[AuthorityParseError, Authority] =
     regex.findFirstMatchIn(candidate).toRight(

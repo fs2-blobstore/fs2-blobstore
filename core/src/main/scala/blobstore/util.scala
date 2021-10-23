@@ -4,7 +4,7 @@ import cats.Functor
 import cats.effect.Concurrent
 
 import java.util.concurrent.{CancellationException, CompletableFuture, CompletionException}
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.Chunk
 import fs2.concurrent.Queue
 

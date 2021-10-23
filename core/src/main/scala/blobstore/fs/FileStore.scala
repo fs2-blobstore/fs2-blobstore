@@ -20,12 +20,12 @@ import blobstore.url.Path.Plain
 import blobstore.url.{FsObject, Path, Url}
 import cats.data.Validated
 import cats.effect.{Blocker, Concurrent, ContextShift, Resource}
-import cats.syntax.all._
+import cats.syntax.all.*
 import fs2.io.file.{FileHandle, WriteCursor}
 import fs2.{Hotswap, Pipe, Stream}
 
-import scala.jdk.CollectionConverters._
-import java.nio.file.{Files, Path => JPath, Paths, StandardOpenOption}
+import scala.jdk.CollectionConverters.*
+import java.nio.file.{Files, Path as JPath, Paths, StandardOpenOption}
 import scala.util.Try
 
 class FileStore[F[_]: Concurrent: ContextShift](blocker: Blocker) extends PathStore[F, NioPath] {

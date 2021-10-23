@@ -3,7 +3,7 @@ package blobstore.box
 import java.time.Instant
 import blobstore.url.{FsObject, FsObjectLowPri, Path}
 import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
-import cats.syntax.option._
+import cats.syntax.option.*
 import com.box.sdk.{BoxFile, BoxFolder, BoxItem}
 
 case class BoxPath(fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]) extends FsObject {
@@ -36,10 +36,12 @@ case class BoxPath(fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]) extends F
 }
 
 object BoxPath extends FsObjectLowPri {
-  def narrow[A](p: Path[A]): Option[Path[BoxPath]] = p.representation match {
-    case bp: BoxPath => p.as(bp: BoxPath).some
-    case _           => None
-  }
+  // scalafix:off
+  def narrow[A](p: Path[A]): Option[Path[BoxPath]] =
+    if (p.representation.isInstanceOf[BoxPath]) {
+      p.as(p.representation.asInstanceOf[BoxPath]).some
+    } else None
+  // scalafix:on
 
   implicit val storageClassLookup: StorageClassLookup.Aux[BoxPath, Nothing] = new StorageClassLookup[BoxPath] {
     override type StorageClassType = Nothing

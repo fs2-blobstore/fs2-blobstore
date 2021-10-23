@@ -4,10 +4,10 @@ import blobstore.url.exception.{AuthorityParseError, MultipleUrlValidationExcept
 import blobstore.url.Path.AbsolutePath
 import blobstore.url.exception.AuthorityParseError.{InvalidFileUrl, InvalidHost, MissingHost}
 import blobstore.url.exception.UrlParseError.{CouldntParseUrl, MissingScheme}
-import cats.{ApplicativeError, Order, Show}
+import cats.{ApplicativeThrow, Order, Show}
 import cats.data.Validated.{Invalid, Valid}
 import cats.data.{NonEmptyChain, OptionT, ValidatedNec}
-import cats.syntax.all._
+import cats.syntax.all.*
 
 import scala.util.Try
 
@@ -91,7 +91,7 @@ object Url {
 
   type Plain = Url[String]
 
-  def parseF[F[_]: ApplicativeError[*[_], Throwable]](c: String): F[Url.Plain] =
+  def parseF[F[_]: ApplicativeThrow](c: String): F[Url.Plain] =
     parse(c).leftMap(MultipleUrlValidationException.apply).liftTo[F]
 
   def unsafe(c: String): Url.Plain = parse(c) match {
@@ -122,7 +122,7 @@ object Url {
 
     lazy val parseNonFile = regex.findFirstMatchIn(c).map { m =>
       val authority: Either[AuthorityParseError, String] = OptionT(
-        tryOpt(m.group(4)).toEither.leftMap(InvalidHost).leftWiden[AuthorityParseError]
+        tryOpt(m.group(4)).toEither.leftMap(InvalidHost.apply).leftWiden[AuthorityParseError]
       ).getOrElseF(MissingHost(c).asLeft)
 
       val typedAuthority: ValidatedNec[AuthorityParseError, Authority] =
@@ -144,7 +144,7 @@ object Url {
     if (c.startsWith("file")) parseFileUrl(c) else parseNonFile
   }
 
-  implicit def ordering[A]: Ordering[Url[A]] = _.show compare _.show
+  implicit def ordering[A]: Ordering[Url[A]] = (x: Url[A], y: Url[A]) => x.show.compare(y.show)
   implicit def order[A]: Order[Url[A]]       = Order.fromOrdering
   implicit def show[A]: Show[Url[A]] = u => {
     val pathString = u.path match {

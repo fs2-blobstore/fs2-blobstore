@@ -132,7 +132,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
   }
 
   it should "userinfo and port are allowed for standard urls, but not buckets" in {
-    val values = List(User("foo"), Password("bar"), Port(8080))
+    val values = List(User("foo"), Password("bar"), Port.unsafe(8080))
     val cross  = values.flatMap(v => values.map(v -> _))
 
     val all = show"https://foo:bar@example.com:8080/foo/"
@@ -186,7 +186,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
 
   it should "parse to rootless paths by default" in {
     val url = Url.unsafe("https://example.com/foo/bar")
-    url.path mustBe a[RootlessPath[_]]
+    url.path mustBe a[RootlessPath[?]]
   }
 
   it should "convert between schemes" in {

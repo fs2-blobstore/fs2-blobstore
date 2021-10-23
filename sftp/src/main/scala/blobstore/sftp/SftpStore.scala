@@ -8,8 +8,8 @@ import blobstore.util.fromQueueNoneTerminated
 import cats.data.Validated
 import cats.effect.concurrent.Semaphore
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
-import cats.syntax.all._
-import com.jcraft.jsch._
+import cats.syntax.all.*
+import com.jcraft.jsch.*
 import fs2.concurrent.Queue
 import fs2.{Pipe, Stream}
 
