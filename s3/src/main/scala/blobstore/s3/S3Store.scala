@@ -46,7 +46,7 @@ import scala.jdk.CollectionConverters._
   *   [[listUnderlying]] to control on per-invocation basis.
   * @param defaultTrailingSlashFiles
   *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
-  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  *     [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
   * @param bufferSize
   *   – size of the buffer for multipart uploading (used for large streams without size known in advance).
   * @see
@@ -458,8 +458,8 @@ object S3Store {
     *   trait. Use [[S3Store.listUnderlying]] to control on per-invocation basis.
     * @param defaultTrailingSlashFiles
     *   - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names. This controls
-    *   behaviour of [[S3Store.list]] method from Store trait. Use [[S3Store.listUnderlying]] to control on
-    *   per-invocation basis.
+    *     behaviour of [[S3Store.list]] method from Store trait. Use [[S3Store.listUnderlying]] to control on
+    *     per-invocation basis.
     * @param bufferSize
     *   - size of buffer for multipart uploading (used for large streams without size known in advance).
     * @see

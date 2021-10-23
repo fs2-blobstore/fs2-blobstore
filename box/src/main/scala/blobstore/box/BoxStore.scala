@@ -26,9 +26,12 @@ import fs2.{Pipe, Stream}
 import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import scala.jdk.CollectionConverters._
 
-/** @param api - underlying configured BoxAPIConnection
-  * @param rootFolderId – override for Root Folder Id, default – "0"
-  * @param largeFileThreshold – override for the threshold on the file size to be considered "large", default – 50MiB
+/** @param api
+  *   - underlying configured BoxAPIConnection
+  * @param rootFolderId
+  *   – override for Root Folder Id, default – "0"
+  * @param largeFileThreshold
+  *   – override for the threshold on the file size to be considered "large", default – 50MiB
   */
 class BoxStore[F[_]: Concurrent: ContextShift](
   api: BoxAPIConnection,
@@ -302,10 +305,11 @@ class BoxStore[F[_]: Concurrent: ContextShift](
   }
 
   /** Lifts this FileStore to a Store accepting URLs with authority `A` and exposing blobs of type `B`. You must provide
-    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this
+    * store.
     *
-    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
-    * to this store.
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and
+    * passed to this store.
     */
   override def lift(g: Url.Plain => Validated[Throwable, Path.Plain]): Store[F, BoxPath] =
     new Store.DelegatingStore[F, BoxPath](this, g)
@@ -319,8 +323,10 @@ class BoxStore[F[_]: Concurrent: ContextShift](
 
 object BoxStore {
 
-  /** @param api - underlying configured BoxAPIConnection
-    * @param rootFolderId – override for Root Folder Id, default – "0"
+  /** @param api
+    *   - underlying configured BoxAPIConnection
+    * @param rootFolderId
+    *   – override for Root Folder Id, default – "0"
     */
   def apply[F[_]: Concurrent: ContextShift](
     api: BoxAPIConnection,

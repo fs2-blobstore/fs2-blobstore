@@ -14,16 +14,17 @@ import java.nio.channels.Channels
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
-/** @param storage configured instance of GCS Storage
-  * @param acls list of Access Control List objects to be set on all uploads.
-  * @param defaultTrailingSlashFiles test if folders returned by `list` are files with trailing slashes in their names.
-  *                                  This controls behaviour of `list` method from Store trait.
-  *                                  Use [[listUnderlying]] to control on per-invocation basis.
-  * @param defaultDirectDownload use direct download.
-  *                              When enabled the whole media content is downloaded in a single request (but still streamed).
-  *                              Otherwise use the resumable media download protocol to download in data chunks.
-  *                              This controls behaviour of `get` method from Store trait.
-  *                              Use [[getUnderlying]] to control on per-invocation basis.
+/** @param storage
+  *   configured instance of GCS Storage
+  * @param acls
+  *   list of Access Control List objects to be set on all uploads.
+  * @param defaultTrailingSlashFiles
+  *   test if folders returned by `list` are files with trailing slashes in their names. This controls behaviour of
+  *   `list` method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  * @param defaultDirectDownload
+  *   use direct download. When enabled the whole media content is downloaded in a single request (but still streamed).
+  *   Otherwise use the resumable media download protocol to download in data chunks. This controls behaviour of `get`
+  *   method from Store trait. Use [[getUnderlying]] to control on per-invocation basis.
   */
 class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
   storage: Storage,
@@ -156,18 +157,24 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
 
   /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.
     *
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
+    * @param src
+    *   path
+    * @param dst
+    *   path
+    * @return
+    *   F[Unit]
     */
   override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     copy(src, dst) >> remove(src)
 
   /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     *
-    * @param src path
-    * @param dst path
-    * @return F[Unit]
+    * @param src
+    *   path
+    * @param dst
+    *   path
+    * @return
+    *   F[Unit]
     */
   override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] =
     blocker.delay(storage.copy(CopyRequest.of(GcsStore.toBlobId(src), GcsStore.toBlobId(dst))).getResult).void
@@ -181,16 +188,19 @@ class GcsStore[F[_]: ConcurrentEffect: Timer: ContextShift](
 
 object GcsStore {
 
-  /** @param storage configured instance of GCS Storage
-    * @param acls list of Access Control List objects to be set on all uploads.
-    * @param defaultTrailingSlashFiles test if folders returned by `GcsStore.list` are files with trailing slashes in their names.
-    *                                  This controls behaviour of `GcsStore.list` method from Store trait.
-    *                                  Use [[GcsStore.listUnderlying]] to control on per-invocation basis.
-    * @param defaultDirectDownload use direct download.
-    *                              When enabled the whole media content is downloaded in a single request (but still streamed).
-    *                              Otherwise use the resumable media download protocol to download in data chunks.
-    *                              This controls behaviour of `GcsStore.get` method from Store trait.
-    *                              Use [[GcsStore.getUnderlying]] to control on per-invocation basis.
+  /** @param storage
+    *   configured instance of GCS Storage
+    * @param acls
+    *   list of Access Control List objects to be set on all uploads.
+    * @param defaultTrailingSlashFiles
+    *   test if folders returned by `GcsStore.list` are files with trailing slashes in their names. This controls
+    *   behaviour of `GcsStore.list` method from Store trait. Use [[GcsStore.listUnderlying]] to control on
+    *   per-invocation basis.
+    * @param defaultDirectDownload
+    *   use direct download. When enabled the whole media content is downloaded in a single request (but still
+    *   streamed). Otherwise use the resumable media download protocol to download in data chunks. This controls
+    *   behaviour of `GcsStore.get` method from Store trait. Use [[GcsStore.getUnderlying]] to control on per-invocation
+    *   basis.
     */
   def apply[F[_]: ConcurrentEffect: Timer: ContextShift](
     storage: Storage,

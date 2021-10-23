@@ -100,11 +100,11 @@ object S3MetaInfo {
   }
 
   class HeadObjectResponseMetaInfo(headObjectResponse: HeadObjectResponse) extends S3MetaInfo {
-    override def size: Option[Long]                      = Option(headObjectResponse.contentLength(): Long)
-    override def lastModified: Option[Instant]           = Option(headObjectResponse.lastModified())
-    override def eTag: Option[String]                    = Option(headObjectResponse.eTag())
-    override def storageClass: Option[StorageClass]      = Option(headObjectResponse.storageClass())
-    override def deleteMarker: Boolean                   = Option(headObjectResponse.deleteMarker(): Boolean).getOrElse[Boolean](false)
+    override def size: Option[Long]                 = Option(headObjectResponse.contentLength(): Long)
+    override def lastModified: Option[Instant]      = Option(headObjectResponse.lastModified())
+    override def eTag: Option[String]               = Option(headObjectResponse.eTag())
+    override def storageClass: Option[StorageClass] = Option(headObjectResponse.storageClass())
+    override def deleteMarker: Boolean = Option(headObjectResponse.deleteMarker(): Boolean).getOrElse[Boolean](false)
     override def acceptRanges: Option[String]            = Option(headObjectResponse.acceptRanges())
     override def expiration: Option[String]              = Option(headObjectResponse.expiration())
     override def restore: Option[String]                 = Option(headObjectResponse.restore())

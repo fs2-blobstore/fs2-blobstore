@@ -13,7 +13,8 @@ import scala.util.matching.Regex
 /** A Host is any device or computer on a computer network. It can be an IP address or any string that can appear in a
   * A, AAAA or CNAME DNS record.
   *
-  * @see https://www.ietf.org/rfc/rfc1123.txt 2.1 "Host names and numbers"
+  * @see
+  *   https://www.ietf.org/rfc/rfc1123.txt 2.1 "Host names and numbers"
   */
 sealed trait Host {
   def authority: Authority = Authority(this, None, None)
@@ -95,12 +96,13 @@ object Hostname {
   /** Label component of a hostname.
     *
     * Rules
-    * - 1 to 63 characters
-    * - Only consists of characters a-z, A-Z, 0-9 or a hyphen
+    *   - 1 to 63 characters
+    *   - Only consists of characters a-z, A-Z, 0-9 or a hyphen
     *
     * RFC1123, section 2.1 "Host Names and Numbers"
     *
-    * @see http://www.ietf.org/rfc/rfc1123.txt
+    * @see
+    *   http://www.ietf.org/rfc/rfc1123.txt
     */
   case class Label private[Hostname] (value: String) {
     override def toString: String = value
@@ -136,7 +138,7 @@ object Hostname {
 
     val labelsNec: ValidatedNec[HostParseError, NonEmptyChain[Label]] = labels.toEither.flatMap {
       case h :: t => NonEmptyChain(h, t: _*).asRight[NonEmptyChain[HostParseError]]
-      case Nil    => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
+      case Nil => NonEmptyChain(HostParseError.hostname.EmptyDomainName).asLeft.leftWiden[NonEmptyChain[HostParseError]]
     }.toValidated
 
     val length: ValidatedNec[HostParseError, Unit] =

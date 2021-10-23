@@ -27,9 +27,12 @@ import java.nio.charset.StandardCharsets
 class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
 
   /** Write contents of src file into dst Path
-    * @param src java.nio.file.Path
-    * @param dst Path to write to
-    * @return F[Unit]
+    * @param src
+    *   java.nio.file.Path
+    * @param dst
+    *   Path to write to
+    * @return
+    *   F[Unit]
     */
   def putFromNio[A](src: java.nio.file.Path, dst: Url[A], overwrite: Boolean, blocker: Blocker): F[Unit] = {
     Sync[F].delay(Option(src.toFile.length)).map(_.filter(_ > 0)).flatMap { size =>
@@ -41,11 +44,13 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     }
   }
 
-  /** Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes
-    * to store. Useful when uploading data to stores that require content size like S3Store.
+  /** Put sink that buffers all incoming bytes to local filesystem, computes buffered data size, then puts bytes to
+    * store. Useful when uploading data to stores that require content size like S3Store.
     *
-    * @param url Path to write to
-    * @return Sink[F, Byte] buffered sink
+    * @param url
+    *   Path to write to
+    * @return
+    *   Sink[F, Byte] buffered sink
     */
   def bufferedPut[A](url: Url[A], overwrite: Boolean, chunkSize: Int, blocker: Blocker): Pipe[F, Byte, Unit] =
     _.through(bufferToDisk[F](chunkSize, blocker)).flatMap {
@@ -54,9 +59,12 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     }
 
   /** get src path and write to local file system
-    * @param src Path to get
-    * @param dst local file to write contents to
-    * @return F[Unit]
+    * @param src
+    *   Path to get
+    * @param dst
+    *   local file to write contents to
+    * @return
+    *   F[Unit]
     */
   def getToNio[A](src: Url[A], dst: java.nio.file.Path, chunkSize: Int, blocker: Blocker): F[Unit] =
     store.get(src, chunkSize).through(fs2.io.file.writeAll[F](dst, blocker)).compile.drain
@@ -71,8 +79,10 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
   }
 
   /** getContents with default UTF8 decoder
-    * @param url Url to get
-    * @return F[String] with file contents
+    * @param url
+    *   Url to get
+    * @return
+    *   F[String] with file contents
     */
   def getContents[A](url: Url[A], chunkSize: Int = 4096): F[String] = getContents(url, chunkSize, fs2.text.utf8Decode)
 
@@ -80,29 +90,38 @@ class StoreOps[F[_]: Sync: ContextShift, B](store: Store[F, B]) {
     *
     * USE WITH CARE, this loads all file contents into memory.
     *
-    * @param url Path to get
-    * @param decoder Pipe[F, Byte, String]
-    * @return F[String] with file contents
+    * @param url
+    *   Path to get
+    * @param decoder
+    *   Pipe[F, Byte, String]
+    * @return
+    *   F[String] with file contents
     */
   def getContents[A](url: Url[A], chunkSize: Int, decoder: Pipe[F, Byte, String]): F[String] =
     store.get(url, chunkSize).through(decoder).compile.toList.map(_.mkString)
 
   /** Collect all list results in the same order as the original list Stream
-    * @param url Url to list
-    * @return F\[List\[Url\]\] with all items in the result
+    * @param url
+    *   Url to list
+    * @return
+    *   F\[List\[Url\]\] with all items in the result
     */
   def listAll[A](url: Url[A], recursive: Boolean = false): F[List[Url[B]]] =
     store.list(url, recursive).compile.toList
 
   /** Copy value of the given path in this store to the destination store.
     *
-    * This method will list item at srcUrl and copy it to dstUrl in dstStore.
-    * If srcUrl points to a directory, it will copy files inside recursively.
+    * This method will list item at srcUrl and copy it to dstUrl in dstStore. If srcUrl points to a directory, it will
+    * copy files inside recursively.
     *
-    * @param dstStore destination store
-    * @param srcUrl url to transfer from (can be a path to a file or directory)
-    * @param dstUrl url to transfer to (if srcUrl points to a directory, interpreted as a prefix)
-    * @return F[Int] number of files transferred
+    * @param dstStore
+    *   destination store
+    * @param srcUrl
+    *   url to transfer from (can be a path to a file or directory)
+    * @param dstUrl
+    *   url to transfer to (if srcUrl points to a directory, interpreted as a prefix)
+    * @return
+    *   F[Int] number of files transferred
     */
   def transferTo[BB, A, C](dstStore: Store[F, BB], srcUrl: Url[A], dstUrl: Url[C]): F[Int] =
     store.list(srcUrl, recursive = true).evalMap { u =>

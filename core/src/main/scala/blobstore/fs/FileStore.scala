@@ -25,7 +25,7 @@ import fs2.io.file.{FileHandle, WriteCursor}
 import fs2.{Hotswap, Pipe, Stream}
 
 import scala.jdk.CollectionConverters._
-import java.nio.file.{Files, Paths, StandardOpenOption, Path => JPath}
+import java.nio.file.{Files, Path => JPath, Paths, StandardOpenOption}
 import scala.util.Try
 
 class FileStore[F[_]: Concurrent: ContextShift](blocker: Blocker) extends PathStore[F, NioPath] {
@@ -154,11 +154,11 @@ class FileStore[F[_]: Concurrent: ContextShift](blocker: Blocker) extends PathSt
     else nioStat(p).map(nioPath => path.as(nioPath).some)
   }
 
-  /** Lifts this FileStore to a Store accepting URLs and exposing blobs of type `B`. You must provide
-    * a mapping from this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
+  /** Lifts this FileStore to a Store accepting URLs and exposing blobs of type `B`. You must provide a mapping from
+    * this Store's BlobType to B, and you may provide a function `g` for controlling input paths to this store.
     *
-    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and passed
-    * to this store.
+    * Input URLs to the returned store are validated against this Store's authority before the path is extracted and
+    * passed to this store.
     */
   override def lift(g: Url.Plain => Validated[Throwable, Plain]): Store[F, NioPath] =
     new Store.DelegatingStore[F, NioPath](this, g)

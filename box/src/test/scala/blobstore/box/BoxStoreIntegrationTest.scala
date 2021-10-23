@@ -12,8 +12,8 @@ import org.slf4j.LoggerFactory
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
-/** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server.
-  * See AbstractStoreTest to see what operations performed here.
+/** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server. See
+  * AbstractStoreTest to see what operations performed here.
   */
 @IntegrationTest
 class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
