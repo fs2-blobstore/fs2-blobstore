@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 50
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v2.3.5
+        uses: actions/checkout@v2.4.0
         with:
           fetch-depth: 0
 
@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2.3.5
+        uses: actions/checkout@v2.4.0
 
       - uses: coursier/cache-action@v6
 
