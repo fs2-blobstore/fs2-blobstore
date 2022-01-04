@@ -17,7 +17,7 @@ class HostnameTest extends AnyFlatSpec with Matchers with Inside {
     "FOOBAR",
     "foo_bar",
     "foo_bar123",
-    "a".repeat(63),
+    "a" * 63,
     "a",
     "A",
     "foo.bar-baz"
@@ -25,8 +25,8 @@ class HostnameTest extends AnyFlatSpec with Matchers with Inside {
 
   val invalidHostnames = List(
     "",
-    "f".repeat(64),
-    "foob#r".repeat(64)
+    "f" * 64,
+    "foob#r" * 64
   )
 
   it should "allow valid hostnames" in {
