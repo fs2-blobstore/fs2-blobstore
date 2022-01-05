@@ -16,8 +16,9 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package box
 
+import blobstore.url.exception.Throwables
 import blobstore.url.{FsObject, Path, Url}
-import cats.data.Validated
+import cats.data.{Validated, ValidatedNec}
 import cats.effect.{Async, Resource}
 import cats.syntax.all.*
 import com.box.sdk.{BoxAPIConnection, BoxFile, BoxFolder, BoxItem, BoxResource}
@@ -27,16 +28,16 @@ import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import scala.jdk.CollectionConverters.*
 
 /** @param api
-  *   - underlying configured BoxAPIConnection
+  *   underlying configured BoxAPIConnection
   * @param rootFolderId
-  *   – override for Root Folder Id, default – "0"
+  *   Root Folder Id, default – "0"
   * @param largeFileThreshold
-  *   – override for the threshold on the file size to be considered "large", default – 50MiB
+  *   override for the threshold on the file size to be considered "large", default – 50MiB
   */
 class BoxStore[F[_]: Async](
   api: BoxAPIConnection,
   rootFolderId: String,
-  largeFileThreshold: Long = 50L * 1024L * 1024L
+  largeFileThreshold: Long
 ) extends PathStore[F, BoxPath] {
 
   private val rootFolder = new BoxFolder(api, rootFolderId)
@@ -326,17 +327,45 @@ class BoxStore[F[_]: Async](
 
 object BoxStore {
 
-  /** @param api
-    *   - underlying configured BoxAPIConnection
-    * @param rootFolderId
-    *   – override for Root Folder Id, default – "0"
-    */
-  def apply[F[_]: Async](
-    api: BoxAPIConnection,
-    rootFolderId: String = RootFolderId
-  ): BoxStore[F] = new BoxStore(api, rootFolderId)
+  def builder[F[_]: Async](boxApiConnection: BoxAPIConnection): BoxStoreBuilder[F] =
+    BoxStoreBuilderImpl[F](boxApiConnection)
 
-  val RootFolderId = "0"
+  /** @see
+    *   [[BoxStore]]
+    */
+  trait BoxStoreBuilder[F[_]] {
+    def withBoxApiConnection(boxApiConnection: BoxAPIConnection): BoxStoreBuilder[F]
+    def withRootFolderId(rootFolderId: String): BoxStoreBuilder[F]
+    def withLargeFileThreshold(largeFileThreshold: Long): BoxStoreBuilder[F]
+    def build(): ValidatedNec[Throwable, BoxStore[F]]
+    def unsafe(): BoxStore[F] = build() match {
+      case Validated.Valid(a)    => a
+      case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
+    }
+  }
+
+  case class BoxStoreBuilderImpl[F[_]: Async](
+    _boxApiConnection: BoxAPIConnection,
+    _rootFolderId: String = "0",
+    _largeFileThreshold: Long = 50L * 1024L * 1024L
+  ) extends BoxStoreBuilder[F] {
+
+    def withBoxApiConnection(boxApiConnection: BoxAPIConnection): BoxStoreBuilder[F] =
+      this.copy(_boxApiConnection = boxApiConnection)
+
+    def withRootFolderId(rootFolderId: String): BoxStoreBuilder[F] = this.copy(_rootFolderId = rootFolderId)
+
+    def withLargeFileThreshold(largeFileThreshold: Long): BoxStoreBuilder[F] =
+      this.copy(_largeFileThreshold = largeFileThreshold)
+
+    def build(): ValidatedNec[Throwable, BoxStore[F]] = {
+      val validateLFT =
+        if (_largeFileThreshold < 1024L * 1024L) {
+          new IllegalArgumentException("Please consider increasing largeFileThreshold to at least 1MB.").invalidNec
+        } else ().validNec
+      validateLFT.map(_ => new BoxStore(_boxApiConnection, _rootFolderId, _largeFileThreshold))
+    }
+  }
 
   private val fileResourceType: String   = BoxResource.getResourceType(classOf[BoxFile])
   private val folderResourceType: String = BoxResource.getResourceType(classOf[BoxFolder])

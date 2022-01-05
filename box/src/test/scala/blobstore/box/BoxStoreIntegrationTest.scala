@@ -6,11 +6,11 @@ import java.time.{Instant, ZoneOffset}
 import blobstore.url.Authority
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnection, BoxFile, BoxFolder}
 import org.slf4j.LoggerFactory
 
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
 
 /** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server. See
@@ -28,7 +28,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val authority: Authority = Authority.unsafe("foo")
 
-  private lazy val boxStore: BoxStore[IO]    = BoxStore[IO](api)
+  private lazy val boxStore: BoxStore[IO]    = BoxStore.builder[IO](api).unsafe()
   override def mkStore(): Store[IO, BoxPath] = boxStore.lift
 
   val rootFolderName = "BoxStoreTest"
