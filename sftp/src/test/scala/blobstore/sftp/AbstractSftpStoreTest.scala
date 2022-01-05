@@ -37,8 +37,8 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
   private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
 
-  lazy val sftpStore: SftpStore[IO] =
-    SftpStore[IO](session).allocated.map(_._1).unsafeRunSync()
+  lazy val (sftpStore, shutDown) =
+    SftpStore.resourceBuilder[IO](session).build().allocated.unsafeRunSync()
 
   def mkStore(): Store[IO, SftpFile] = sftpStore.lift
 
@@ -49,7 +49,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
   override def afterAll(): Unit = {
     try {
-      sftpStore.session.disconnect()
+      shutDown.unsafeRunSync()
     } catch {
       case _: Throwable =>
     }
