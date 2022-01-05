@@ -26,7 +26,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
 
-class S3StoreS3MockTest extends AbstractS3StoreTest {
+class S3StoreS3MockTest extends ContainerizedAbstractS3StoreTest {
 
   override val container: GenericContainer = GenericContainer(
     dockerImage = "adobe/s3mock",

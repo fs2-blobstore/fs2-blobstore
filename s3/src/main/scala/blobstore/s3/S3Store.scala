@@ -16,7 +16,9 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 package s3
 
+import blobstore.url.exception.Throwables
 import blobstore.url.{Path, Url}
+import cats.data.{Validated, ValidatedNec}
 import cats.effect.kernel.Resource.ExitCase
 import cats.effect.std.{Queue, Semaphore}
 import cats.effect.{Async, Ref, Resource}
@@ -34,32 +36,38 @@ import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
 
 /** @param s3
-  *   - S3 Async Client
+  *   S3 Async Client.
+  * @param crtClient
+  *   optional instance S3CrtAsyncClient, which is used by S3 Transfer Manager (Requires additional runtime dependency,
+  *   but may lead to faster uploads/downloads).
   * @param objectAcl
-  *   - optional default ACL to apply to all put, move and copy operations.
+  *   optional default ACL to apply to all put, move and copy operations.
   * @param sseAlgorithm
-  *   - optional default SSE Algorithm to apply to all put, move and copy operations.
+  *   optional default SSE Algorithm to apply to all put, move and copy operations.
   * @param defaultFullMetadata
-  *   – return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
+  *   return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
   *   size, lastModified, eTag, storageClass. This controls behaviour of [[list]] method from Store trait. Use
   *   [[listUnderlying]] to control on per-invocation basis.
   * @param defaultTrailingSlashFiles
-  *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
-  *     [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  *   test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
+  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
   * @param bufferSize
-  *   – size of the buffer for multipart uploading (used for large streams without size known in advance).
+  *   size of the buffer for multipart uploading (used for large streams without size known in advance).
   * @see
   *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
   */
 class S3Store[F[_]: Async](
   s3: S3AsyncClient,
-  objectAcl: Option[ObjectCannedACL] = None,
-  sseAlgorithm: Option[String] = None,
-  defaultFullMetadata: Boolean = false,
-  defaultTrailingSlashFiles: Boolean = false,
-  bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
-  queueSize: Int = 32
+  crtClient: Option[S3AsyncClient],
+  objectAcl: Option[ObjectCannedACL],
+  sseAlgorithm: Option[ServerSideEncryption],
+  defaultFullMetadata: Boolean,
+  defaultTrailingSlashFiles: Boolean,
+  bufferSize: Int,
+  queueSize: Int
 ) extends Store[F, S3Blob] {
+
+  def bestClient: S3AsyncClient = crtClient.getOrElse(s3)
 
   override def list[A](url: Url[A], recursive: Boolean = false): Stream[F, Url[S3Blob]] =
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
@@ -93,9 +101,9 @@ class S3Store[F[_]: Async](
           ()
         }
       }
-    Stream.eval(
-      Async[F].fromCompletableFuture(Async[F].delay(s3.getObject(request, transformer)))
-    ).flatMap(publisher => publisher.toStreamBuffered(2).flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
+
+    Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(bestClient.getObject(request, transformer))))
+      .flatMap(_.toStreamBuffered(2).flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
   }
 
   def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
@@ -249,16 +257,17 @@ class S3Store[F[_]: Async](
   ): F[Unit] = {
     val request     = S3MetaInfo.mkPutObjectRequest(sseAlgorithm, objectAcl, bucket, key, meta, bytes.length.toLong)
     val requestBody = AsyncRequestBody.fromBytes(bytes)
-    Async[F].fromCompletableFuture(Async[F].delay(s3.putObject(request, requestBody))).void
+    Async[F].fromCompletableFuture(Async[F].delay(bestClient.putObject(request, requestBody))).void
   }
 
-  private def putMultiPart(
+  private def _putMultiPart(
     bucket: String,
     key: String,
     meta: Option[S3MetaInfo],
     maybeSize: Option[Long],
     in: Stream[F, Byte]
   ): Stream[F, Unit] = {
+
     val request: CreateMultipartUploadRequest =
       S3MetaInfo.mkPutMultiPartRequest(sseAlgorithm, objectAcl, bucket, key, meta)
 
@@ -353,13 +362,7 @@ class S3Store[F[_]: Async](
             }
           } yield selectBuffer(part)
 
-          if (bufferSize < S3Store.multiUploadMinimumPartSize) {
-            _ => Stream.raiseError(S3Store.multipartUploadBufferTooSmallError)
-          } else if (bufferSize > S3Store.multiUploadDefaultPartSize) {
-            _ => Stream.raiseError(S3Store.multipartUploadBufferTooLargeError)
-          } else {
-            putRotateBase(bufferSize.toLong, resource)(bb => chunk => Async[F].blocking(bb.put(chunk.toArray)).void)
-          }
+          putRotateBase(bufferSize.toLong, resource)(bb => chunk => Async[F].blocking(bb.put(chunk.toArray)).void)
       }
 
       in.through(pipe).onFinalizeCase {
@@ -380,6 +383,23 @@ class S3Store[F[_]: Async](
           Async[F].fromCompletableFuture(Async[F].delay(s3.abortMultipartUpload(req))).void
       }
     }
+  }
+
+  private def putMultiPart(
+    bucket: String,
+    key: String,
+    meta: Option[S3MetaInfo],
+    maybeSize: Option[Long],
+    in: Stream[F, Byte]
+  ): Stream[F, Unit] = maybeSize match {
+    case Some(knownSize) if crtClient.isDefined =>
+      Stream.resource(in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher).evalMap {
+        publisher =>
+          val request = S3MetaInfo.mkPutObjectRequest(sseAlgorithm, objectAcl, bucket, key, meta, knownSize)
+          val body    = AsyncRequestBody.fromPublisher(publisher)
+          Async[F].fromCompletableFuture(Async[F].delay(bestClient.putObject(request, body))).void
+      }
+    case maybeSize => _putMultiPart(bucket, key, meta, maybeSize, in)
   }
 
   private def putUnderlying(
@@ -429,42 +449,7 @@ class S3Store[F[_]: Async](
 
 object S3Store {
 
-  /** @param s3
-    *   - S3 Async Client
-    * @param objectAcl
-    *   - optional default ACL to apply to all put, move and copy operations.
-    * @param sseAlgorithm
-    *   - optional default SSE Algorithm to apply to all put, move and copy operations.
-    * @param defaultFullMetadata
-    *   – return full object metadata on [[S3Store.list]], requires additional request per object. Metadata returned by
-    *   default: size, lastModified, eTag, storageClass. This controls behaviour of [[S3Store.list]] method from Store
-    *   trait. Use [[S3Store.listUnderlying]] to control on per-invocation basis.
-    * @param defaultTrailingSlashFiles
-    *   - test if folders returned by [[S3Store.list]] are files with trailing slashes in their names. This controls
-    *     behaviour of [[S3Store.list]] method from Store trait. Use [[S3Store.listUnderlying]] to control on
-    *     per-invocation basis.
-    * @param bufferSize
-    *   - size of buffer for multipart uploading (used for large streams without size known in advance).
-    * @see
-    *   https://docs.aws.amazon.com/AmazonS3/latest/dev/qfacts.html
-    */
-  def apply[F[_]: Async](
-    s3: S3AsyncClient,
-    objectAcl: Option[ObjectCannedACL] = None,
-    sseAlgorithm: Option[String] = None,
-    defaultFullMetadata: Boolean = false,
-    defaultTrailingSlashFiles: Boolean = false,
-    bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
-    queueSize: Int = 32
-  ): S3Store[F] = new S3Store(
-    s3,
-    objectAcl,
-    sseAlgorithm,
-    defaultFullMetadata,
-    defaultTrailingSlashFiles,
-    bufferSize,
-    queueSize
-  )
+  def builder[F[_]: Async](s3: S3AsyncClient): S3StoreBuilder[F] = S3StoreBuilderImpl[F](s3)
 
   private val mb: Int = 1024 * 1024
 
@@ -480,11 +465,95 @@ object S3Store {
     s"S3 doesn't support multipart uploads with more than ${S3Store.maxMultipartParts} parts."
   )
 
-  private val multipartUploadBufferTooSmallError = new IllegalArgumentException(
-    s"Please use buffer size of at least 5Mb – S3 requires minimal size of 5Mb per part of multipart upload."
-  )
+  /** @see
+    *   [[S3Store]]
+    */
+  trait S3StoreBuilder[F[_]] {
+    def withS3Client(s3Client: S3AsyncClient): S3StoreBuilder[F]
+    def setCrtClient(maybeCrtClient: Option[S3AsyncClient]): S3StoreBuilder[F]
+    def setObjectAcl(maybeObjectAcl: Option[ObjectCannedACL]): S3StoreBuilder[F]
+    def setSseAlgorithm(maybeSseAlgorithm: Option[ServerSideEncryption]): S3StoreBuilder[F]
+    def withBufferSize(bufferSize: Int): S3StoreBuilder[F]
+    def withQueueSize(queueSize: Int): S3StoreBuilder[F]
+    def enableFullMetadata: S3StoreBuilder[F]
+    def disableFullMetadata: S3StoreBuilder[F]
+    def enableTrailingSlashFiles: S3StoreBuilder[F]
+    def disableTrailingSlashFiles: S3StoreBuilder[F]
+    def withCrtClient(crtClient: S3AsyncClient): S3StoreBuilder[F]              = setCrtClient(Some(crtClient))
+    def withObjectAcl(objectAcl: ObjectCannedACL): S3StoreBuilder[F]            = setObjectAcl(Some(objectAcl))
+    def withSseAlgorithm(sseAlgorithm: ServerSideEncryption): S3StoreBuilder[F] = setSseAlgorithm(Some(sseAlgorithm))
+    def build(): ValidatedNec[Throwable, S3Store[F]]
+    def unsafe(): S3Store[F] = build() match {
+      case Validated.Valid(a)    => a
+      case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
+    }
+  }
 
-  private val multipartUploadBufferTooLargeError = new IllegalArgumentException(
-    s"Please use buffer size less than 500Mb – S3 requires maximum object size of 5Tb, and maximum number of 10000 parts in multipart upload."
-  )
+  case class S3StoreBuilderImpl[F[_]: Async](
+    _s3Client: S3AsyncClient,
+    _crtClient: Option[S3AsyncClient] = None,
+    _objectAcl: Option[ObjectCannedACL] = None,
+    _sseAlgorithm: Option[ServerSideEncryption] = None,
+    _defaultFullMetadata: Boolean = false,
+    _defaultTrailingSlashFiles: Boolean = false,
+    _bufferSize: Int = S3Store.multiUploadDefaultPartSize.toInt,
+    _queueSize: Int = 32
+  ) extends S3StoreBuilder[F] {
+    def withS3Client(s3Client: S3AsyncClient): S3StoreBuilder[F]               = this.copy(_s3Client = s3Client)
+    def setCrtClient(maybeCrtClient: Option[S3AsyncClient]): S3StoreBuilder[F] = this.copy(_crtClient = maybeCrtClient)
+    def setObjectAcl(maybeObjectAcl: Option[ObjectCannedACL]): S3StoreBuilder[F] =
+      this.copy(_objectAcl = maybeObjectAcl)
+    def setSseAlgorithm(maybeSseAlgorithm: Option[ServerSideEncryption]): S3StoreBuilder[F] =
+      this.copy(_sseAlgorithm = maybeSseAlgorithm)
+    def withBufferSize(bufferSize: Int): S3StoreBuilder[F] = this.copy(_bufferSize = bufferSize)
+    def withQueueSize(queueSize: Int): S3StoreBuilder[F]   = this.copy(_queueSize = queueSize)
+    def enableFullMetadata: S3StoreBuilder[F]              = this.copy(_defaultFullMetadata = true)
+    def disableFullMetadata: S3StoreBuilder[F]             = this.copy(_defaultFullMetadata = false)
+    def enableTrailingSlashFiles: S3StoreBuilder[F]        = this.copy(_defaultTrailingSlashFiles = true)
+    def disableTrailingSlashFiles: S3StoreBuilder[F]       = this.copy(_defaultTrailingSlashFiles = false)
+
+    def build(): ValidatedNec[Throwable, S3Store[F]] = {
+      val validateCrtClient: ValidatedNec[IllegalArgumentException, Unit] = _crtClient match {
+        case Some(client) if !checkExpectedCrtClientClass(client) =>
+          new IllegalArgumentException(
+            "CRT client must implement software.amazon.awssdk.transfer.s3.internal.S3CrtAsyncClient."
+          ).invalidNec
+        case _ => ().validNec
+      }
+
+      val validateBufferSize: ValidatedNec[IllegalArgumentException, Unit] =
+        if (_bufferSize < multiUploadMinimumPartSize) {
+          new IllegalArgumentException(
+            "Please use buffer size of at least 5Mb – S3 requires minimal size of 5Mb per part of multipart upload."
+          ).invalidNec
+        } else if (_bufferSize > multiUploadDefaultPartSize) {
+          new IllegalArgumentException(
+            "Please use buffer size less than 500Mb – S3 requires maximum object size of 5Tb, and maximum number of 10000 parts in multipart upload."
+          ).invalidNec
+        } else ().validNec
+
+      val validateQueueSize: ValidatedNec[IllegalArgumentException, Unit] =
+        if (_queueSize < 4) {
+          new IllegalArgumentException("Please use queue size of at least 4.").invalidNec
+        } else ().validNec
+
+      List(validateCrtClient, validateBufferSize, validateQueueSize).combineAll.map(_ =>
+        new S3Store[F](
+          _s3Client,
+          _crtClient,
+          _objectAcl,
+          _sseAlgorithm,
+          _defaultFullMetadata,
+          _defaultTrailingSlashFiles,
+          _bufferSize,
+          _queueSize
+        )
+      )
+    }
+
+    private def checkExpectedCrtClientClass(client: S3AsyncClient): Boolean =
+      client.getClass.getInterfaces.map(_.getCanonicalName).contains(
+        "software.amazon.awssdk.transfer.s3.internal.S3CrtAsyncClient"
+      )
+  }
 }
