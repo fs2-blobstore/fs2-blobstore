@@ -41,17 +41,17 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
       .map(u => new FileReader(new File(u.toURI)))
       .map(BoxConfig.readFrom)
       .map(BoxDeveloperEditionAPIConnection.getAppEnterpriseConnection)
-      .flatTap(_ => Try(log.info(s"Authenticated with credentials file $fileCredentialName")))
+      .flatTap(_ => Try(log.info(show"Authenticated with credentials file $fileCredentialName")))
 
     val devToken = sys.env
       .get(BoxDevToken)
-      .toRight(new Exception(s"Environment variable not set: $BoxDevToken"))
+      .toRight(new Exception(show"Environment variable not set: $BoxDevToken"))
       .toTry
       .map(new BoxAPIConnection(_))
       .flatTap(_ => Try(log.info("Authenticated with dev token")))
 
     devToken.orElse(fileCredentials) match {
-      case Failure(e) => cancel(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey", e)
+      case Failure(e) => cancel(show"No box credentials found. Please set $BoxDevToken or $BoxAppKey", e)
       case Success(c) => c
     }
   }
@@ -64,7 +64,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
 
     rootInfo match {
       case Some(i) => i
-      case None    => fail(new Exception(s"Root folder not found: $authority"))
+      case None    => fail(new Exception(show"Root folder not found: $authority"))
     }
   }
 
@@ -79,12 +79,12 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
       .filter(_.getCreatedAt.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))
       .foreach {
         case i: BoxFolder#Info =>
-          log.info(s"Deleting outdated test folder ${i.getName}")
+          log.info(show"Deleting outdated test folder ${i.getName}")
           Try(i.getResource.delete(true))
         case i: BoxFile#Info =>
-          log.info(s"Deleting outdated test file ${i.getName}")
+          log.info(show"Deleting outdated test file ${i.getName}")
           Try(i.getResource.delete())
-        case i => log.info(s"Ignoring old item $i")
+        case i => log.info(show"Ignoring old item ${i.getName}")
       }
   }
 

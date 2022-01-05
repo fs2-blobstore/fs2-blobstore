@@ -164,7 +164,7 @@ class S3Store[F[_]: Async](
           DeleteObjectsRequest.builder().bucket(bucket).delete(Delete.builder().objects(objects.asJava).build()).build()
         Async[F].fromCompletableFuture(Async[F].delay(s3.deleteObjects(req))).flatMap[Unit] {
           case resp if resp.hasErrors =>
-            def msg(e: S3Error): String = s"S3 error(${e.code()}) – ${e.message()}"
+            def msg(e: S3Error): String = show"S3 error(${e.code()}) – ${e.message()}"
             resp.errors().asScala.toList match {
               case Nil      => Async[F].unit
               case e :: Nil => Async[F].raiseError(new RuntimeException(msg(e)))
@@ -462,7 +462,7 @@ object S3Store {
   private val maxMultipartParts: Int           = 10000
 
   private val multipartUploadPartsError = new IllegalArgumentException(
-    s"S3 doesn't support multipart uploads with more than ${S3Store.maxMultipartParts} parts."
+    show"S3 doesn't support multipart uploads with more than ${S3Store.maxMultipartParts} parts."
   )
 
   /** @see

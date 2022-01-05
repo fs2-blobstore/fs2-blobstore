@@ -93,7 +93,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   it should "set underlying metadata on write" in {
     val ct  = "text/plain"
     val sc  = StorageClass.NEARLINE
-    val url = Url("gs", authority, Path(s"test-$testRun/set-underlying/file"))
+    val url = Url("gs", authority, Path(show"test-$testRun/set-underlying/file"))
 
     val blobInfo = BlobInfo
       .newBuilder(url.authority.show, url.path.show)
@@ -117,7 +117,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
   it should "support direct download" in {
     val dir      = dirUrl("direct-download")
-    val filename = s"test-${System.currentTimeMillis}.txt"
+    val filename = show"test-${System.currentTimeMillis}.txt"
     val path     = writeFile(store, dir)(filename)
 
     val content = gcsStore

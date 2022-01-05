@@ -62,7 +62,7 @@ trait S3MetaInfo {
       restore.map("Restore: " ++ _),
       missingMeta.flatMap {
         case 0 => None
-        case n => Some(s"Missing Meta: $n")
+        case n => Some("Missing Meta: " ++ n.toString)
       },
       versionId.map("Version Id: " ++ _),
       cacheControl.map("Cache Control: " ++ _),

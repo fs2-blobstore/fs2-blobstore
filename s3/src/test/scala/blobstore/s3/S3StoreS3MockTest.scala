@@ -18,6 +18,7 @@ package s3
 
 import cats.effect.unsafe.implicits.global
 import cats.effect.IO
+import cats.syntax.all.*
 
 import java.net.URI
 import com.dimafeng.testcontainers.GenericContainer
@@ -36,7 +37,7 @@ class S3StoreS3MockTest extends ContainerizedAbstractS3StoreTest {
   override def client: S3AsyncClient = S3AsyncClient
     .builder()
     .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(s"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
+    .endpointOverride(URI.create(show"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("a", "s")))
     .overrideConfiguration(overrideConfiguration)
     .httpClient(httpClient)

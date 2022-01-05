@@ -66,7 +66,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
         .take(size)
         .compile
         .to(Array)
-      path = Path(s"$authority/test-$testRun/multipart-upload/") / name
+      path = testRunRoot / "multipart-upload" / name
       url  = Url("s3", authority, path)
       result    <- Stream.chunk(Chunk.ArraySlice(bytes)).through(store.put(url, size = None)).compile.drain.attempt
       _         <- IO.sleep(FiniteDuration(5, "s"))
@@ -101,7 +101,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
     val test = for {
       counter <- IO.ref(0)
       _ <- data
-        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), 6 * 1024 * 1024))
+        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / i.toString), 6 * 1024 * 1024))
         .compile
         .drain
       files        <- store.list(dir, recursive = true).compile.toList

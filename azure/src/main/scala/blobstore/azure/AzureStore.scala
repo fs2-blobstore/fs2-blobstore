@@ -268,7 +268,7 @@ object AzureStore {
       val validateBlockSize =
         if (_blockSize < 1 || _blockSize > BlockBlobAsyncClient.MAX_STAGE_BLOCK_BYTES_LONG) {
           new IllegalArgumentException(
-            s"Block size must be in range [1, ${BlockBlobAsyncClient.MAX_STAGE_BLOCK_BYTES_LONG}]."
+            show"Block size must be in range [1, ${BlockBlobAsyncClient.MAX_STAGE_BLOCK_BYTES_LONG}]."
           ).invalidNec
         } else {
           ().validNec

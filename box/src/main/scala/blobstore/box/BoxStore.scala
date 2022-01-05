@@ -68,7 +68,7 @@ class BoxStore[F[_]: Async](
 
     Stream.eval(boxFileAtPath(path)).flatMap {
       case None =>
-        Stream.raiseError(new IllegalArgumentException(s"Item at path '$path' doesn't exist or is not a File"))
+        Stream.raiseError(new IllegalArgumentException(show"Item at path '$path' doesn't exist or is not a File"))
       case Some(file) => Stream.bracket(init)(release).flatMap(consume(file))
     }
   }
@@ -77,7 +77,7 @@ class BoxStore[F[_]: Async](
     in =>
       path.lastSegment match {
         case None =>
-          Stream.raiseError(new IllegalArgumentException(s"Specified path '$path' doesn't point to a file."))
+          Stream.raiseError(new IllegalArgumentException(show"Specified path '$path' doesn't point to a file."))
         case Some(name) =>
           val init: F[(OutputStream, InputStream, Either[BoxFile, BoxFolder])] = {
             val os = new PipedOutputStream()
@@ -86,7 +86,7 @@ class BoxStore[F[_]: Async](
               case Some(existing) if overwrite =>
                 (os: OutputStream, is: InputStream, existing.asLeft[BoxFolder]).pure[F]
               case Some(_) =>
-                Async[F].raiseError(new IllegalArgumentException(s"File at path '$path' already exist."))
+                Async[F].raiseError(new IllegalArgumentException(show"File at path '$path' already exist."))
               case None =>
                 putFolderAtPath(rootFolder, path.up.segments.toList).map { parentFolder =>
                   (os: OutputStream, is: InputStream, parentFolder.asRight[BoxFile])
@@ -159,7 +159,7 @@ class BoxStore[F[_]: Async](
       p <- Resource.eval(computePath)
       name <- Resource.eval(
         Async[F].fromEither(p.lastSegment.filter(s => !s.endsWith("/")).toRight(new IllegalArgumentException(
-          s"Specified path '$p' doesn't point to a file."
+          show"Specified path '$p' doesn't point to a file."
         )))
       )
       fileOrFolder <- Resource.eval(boxFileAtPath(p).flatMap {
@@ -299,7 +299,7 @@ class BoxStore[F[_]: Async](
           case Some(_) =>
             Async[F].raiseError(
               new IllegalArgumentException(
-                s"Can't create Folder '$head' along path - File with this name already exists"
+                show"Can't create Folder '$head' along path - File with this name already exists"
               )
             )
           case None =>

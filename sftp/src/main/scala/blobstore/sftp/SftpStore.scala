@@ -178,7 +178,7 @@ class SftpStore[F[_]: Async](
           case Left(e: SftpException) if e.id == ChannelSftp.SSH_FX_NO_SUCH_FILE =>
             newOrOverwrite
           case Left(e)  => Async[F].raiseError(e)
-          case Right(_) => Async[F].raiseError(new IllegalArgumentException(s"File at path '$path' already exist."))
+          case Right(_) => Async[F].raiseError(new IllegalArgumentException(show"File at path '$path' already exist."))
         }
       }
     }
@@ -245,11 +245,11 @@ object SftpStore {
         if (_connectTimeout < 100) {
           new IllegalArgumentException("Please set connectTimeout to be at least 100ms.").invalidNec
         } else if (_connectTimeout > Int.MaxValue.toLong) {
-          new IllegalArgumentException(s"connectTimeout cannot exceed ${Int.MaxValue}.").invalidNec
+          new IllegalArgumentException(show"connectTimeout cannot exceed ${Int.MaxValue}.").invalidNec
         } else ().validNec
       val validateMaxChannels: ValidatedNec[Throwable, Unit] = _maxChannels match {
         case Some(maxC) if maxC < 1 =>
-          new IllegalArgumentException(s"Please set maxChannels to be at least 1.").invalidNec
+          new IllegalArgumentException("Please set maxChannels to be at least 1.").invalidNec
         case _ => ().validNec
       }
 
