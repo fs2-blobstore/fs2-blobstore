@@ -3,13 +3,12 @@ package gcs
 
 import blobstore.url.{Authority, Path, Url}
 import blobstore.url.Path.Plain
-import blobstore.Store
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import com.google.cloud.ServiceRpc
 import com.google.cloud.spi.ServiceRpcFactory
-import com.google.cloud.storage.{BlobInfo, StorageClass, StorageOptions}
+import com.google.cloud.storage.{BlobInfo, Storage, StorageClass, StorageOptions}
 import com.google.cloud.storage.contrib.nio.testing.FixedFakeStorageRpc
 import fs2.Stream
 import org.scalatest.Inside
@@ -22,16 +21,14 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   override val authority: Authority  = Authority.unsafe("bucket")
   override val fileSystemRoot: Plain = Path("")
 
-  val gcsStore: GcsStore[IO] = GcsStore[IO](
-    StorageOptions
-      .newBuilder().setServiceRpcFactory(
-        new ServiceRpcFactory[StorageOptions]() {
-          override def create(options: StorageOptions): ServiceRpc = new FixedFakeStorageRpc(true)
-        }
-      ).build().getService,
-    defaultTrailingSlashFiles = true,
-    defaultDirectDownload = false
-  )
+  val storage: Storage = StorageOptions
+    .newBuilder().setServiceRpcFactory(
+      new ServiceRpcFactory[StorageOptions]() {
+        override def create(options: StorageOptions): ServiceRpc = new FixedFakeStorageRpc(true)
+      }
+    ).build().getService
+
+  val gcsStore: GcsStore[IO] = GcsStore.builder[IO](storage).enableTrailingSlashFiles.unsafe()
 
   override def mkStore(): GcsStore[IO] = gcsStore
 
