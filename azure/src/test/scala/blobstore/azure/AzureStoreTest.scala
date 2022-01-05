@@ -38,7 +38,14 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
     .buildAsyncClient()
 
   override def mkStore(): Store[IO, AzureBlob] =
-    new AzureStore[IO](azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true) {
+    new AzureStore[IO](
+      azure = azure,
+      defaultFullMetadata = true,
+      defaultTrailingSlashFiles = true,
+      blockSize = 50 * 1024 * 1024,
+      numBuffers = 2,
+      queueSize = 32
+    ) {
       // TODO: Remove override when Azurite supports Batch API
       override def remove[A](url: Url[A], recursive: Boolean): IO[Unit] =
         if (recursive) new StoreOps[IO, AzureBlob](this).removeAll(url).void
