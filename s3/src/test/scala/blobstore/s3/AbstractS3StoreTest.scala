@@ -1,12 +1,11 @@
 package blobstore.s3
 
 import blobstore.AbstractStoreTest
-import blobstore.url.{Authority, Path, Url}
+import blobstore.url.{Path, Url}
 import cats.effect.IO
 import cats.effect.std.Random
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
-import com.dimafeng.testcontainers.GenericContainer
 import fs2.{Chunk, Stream}
 import org.scalatest.{Assertion, Inside}
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
@@ -14,15 +13,11 @@ import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.conditions.RetryCondition
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
-import software.amazon.awssdk.services.s3.S3AsyncClient
-import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 
 import java.time.Duration
 import scala.concurrent.duration.FiniteDuration
 
 abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside {
-  def container: GenericContainer
-  def client: S3AsyncClient
 
   val httpClient: SdkAsyncHttpClient = NettyNioAsyncHttpClient.builder()
     .connectionTimeout(Duration.ofSeconds(20))
@@ -41,24 +36,9 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
       .build()
 
   override val scheme: String             = "s3"
-  override val authority: Authority       = Authority.unsafe("blobstore-test-bucket")
   override val fileSystemRoot: Path.Plain = Path("")
 
-  override def mkStore(): S3Store[IO] =
-    new S3Store[IO](client, defaultFullMetadata = true, bufferSize = 5 * 1024 * 1024)
-
   def s3Store: S3Store[IO] = store.asInstanceOf[S3Store[IO]] // scalafix:ok
-
-  override def beforeAll(): Unit = {
-    container.start()
-    client.createBucket(CreateBucketRequest.builder().bucket(authority.show).build()).get()
-    super.beforeAll()
-  }
-
-  override def afterAll(): Unit = {
-    container.stop()
-    super.afterAll()
-  }
 
   behavior of "S3Store"
 
@@ -86,7 +66,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
         .take(size)
         .compile
         .to(Array)
-      path = Path(s"$authority/test-$testRun/multipart-upload/") / name
+      path = testRunRoot / "multipart-upload" / name
       url  = Url("s3", authority, path)
       result    <- Stream.chunk(Chunk.ArraySlice(bytes)).through(store.put(url, size = None)).compile.drain.attempt
       _         <- IO.sleep(FiniteDuration(5, "s"))
@@ -121,7 +101,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
     val test = for {
       counter <- IO.ref(0)
       _ <- data
-        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), 6 * 1024 * 1024))
+        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / i.toString), 6 * 1024 * 1024))
         .compile
         .drain
       files        <- store.list(dir, recursive = true).compile.toList

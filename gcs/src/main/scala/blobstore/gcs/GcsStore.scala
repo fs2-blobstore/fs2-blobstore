@@ -1,7 +1,9 @@
 package blobstore.gcs
 
+import blobstore.url.exception.Throwables
 import blobstore.{putRotateBase, Store}
 import blobstore.url.{Path, Url}
+import cats.data.{Validated, ValidatedNec}
 import cats.effect.{Async, Resource}
 import cats.syntax.all.*
 import com.google.api.gax.paging.Page
@@ -28,9 +30,9 @@ import scala.jdk.CollectionConverters.*
   */
 class GcsStore[F[_]: Async](
   storage: Storage,
-  acls: List[Acl] = Nil,
-  defaultTrailingSlashFiles: Boolean = false,
-  defaultDirectDownload: Boolean = false
+  acls: List[Acl],
+  defaultTrailingSlashFiles: Boolean,
+  defaultDirectDownload: Boolean
 ) extends Store[F, GcsBlob] {
 
   override def list[A](url: Url[A], recursive: Boolean = false): Stream[F, Url[GcsBlob]] =
@@ -186,32 +188,48 @@ class GcsStore[F[_]: Async](
 
 object GcsStore {
 
-  /** @param storage
-    *   configured instance of GCS Storage
-    * @param acls
-    *   list of Access Control List objects to be set on all uploads.
-    * @param defaultTrailingSlashFiles
-    *   test if folders returned by `GcsStore.list` are files with trailing slashes in their names. This controls
-    *   behaviour of `GcsStore.list` method from Store trait. Use [[GcsStore.listUnderlying]] to control on
-    *   per-invocation basis.
-    * @param defaultDirectDownload
-    *   use direct download. When enabled the whole media content is downloaded in a single request (but still
-    *   streamed). Otherwise use the resumable media download protocol to download in data chunks. This controls
-    *   behaviour of `GcsStore.get` method from Store trait. Use [[GcsStore.getUnderlying]] to control on per-invocation
-    *   basis.
+  def builder[F[_]: Async](storage: Storage): GcsStoreBuilder[F] = GcsStoreBuilderImpl(storage)
+
+  /** @see
+    *   [[GcsStore]]
     */
-  def apply[F[_]: Async](
-    storage: Storage,
-    acls: List[Acl] = Nil,
-    defaultTrailingSlashFiles: Boolean = false,
-    defaultDirectDownload: Boolean = false
-  ): GcsStore[F] =
-    new GcsStore(
-      storage = storage,
-      acls = acls,
-      defaultTrailingSlashFiles = defaultTrailingSlashFiles,
-      defaultDirectDownload = defaultDirectDownload
-    )
+  trait GcsStoreBuilder[F[_]] {
+    def withStorage(storage: Storage): GcsStoreBuilder[F]
+    def withAcls(acls: List[Acl]): GcsStoreBuilder[F]
+    def addAcls(acls: List[Acl]): GcsStoreBuilder[F]
+    def enableDirectDownload: GcsStoreBuilder[F]
+    def disableDirectDownload: GcsStoreBuilder[F]
+    def enableTrailingSlashFiles: GcsStoreBuilder[F]
+    def disableTrailingSlashFiles: GcsStoreBuilder[F]
+
+    def build: ValidatedNec[Throwable, GcsStore[F]]
+    def unsafe: GcsStore[F] = build match {
+      case Validated.Valid(a)    => a
+      case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
+    }
+  }
+
+  case class GcsStoreBuilderImpl[F[_]: Async](
+    _storage: Storage,
+    _acls: List[Acl] = Nil,
+    _defaultTrailingSlashFiles: Boolean = false,
+    _defaultDirectDownload: Boolean = false
+  ) extends GcsStoreBuilder[F] {
+    def withStorage(storage: Storage): GcsStoreBuilder[F] = this.copy(_storage = storage)
+    def withAcls(newAcls: List[Acl]): GcsStoreBuilder[F]  = this.copy(_acls = newAcls)
+    def addAcls(extraAcls: List[Acl]): GcsStoreBuilder[F] = this.copy(_acls = _acls ++ extraAcls)
+    def enableDirectDownload: GcsStoreBuilder[F]          = this.copy(_defaultDirectDownload = true)
+    def disableDirectDownload: GcsStoreBuilder[F]         = this.copy(_defaultDirectDownload = false)
+    def enableTrailingSlashFiles: GcsStoreBuilder[F]      = this.copy(_defaultTrailingSlashFiles = true)
+    def disableTrailingSlashFiles: GcsStoreBuilder[F]     = this.copy(_defaultTrailingSlashFiles = false)
+    def build: ValidatedNec[Throwable, GcsStore[F]] =
+      new GcsStore(
+        storage = _storage,
+        acls = _acls,
+        defaultTrailingSlashFiles = _defaultTrailingSlashFiles,
+        defaultDirectDownload = _defaultDirectDownload
+      ).validNec
+  }
 
   private val minimalReaderChunkSize = 2 * 1024 * 1024 // BlobReadChannel.DEFAULT_CHUNK_SIZE
 
