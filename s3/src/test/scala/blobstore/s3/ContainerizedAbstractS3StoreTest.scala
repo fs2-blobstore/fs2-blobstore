@@ -15,7 +15,7 @@ abstract class ContainerizedAbstractS3StoreTest extends AbstractS3StoreTest {
     .builder[IO](client)
     .withBufferSize(5 * 1024 * 1024)
     .enableFullMetadata
-    .unsafe()
+    .unsafe
 
   override def beforeAll(): Unit = {
     container.start()

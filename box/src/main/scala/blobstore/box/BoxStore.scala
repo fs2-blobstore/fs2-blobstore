@@ -337,8 +337,8 @@ object BoxStore {
     def withBoxApiConnection(boxApiConnection: BoxAPIConnection): BoxStoreBuilder[F]
     def withRootFolderId(rootFolderId: String): BoxStoreBuilder[F]
     def withLargeFileThreshold(largeFileThreshold: Long): BoxStoreBuilder[F]
-    def build(): ValidatedNec[Throwable, BoxStore[F]]
-    def unsafe(): BoxStore[F] = build() match {
+    def build: ValidatedNec[Throwable, BoxStore[F]]
+    def unsafe: BoxStore[F] = build match {
       case Validated.Valid(a)    => a
       case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
     }
@@ -358,7 +358,7 @@ object BoxStore {
     def withLargeFileThreshold(largeFileThreshold: Long): BoxStoreBuilder[F] =
       this.copy(_largeFileThreshold = largeFileThreshold)
 
-    def build(): ValidatedNec[Throwable, BoxStore[F]] = {
+    def build: ValidatedNec[Throwable, BoxStore[F]] = {
       val validateLFT =
         if (_largeFileThreshold < 1024L * 1024L) {
           new IllegalArgumentException("Please consider increasing largeFileThreshold to at least 1MB.").invalidNec

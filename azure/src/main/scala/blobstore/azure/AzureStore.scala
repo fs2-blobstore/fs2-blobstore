@@ -240,8 +240,8 @@ object AzureStore {
     def disableFullMetadata: AzureStoreBuilder[F]
     def enableTrailingSlashFiles: AzureStoreBuilder[F]
     def disableTrailingSlashFiles: AzureStoreBuilder[F]
-    def build(): ValidatedNec[Throwable, AzureStore[F]]
-    def unsafe(): AzureStore[F] = build() match {
+    def build: ValidatedNec[Throwable, AzureStore[F]]
+    def unsafe: AzureStore[F] = build match {
       case Validated.Valid(a)    => a
       case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
     }
@@ -264,7 +264,7 @@ object AzureStore {
     def enableTrailingSlashFiles: AzureStoreBuilder[F]                   = this.copy(_defaultTrailingSlashFiles = true)
     def disableTrailingSlashFiles: AzureStoreBuilder[F]                  = this.copy(_defaultTrailingSlashFiles = false)
 
-    def build(): ValidatedNec[Throwable, AzureStore[F]] = {
+    def build: ValidatedNec[Throwable, AzureStore[F]] = {
       val validateBlockSize =
         if (_blockSize < 1 || _blockSize > BlockBlobAsyncClient.MAX_STAGE_BLOCK_BYTES_LONG) {
           new IllegalArgumentException(

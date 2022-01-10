@@ -482,8 +482,8 @@ object S3Store {
     def withCrtClient(crtClient: S3AsyncClient): S3StoreBuilder[F]              = setCrtClient(Some(crtClient))
     def withObjectAcl(objectAcl: ObjectCannedACL): S3StoreBuilder[F]            = setObjectAcl(Some(objectAcl))
     def withSseAlgorithm(sseAlgorithm: ServerSideEncryption): S3StoreBuilder[F] = setSseAlgorithm(Some(sseAlgorithm))
-    def build(): ValidatedNec[Throwable, S3Store[F]]
-    def unsafe(): S3Store[F] = build() match {
+    def build: ValidatedNec[Throwable, S3Store[F]]
+    def unsafe: S3Store[F] = build match {
       case Validated.Valid(a)    => a
       case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
     }
@@ -512,7 +512,7 @@ object S3Store {
     def enableTrailingSlashFiles: S3StoreBuilder[F]        = this.copy(_defaultTrailingSlashFiles = true)
     def disableTrailingSlashFiles: S3StoreBuilder[F]       = this.copy(_defaultTrailingSlashFiles = false)
 
-    def build(): ValidatedNec[Throwable, S3Store[F]] = {
+    def build: ValidatedNec[Throwable, S3Store[F]] = {
       val validateCrtClient: ValidatedNec[IllegalArgumentException, Unit] = _crtClient match {
         case Some(client) if !checkExpectedCrtClientClass(client) =>
           new IllegalArgumentException(

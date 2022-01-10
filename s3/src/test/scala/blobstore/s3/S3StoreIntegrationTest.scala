@@ -49,7 +49,7 @@ class S3StoreIntegrationTest extends AbstractS3StoreTest {
     .withCrtClient(crtAsyncClient)
     .withBufferSize(5 * 1024 * 1024)
     .enableFullMetadata
-    .unsafe()
+    .unsafe
 
   it should "pick up correct storage class" in {
     val dir     = dirUrl("foo")

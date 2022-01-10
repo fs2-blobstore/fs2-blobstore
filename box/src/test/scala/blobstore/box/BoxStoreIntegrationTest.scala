@@ -28,7 +28,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val authority: Authority = Authority.unsafe("foo")
 
-  private lazy val boxStore: BoxStore[IO]    = BoxStore.builder[IO](api).unsafe()
+  private lazy val boxStore: BoxStore[IO]    = BoxStore.builder[IO](api).unsafe
   override def mkStore(): Store[IO, BoxPath] = boxStore.lift
 
   val rootFolderName = "BoxStoreTest"

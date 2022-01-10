@@ -227,7 +227,7 @@ object SftpStore {
     def setMaxChannels(maybeMaxChannels: Option[Long]): SftpStoreResourceBuilder[F]
     def withConnectTimeout(connectTimeoutMillis: Long): SftpStoreResourceBuilder[F]
     def withMaxChannels(maxChannels: Long): SftpStoreResourceBuilder[F] = setMaxChannels(Some(maxChannels))
-    def build(): Resource[F, SftpStore[F]]
+    def build: Resource[F, SftpStore[F]]
   }
 
   case class SftpStoreResourceBuilderImpl[F[_]: Async](
@@ -240,7 +240,7 @@ object SftpStore {
       this.copy(_maxChannels = maybeMaxChannels)
     def withConnectTimeout(connectTimeoutMillis: Long): SftpStoreResourceBuilder[F] =
       this.copy(_connectTimeout = connectTimeoutMillis)
-    def build(): Resource[F, SftpStore[F]] = {
+    def build: Resource[F, SftpStore[F]] = {
       val validateConnectTimeout: ValidatedNec[Throwable, Unit] =
         if (_connectTimeout < 100) {
           new IllegalArgumentException("Please set connectTimeout to be at least 100ms.").invalidNec

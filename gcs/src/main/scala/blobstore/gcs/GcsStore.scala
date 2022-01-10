@@ -202,8 +202,8 @@ object GcsStore {
     def enableTrailingSlashFiles: GcsStoreBuilder[F]
     def disableTrailingSlashFiles: GcsStoreBuilder[F]
 
-    def build(): ValidatedNec[Throwable, GcsStore[F]]
-    def unsafe(): GcsStore[F] = build() match {
+    def build: ValidatedNec[Throwable, GcsStore[F]]
+    def unsafe: GcsStore[F] = build match {
       case Validated.Valid(a)    => a
       case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
     }
@@ -222,7 +222,7 @@ object GcsStore {
     def disableDirectDownload: GcsStoreBuilder[F]         = this.copy(_defaultDirectDownload = false)
     def enableTrailingSlashFiles: GcsStoreBuilder[F]      = this.copy(_defaultTrailingSlashFiles = true)
     def disableTrailingSlashFiles: GcsStoreBuilder[F]     = this.copy(_defaultTrailingSlashFiles = false)
-    def build(): ValidatedNec[Throwable, GcsStore[F]] =
+    def build: ValidatedNec[Throwable, GcsStore[F]] =
       new GcsStore(
         storage = _storage,
         acls = _acls,

@@ -28,7 +28,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       }
     ).build().getService
 
-  val gcsStore: GcsStore[IO] = GcsStore.builder[IO](storage).enableTrailingSlashFiles.unsafe()
+  val gcsStore: GcsStore[IO] = GcsStore.builder[IO](storage).enableTrailingSlashFiles.unsafe
 
   override def mkStore(): GcsStore[IO] = gcsStore
 
