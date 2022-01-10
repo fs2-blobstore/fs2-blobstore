@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v2.3.5
+      - uses: actions/checkout@v2.4.0
       - name: Check format
         run: |
           version=$(sed -E "s/(\/\/|#).*//g" .scalafmt.conf | grep "version" | sed -E "s/version|=|\"|\s*//g")
@@ -42,16 +42,16 @@ jobs:
     needs: [scalafmt]
     strategy:
       matrix:
-        scala: [ 2.12.15, 2.13.7, 3.0.2 ]
+        scala: [ 2.12.15, 2.13.7, 3.1.0 ]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2.3.5
+        uses: actions/checkout@v2.4.0
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
       - name: Compile all sources
-        run: sbt ++${{ matrix.scala }} 'all compile Test/compile IntegrationTest/compile doc'
+        run: sbt ++${{ matrix.scala }} 'all compile Test/compile doc'
 
       - name: Compile readme
         run: sbt ++${{ matrix.scala }} docs/mdoc
@@ -63,22 +63,22 @@ jobs:
         run: mkdir tmp
 
       - name: Test with coverage
-        if: ${{ matrix.scala != '3.0.2' }}
+        if: ${{ matrix.scala != '3.1.0' }}
         run: sbt ++${{ matrix.scala }} '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Test without coverage
-        if: ${{ matrix.scala == '3.0.2' }}
+        if: ${{ matrix.scala == '3.1.0' }}
         run: sbt ++${{ matrix.scala }} 'testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v2.5.1
+        uses: mikepenz/action-junit-report@v2.8.4
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        if: ${{ matrix.scala != '3.0.2' }}
+        if: ${{ matrix.scala != '3.1.0' }}
         run: sbt ++${{ matrix.scala }} coverageReport
 
       - name: Upload code coverage to codecov
@@ -94,13 +94,13 @@ jobs:
     needs: [scalafmt, tests]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v2.3.5
+        uses: actions/checkout@v2.4.0
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
       - name: Compile all sources
-        run: sbt 'all compile Test/compile IntegrationTest/compile doc'
+        run: sbt 'all compile Test/compile doc'
 
       - name: Create tmp directory
         run: mkdir tmp
@@ -109,11 +109,16 @@ jobs:
         run: openssl aes-256-cbc -K ${{ secrets.OPENSSL_KEY }} -iv ${{ secrets.OPENSSL_IV }} -in box/src/test/resources/box_appkey.json.enc -out box/src/test/resources/box_appkey.json -d
 
       - name: Test
+        env:
+          S3_IT_BUCKET: ${{ secrets.AWS_S3_BUCKET_IT }}
+          S3_IT_REGION: ${{ secrets.AWS_S3_REGION_IT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_ACCESS_KEY_IT }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_SECRET_KEY_IT }}
         run: sbt '; coverage ; testOnly * -- -n blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v2.5.1
+        uses: mikepenz/action-junit-report@v2.8.4
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'

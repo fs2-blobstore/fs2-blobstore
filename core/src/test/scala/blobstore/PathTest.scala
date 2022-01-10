@@ -20,7 +20,7 @@ import org.scalatest.matchers.must.Matchers
 import org.scalatest.flatspec.AnyFlatSpec
 import cats.data.Chain
 import org.scalatest.{Assertion, Inside}
-import cats.syntax.all._
+import cats.syntax.all.*
 
 class PathTest extends AnyFlatSpec with Matchers with Inside {
   behavior of "Path"

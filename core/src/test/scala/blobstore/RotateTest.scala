@@ -9,7 +9,7 @@ import org.scalatest.Assertion
 import scala.util.Random
 
 class RotateTest extends AnyFlatSpec {
-  import RotateTest._
+  import RotateTest.*
 
   behavior of "putRotateBase"
 

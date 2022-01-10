@@ -8,7 +8,7 @@ import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.Inside
-import cats.syntax.all._
+import cats.syntax.all.*
 
 import scala.util.{Success, Try}
 

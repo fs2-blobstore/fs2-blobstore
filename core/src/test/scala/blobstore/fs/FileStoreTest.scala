@@ -18,7 +18,7 @@ package fs
 
 import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
-import cats.syntax.all._
+import cats.syntax.all.*
 
 class FileStoreTest extends AbstractStoreTest[NioPath] {
 
@@ -31,7 +31,7 @@ class FileStoreTest extends AbstractStoreTest[NioPath] {
   override val authority: Authority = Authority.localhost
 
   override val fileSystemRoot: Path.Plain   = testRunRoot
-  override lazy val testRunRoot: Path.Plain = Path(s"/tmp/fs2blobstore/filestore/$testRun/")
+  override lazy val testRunRoot: Path.Plain = Path(show"/tmp/fs2blobstore/filestore/$testRun/")
 
   behavior of "FileStore.put"
 
@@ -53,7 +53,7 @@ class FileStoreTest extends AbstractStoreTest[NioPath] {
   }
 
   it should "not have side effects when creating a Sink" in {
-    localStore.put(Path(s"fs_tests_$testRun/path/file.txt"))
-    localStore.list(Path(s"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe Nil
+    localStore.put(Path(show"fs_tests_$testRun/path/file.txt"))
+    localStore.list(Path(show"fs_tests_$testRun/")).compile.toList.unsafeRunSync() mustBe Nil
   }
 }

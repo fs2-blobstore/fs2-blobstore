@@ -1,14 +1,17 @@
 package blobstore
 package azure
 
+import blobstore.url.exception.Throwables
 import blobstore.url.{Path, Url}
 import blobstore.util.{fromQueueNoneTerminated, liftJavaFuture}
+import cats.data.{Validated, ValidatedNec}
 import cats.effect.{Async, ConcurrentEffect, Resource}
 import cats.syntax.all.*
 import com.azure.core.util.FluxUtil
 import com.azure.storage.blob.batch.BlobBatchClientBuilder
 import com.azure.storage.blob.{BlobContainerAsyncClient, BlobServiceAsyncClient}
 import com.azure.storage.blob.models.*
+import com.azure.storage.blob.specialized.BlockBlobAsyncClient
 import com.azure.storage.common.implementation.Constants
 import fs2.concurrent.Queue
 import fs2.{Chunk, Pipe, Stream}
@@ -22,33 +25,33 @@ import java.util.function.Function as JavaFunction
 import scala.jdk.CollectionConverters.*
 
 /** @param azure
-  *   - Azure Blob Service Async Client
+  *   Azure Blob Service Async Client
   * @param defaultFullMetadata
-  *   – return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
+  *   return full object metadata on [[list]], requires additional request per object. Metadata returned by default:
   *   size, lastModified, eTag, storageClass. This controls behaviour of [[list]] method from Store trait. Use
   *   [[listUnderlying]] to control on per-invocation basis.
   * @param defaultTrailingSlashFiles
-  *   - test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
-  *     [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  *   test if folders returned by [[list]] are files with trailing slashes in their names. This controls behaviour of
+  *   [[list]] method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
   * @param blockSize
-  *   - for upload, The block size is the size of each block that will be staged. This value also determines the number
-  *     of requests that need to be made. If block size is large, upload will make fewer network calls, but each
-  *     individual call will send more data and will therefore take longer. This parameter also determines the size that
-  *     each buffer uses when buffering is required and consequently amount of memory consumed by such methods may be up
-  *     to blockSize * numBuffers.
+  *   for upload, The block size is the size of each block that will be staged. This value also determines the number of
+  *   requests that need to be made. If block size is large, upload will make fewer network calls, but each individual
+  *   call will send more data and will therefore take longer. This parameter also determines the size that each buffer
+  *   uses when buffering is required and consequently amount of memory consumed by such methods may be up to blockSize
+  *   * numBuffers.
   * @param numBuffers
-  *   - for buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
-  *     Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers,
-  *     the more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed
-  *     by methods using this value may be up to blockSize * numBuffers.
+  *   for buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
+  *   Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers, the
+  *   more parallel, and thus faster, the upload portion of this operation will be. The amount of memory consumed by
+  *   methods using this value may be up to blockSize * numBuffers.
   */
 class AzureStore[F[_]: ConcurrentEffect](
   azure: BlobServiceAsyncClient,
-  defaultFullMetadata: Boolean = false,
-  defaultTrailingSlashFiles: Boolean = false,
-  blockSize: Int = 50 * 1024 * 1024,
-  numBuffers: Int = 2,
-  queueSize: Int = 32
+  defaultFullMetadata: Boolean,
+  defaultTrailingSlashFiles: Boolean,
+  blockSize: Int,
+  numBuffers: Int,
+  queueSize: Int
 ) extends Store[F, AzureBlob] {
 
   override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[AzureBlob]] =
@@ -218,38 +221,69 @@ class AzureStore[F[_]: ConcurrentEffect](
 }
 
 object AzureStore {
+  def builder[F[_]: ConcurrentEffect](client: BlobServiceAsyncClient): AzureStoreBuilder[F] =
+    AzureStoreBuilderImpl[F](client)
 
-  /** @param azure
-    *   - Azure Blob Service Async Client
-    * @param defaultFullMetadata
-    *   – return full object metadata on [[AzureStore.list]], requires additional request per object. Metadata returned
-    *   by default: size, lastModified, eTag, storageClass. This controls behaviour of [[AzureStore.list]] method from
-    *   Store trait. Use [[AzureStore.listUnderlying]] to control on per-invocation basis.
-    * @param defaultTrailingSlashFiles
-    *   - test if folders returned by [[AzureStore.list]] are files with trailing slashes in their names. This controls
-    *     behaviour of [[AzureStore.list]] method from Store trait. Use [[AzureStore.listUnderlying]] to control on
-    *     per-invocation basis.
-    * @param blockSize
-    *   - For upload, The block size is the size of each block that will be staged. This value also determines the
-    *     number of requests that need to be made. If block size is large, upload will make fewer network calls, but
-    *     each individual call will send more data and will therefore take longer. This parameter also determines the
-    *     size that each buffer uses when buffering is required and consequently amount of memory consumed by such
-    *     methods may be up to blockSize * numBuffers.
-    * @param numBuffers
-    *   - For buffered upload only, the number of buffers is the maximum number of buffers this method should allocate.
-    *     Memory will be allocated lazily as needed. Must be at least two. Typically, the larger the number of buffers,
-    *     the more parallel, and thus faster, the upload portion of this operation will be. The amount of memory
-    *     consumed by methods using this value may be up to blockSize * numBuffers.
+  /** @see
+    *   [[AzureStore]]
     */
-  def apply[F[_]: ConcurrentEffect](
-    azure: BlobServiceAsyncClient,
-    defaultFullMetadata: Boolean = false,
-    defaultTrailingSlashFiles: Boolean = false,
-    blockSize: Int = 50 * 1024 * 1024,
-    numBuffers: Int = 2,
-    queueSize: Int = 32
-  ): AzureStore[F] =
-    new AzureStore(azure, defaultFullMetadata, defaultTrailingSlashFiles, blockSize, numBuffers, queueSize)
+  trait AzureStoreBuilder[F[_]] {
+    def withClient(client: BlobServiceAsyncClient): AzureStoreBuilder[F]
+    def withQueueSize(queueSize: Int): AzureStoreBuilder[F]
+    def withBlockSize(blockSize: Int): AzureStoreBuilder[F]
+    def withNumBuffers(numBuffers: Int): AzureStoreBuilder[F]
+    def enableFullMetadata: AzureStoreBuilder[F]
+    def disableFullMetadata: AzureStoreBuilder[F]
+    def enableTrailingSlashFiles: AzureStoreBuilder[F]
+    def disableTrailingSlashFiles: AzureStoreBuilder[F]
+    def build: ValidatedNec[Throwable, AzureStore[F]]
+    def unsafe: AzureStore[F] = build match {
+      case Validated.Valid(a)    => a
+      case Validated.Invalid(es) => throw es.reduce(Throwables.collapsingSemigroup) // scalafix:ok
+    }
+  }
+  case class AzureStoreBuilderImpl[F[_]: ConcurrentEffect](
+    _azure: BlobServiceAsyncClient,
+    _defaultFullMetadata: Boolean = false,
+    _defaultTrailingSlashFiles: Boolean = false,
+    _blockSize: Int = 50 * 1024 * 1024,
+    _numBuffers: Int = 2,
+    _queueSize: Int = 32
+  ) extends AzureStoreBuilder[F] {
+    def withClient(client: BlobServiceAsyncClient): AzureStoreBuilder[F] = this.copy(_azure = client)
+    def withQueueSize(queueSize: Int): AzureStoreBuilder[F]              = this.copy(_queueSize = queueSize)
+    def withBlockSize(blockSize: Int): AzureStoreBuilder[F]              = this.copy(_blockSize = blockSize)
+    def withNumBuffers(numBuffers: Int): AzureStoreBuilder[F]            = this.copy(_numBuffers = numBuffers)
+    def enableFullMetadata: AzureStoreBuilder[F]                         = this.copy(_defaultFullMetadata = true)
+    def disableFullMetadata: AzureStoreBuilder[F]                        = this.copy(_defaultFullMetadata = false)
+    def enableTrailingSlashFiles: AzureStoreBuilder[F]                   = this.copy(_defaultTrailingSlashFiles = true)
+    def disableTrailingSlashFiles: AzureStoreBuilder[F]                  = this.copy(_defaultTrailingSlashFiles = false)
+
+    def build: ValidatedNec[Throwable, AzureStore[F]] = {
+      val validateBlockSize =
+        if (_blockSize < 1 || _blockSize > BlockBlobAsyncClient.MAX_STAGE_BLOCK_BYTES_LONG) {
+          new IllegalArgumentException(
+            show"Block size must be in range [1, ${BlockBlobAsyncClient.MAX_STAGE_BLOCK_BYTES_LONG}]."
+          ).invalidNec
+        } else {
+          ().validNec
+        }
+
+      val validateNumBuffers =
+        if (_numBuffers < 2) {
+          new IllegalArgumentException("Number of buffers should be at least 2").invalidNec
+        } else ().validNec
+
+      val validateQueueSize: ValidatedNec[IllegalArgumentException, Unit] =
+        if (_queueSize < 4) {
+          new IllegalArgumentException("Please use queue size of at least 4.").invalidNec
+        } else ().validNec
+
+      List(validateBlockSize, validateNumBuffers, validateQueueSize).combineAll.map(_ =>
+        new AzureStore(_azure, _defaultFullMetadata, _defaultTrailingSlashFiles, _blockSize, _numBuffers, _queueSize)
+      )
+    }
+  }
 
   private def urlToContainerAndBlob[A](url: Url[A]): (String, String) =
     (url.authority.show, url.path.show.stripPrefix("/"))

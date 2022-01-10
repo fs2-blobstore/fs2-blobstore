@@ -3,9 +3,9 @@ package blobstore.sftp
 import blobstore.{defaultTransferTo, putRotateBase, PathStore, Store}
 import blobstore.url.{Authority, FsObject, Path, Url}
 import blobstore.url.Path.{AbsolutePath, Plain, RootlessPath}
-import blobstore.url.exception.MultipleUrlValidationException
+import blobstore.url.exception.{MultipleUrlValidationException, Throwables}
 import blobstore.util.fromQueueNoneTerminated
-import cats.data.Validated
+import cats.data.{Validated, ValidatedNec}
 import cats.effect.concurrent.Semaphore
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource}
 import cats.syntax.all.*
@@ -16,26 +16,23 @@ import fs2.{Pipe, Stream}
 import java.io.OutputStream
 import scala.util.Try
 
-/** Safely initialize SftpStore and disconnect Session upon finish.
-  *
-  * @param authority
-  *   – process used to connect to SFTP server.
-  * @param session
-  *   – connected jsch Session.
+/** @param session
+  *   connected jsch Session.
+  * @param blocker
+  *   cats-effect blocker.
   * @param queue
-  *   – queue to hold channels to be reused
+  *   queue to hold channels to be reused.
   * @param semaphore
-  *   – optional semaphore to limit the number of concurrently open channels.
-  * @param connectTimeout
-  *   – override for channel connect timeout.
+  *   optional semaphore to limit the number of concurrently open channels.
+  * @param connectTimeoutMillis
+  *   override for channel connect timeout.
   */
 class SftpStore[F[_]: ConcurrentEffect: ContextShift] private (
-  val authority: Authority,
-  private[sftp] val session: Session,
+  session: Session,
   blocker: Blocker,
   queue: Queue[F, ChannelSftp],
   semaphore: Option[Semaphore[F]],
-  connectTimeout: Int
+  connectTimeoutMillis: Int
 ) extends PathStore[F, SftpFile] {
 
   private val getChannel: F[ChannelSftp] =
@@ -44,7 +41,7 @@ class SftpStore[F[_]: ConcurrentEffect: ContextShift] private (
       case None =>
         val openF = blocker.delay {
           val ch = session.openChannel("sftp").asInstanceOf[ChannelSftp] // scalafix:ok
-          ch.connect(connectTimeout)
+          ch.connect(connectTimeoutMillis)
           ch
         }
         semaphore.fold(openF) { s => s.tryAcquire.ifM(openF, getChannel) }
@@ -226,40 +223,119 @@ class SftpStore[F[_]: ConcurrentEffect: ContextShift] private (
 
 object SftpStore {
 
-  /** Safely initialize SftpStore and disconnect Session upon finish.
-    *
-    * @param fSession
-    *   – process used to connect to SFTP server, obtain Session.
-    * @param maxChannels
-    *   – optional upper limit on the number of concurrently open channels.
-    * @param connectTimeout
-    *   – override for channel connect timeout.
-    * @return
-    *   Resource[F, [SftpStore[F]], session open on start is going to be close in resource finalization.
+  def resourceBuilder[F[_]: ConcurrentEffect: ContextShift](
+    mkSession: F[Session],
+    blocker: Blocker
+  ): SftpStoreResourceBuilder[F] =
+    SftpStoreResourceBuilderImpl[F](mkSession, blocker)
+
+  /** @see
+    *   [[SftpStore]]
     */
-  def apply[F[_]: ConcurrentEffect: ContextShift](
-    fSession: F[Session],
-    blocker: Blocker,
-    maxChannels: Option[Long] = None,
-    connectTimeout: Int = 10000
-  ): Resource[F, SftpStore[F]] =
-    Resource.make(fSession.flatTap { session =>
-      blocker.delay(session.connect()).recover {
-        case e: JSchException if e.getMessage == "session is already connected" => ()
+  trait SftpStoreResourceBuilder[F[_]] {
+    def withMkSession(mkSession: F[Session]): SftpStoreResourceBuilder[F]
+    def withBlocker(blocker: Blocker): SftpStoreResourceBuilder[F]
+    def setMaxChannels(maybeMaxChannels: Option[Long]): SftpStoreResourceBuilder[F]
+    def withConnectTimeout(connectTimeoutMillis: Long): SftpStoreResourceBuilder[F]
+    def withMaxChannels(maxChannels: Long): SftpStoreResourceBuilder[F] = setMaxChannels(Some(maxChannels))
+    def build: Resource[F, SftpStore[F]]
+  }
+
+  case class SftpStoreResourceBuilderImpl[F[_]: ConcurrentEffect: ContextShift](
+    _mkSession: F[Session],
+    _blocker: Blocker,
+    _maxChannels: Option[Long] = None,
+    _connectTimeout: Long = 10000
+  ) extends SftpStoreResourceBuilder[F] {
+    def withMkSession(mkSession: F[Session]): SftpStoreResourceBuilder[F] = this.copy(_mkSession = mkSession)
+
+    def withBlocker(blocker: Blocker): SftpStoreResourceBuilder[F] = this.copy(_blocker = blocker)
+
+    def setMaxChannels(maybeMaxChannels: Option[Long]): SftpStoreResourceBuilder[F] =
+      this.copy(_maxChannels = maybeMaxChannels)
+
+    def withConnectTimeout(connectTimeoutMillis: Long): SftpStoreResourceBuilder[F] =
+      this.copy(_connectTimeout = connectTimeoutMillis)
+
+    def build: Resource[F, SftpStore[F]] = {
+      val validateConnectTimeout: ValidatedNec[Throwable, Unit] =
+        if (_connectTimeout < 100) {
+          new IllegalArgumentException("Please set connectTimeout to be at least 100ms.").invalidNec
+        } else if (_connectTimeout > Int.MaxValue.toLong) {
+          new IllegalArgumentException(show"connectTimeout cannot exceed ${Int.MaxValue}.").invalidNec
+        } else ().validNec
+      val validateMaxChannels: ValidatedNec[Throwable, Unit] = _maxChannels match {
+        case Some(maxC) if maxC < 1 =>
+          new IllegalArgumentException("Please set maxChannels to be at least 1.").invalidNec
+        case _ => ().validNec
       }
-    })(session => blocker.delay(session.disconnect())).flatMap { session =>
-      Resource.eval(if (maxChannels.exists(_ < 1)) {
-        new IllegalArgumentException(s"maxChannels must be >= 1").raiseError
-      } else for {
-        authority <- {
-          val port = Option(session.getPort).filter(_ != 22).map(":" + _).getOrElse("")
-          Authority.parse(session.getHost + port).leftMap(MultipleUrlValidationException.apply).liftTo[F]
+
+      List(validateConnectTimeout, validateMaxChannels).combineAll match {
+        case Validated.Valid(_) => sessionResource.evalMap(init)
+        case Validated.Invalid(es) =>
+          Resource.eval(ConcurrentEffect[F].raiseError(es.reduce(Throwables.collapsingSemigroup)))
+      }
+    }
+
+    private def sessionResource = Resource.make {
+      _mkSession.flatTap { session =>
+        _blocker.delay(session.connect()).recover {
+          case e: JSchException if e.getMessage == "session is already connected" => ()
         }
-        semaphore <- maxChannels.traverse(Semaphore.apply[F])
-        queue <- maxChannels match {
+      }
+    } { session =>
+      _blocker.delay(session.disconnect())
+    }
+
+    private def init(session: Session): F[SftpStore[F]] = {
+      val port       = Option(session.getPort).filter(_ != 22).map(":" + _).getOrElse("")
+      val _authority = Authority.parse(session.getHost + port).leftMap(MultipleUrlValidationException.apply)
+      for {
+        _         <- ConcurrentEffect[F].fromValidated(_authority)
+        semaphore <- _maxChannels.traverse(Semaphore.apply[F])
+        queue <- _maxChannels match {
           case Some(max) => Queue.circularBuffer[F, ChannelSftp](max.toInt)
           case None      => Queue.unbounded[F, ChannelSftp]
         }
-      } yield new SftpStore[F](authority, session, blocker, queue, semaphore, connectTimeout))
+      } yield new SftpStore[F](session, _blocker, queue, semaphore, _connectTimeout.toInt)
     }
+
+  }
+
+//  /** Safely initialize SftpStore and disconnect Session upon finish.
+//    *
+//    * @param fSession
+//    *   – process used to connect to SFTP server, obtain Session.
+//    * @param maxChannels
+//    *   – optional upper limit on the number of concurrently open channels.
+//    * @param connectTimeout
+//    *   – override for channel connect timeout.
+//    * @return
+//    *   Resource[F, [SftpStore[F]], session open on start is going to be close in resource finalization.
+//    */
+//  def apply[F[_]: ConcurrentEffect: ContextShift](
+//    fSession: F[Session],
+//    blocker: Blocker,
+//    maxChannels: Option[Long] = None,
+//    connectTimeout: Int = 10000
+//  ): Resource[F, SftpStore[F]] =
+//    Resource.make(fSession.flatTap { session =>
+//      blocker.delay(session.connect()).recover {
+//        case e: JSchException if e.getMessage == "session is already connected" => ()
+//      }
+//    })(session => blocker.delay(session.disconnect())).flatMap { session =>
+//      Resource.eval(if (maxChannels.exists(_ < 1)) {
+//        new IllegalArgumentException(s"maxChannels must be >= 1").raiseError
+//      } else for {
+//        authority <- {
+//          val port = Option(session.getPort).filter(_ != 22).map(":" + _).getOrElse("")
+//          Authority.parse(session.getHost + port).leftMap(MultipleUrlValidationException.apply).liftTo[F]
+//        }
+//        semaphore <- maxChannels.traverse(Semaphore.apply[F])
+//        queue <- maxChannels match {
+//          case Some(max) => Queue.circularBuffer[F, ChannelSftp](max.toInt)
+//          case None      => Queue.unbounded[F, ChannelSftp]
+//        }
+//      } yield new SftpStore[F](authority, session, blocker, queue, semaphore, connectTimeout))
+//    }
 }

@@ -50,7 +50,7 @@ object Host {
 case class IpV4Address(octet1: Byte, octet2: Byte, octet3: Byte, octet4: Byte) extends Host {
   val bytes = (octet1, octet2, octet3, octet4)
 
-  override def toString: String = s"${octet1 & 0xff}.${octet2 & 0xff}.${octet3 & 0xff}.${octet4 & 0xff}"
+  override def toString: String = show"${octet1 & 0xff}.${octet2 & 0xff}.${octet3 & 0xff}.${octet4 & 0xff}"
 }
 
 object IpV4Address {

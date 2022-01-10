@@ -1,6 +1,6 @@
 package blobstore.url
 
-import cats.syntax.all._
+import cats.syntax.all.*
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.Inside
@@ -42,48 +42,48 @@ class HostTest extends AnyFlatSpec with Matchers with Inside {
   it should "parse" in {
     validHostnames.map(Host.parse).map(_.toEither).foreach { h =>
       inside(h) {
-        case Right(Hostname(_)) => //noop
+        case Right(Hostname(_)) => // noop
       }
     }
     validHostnames.map(Host.parseF[Try]).foreach { h =>
       inside(h) {
-        case Success(Hostname(_)) => //noop
+        case Success(Hostname(_)) => // noop
       }
     }
 
     validIps.map(Host.parse).map(_.toEither).foreach { h =>
       inside(h) {
-        case Right(IpV4Address(_, _, _, _)) => //noop
+        case Right(IpV4Address(_, _, _, _)) => // noop
       }
     }
 
     validIps.map(Host.parseF[Try]).foreach { h =>
       inside(h) {
-        case Success(IpV4Address(_, _, _, _)) => //noop
+        case Success(IpV4Address(_, _, _, _)) => // noop
       }
     }
 
     invalidHostnames.map(Host.parse).map(_.toEither).foreach { h =>
       inside(h) {
-        case Left(_) => //noop
+        case Left(_) => // noop
       }
     }
 
     invalidHostnames.map(Hostname.parseF[Try]).foreach { h =>
       inside(h) {
-        case Failure(_) => //noop
+        case Failure(_) => // noop
       }
     }
 
     invalidIps.map(IpV4Address.parse).map(_.toEither).foreach { h =>
       inside(h) {
-        case Left(_) => //noop
+        case Left(_) => // noop
       }
     }
 
     invalidIps.map(IpV4Address.parseF[Try]).foreach { h =>
       inside(h) {
-        case Failure(_) => //noop
+        case Failure(_) => // noop
       }
     }
   }

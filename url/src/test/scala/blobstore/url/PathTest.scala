@@ -2,7 +2,7 @@ package blobstore.url
 
 import java.nio.file.Paths
 
-import cats.syntax.all._
+import cats.syntax.all.*
 import blobstore.url.Path.{AbsolutePath, RootlessPath}
 import cats.data.NonEmptyChain
 import org.scalatest.flatspec.AnyFlatSpec

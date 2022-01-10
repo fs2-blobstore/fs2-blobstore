@@ -62,7 +62,7 @@ trait S3MetaInfo {
       restore.map("Restore: " ++ _),
       missingMeta.flatMap {
         case 0 => None
-        case n => Some(s"Missing Meta: $n")
+        case n => Some("Missing Meta: " ++ n.toString)
       },
       versionId.map("Version Id: " ++ _),
       cacheControl.map("Cache Control: " ++ _),
@@ -209,7 +209,7 @@ object S3MetaInfo {
   }
 
   def mkPutObjectRequest(
-    sseAlgorithm: Option[String],
+    sseAlgorithm: Option[ServerSideEncryption],
     objectAcl: Option[ObjectCannedACL],
     bucket: String,
     key: String,
@@ -255,7 +255,7 @@ object S3MetaInfo {
   }
 
   def mkPutMultiPartRequest(
-    sseAlgorithm: Option[String],
+    sseAlgorithm: Option[ServerSideEncryption],
     objectAcl: Option[ObjectCannedACL],
     bucket: String,
     key: String,
@@ -298,7 +298,7 @@ object S3MetaInfo {
   }
 
   def mkCopyObjectRequest(
-    sseAlgorithm: Option[String],
+    sseAlgorithm: Option[ServerSideEncryption],
     objectAcl: Option[ObjectCannedACL],
     srcBucket: String,
     srcKey: String,

@@ -16,20 +16,20 @@ Copyright 2018 LendUp Global, Inc.
 package blobstore
 
 import java.util.UUID
-import java.nio.file.{Path => NioPath}
+import java.nio.file.Path as NioPath
 import blobstore.fs.FileStore
 import blobstore.url.{Authority, FsObject, Path, Url}
 import org.scalatest.{BeforeAndAfterAll, Inside}
 import cats.effect.IO
 import cats.effect.concurrent.Ref
-import cats.implicits._
+import cats.implicits.*
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
 import fs2.Stream
 import org.scalatestplus.scalacheck.Checkers
 
 import scala.util.Random
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 abstract class AbstractStoreTest[B <: FsObject]
   extends AnyFlatSpec
@@ -78,7 +78,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dir = dirUrl("all")
 
     // put a random file
-    val filename = s"test-${System.currentTimeMillis}.txt"
+    val filename = show"test-${System.currentTimeMillis}.txt"
     val url      = writeFile(store, dir)(filename)
 
     // list to make sure file is present
@@ -97,8 +97,8 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   it should "move keys" in {
     val dir = dirUrl("move-keys")
-    val src = writeFile(store, dir)(s"src/${System.currentTimeMillis}.txt")
-    val dst = dir / s"dst/${System.currentTimeMillis}.txt"
+    val src = writeFile(store, dir)(show"src/${System.currentTimeMillis}.txt")
+    val dst = dir / show"dst/${System.currentTimeMillis}.txt"
 
     val test = for {
       l1 <- store.listAll(src)
@@ -119,12 +119,11 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "list multiple keys" in {
-    import cats.implicits._
 
     val dir = dirUrl("list-many")
 
     val urls = (1 to 10).toList
-      .map(i => s"filename-$i.txt")
+      .map(i => show"filename-$i.txt")
       .map(writeFile(store, dir))
 
     val exp = urls.map(_.show).toSet
@@ -140,10 +139,9 @@ abstract class AbstractStoreTest[B <: FsObject]
   // Worth noting that that most of these tests operate on files that are in nested directories, avoiding
   // any problems that there might be with operating on a root level file/directory.
   it should "listAll lists files in a root level directory" in {
-    import cats.implicits._
     val rootDir = Url(scheme, authority, fileSystemRoot)
     val urls = (1 to 2).toList
-      .map(i => s"filename-$i-$testRun.txt")
+      .map(i => show"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
     val exp = urls.map(u => u.path.relative.show).toSet
@@ -195,8 +193,8 @@ abstract class AbstractStoreTest[B <: FsObject]
       i <- transferStore.transferTo(store, srcPath, dstDir)
       c1 <- transferStore
         .getContents(srcPath)
-        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
-      c2 <- store.getContents(dstPath).handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
+        .handleError(e => show"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
+      c2 <- store.getContents(dstPath).handleError(e => show"FAILED store.getContents $dstPath: ${e.getMessage}")
       _  <- transferStore.remove(srcPath).handleError(_ => ())
       _  <- store.remove(dstPath).handleError(_ => ())
     } yield {
@@ -216,10 +214,10 @@ abstract class AbstractStoreTest[B <: FsObject]
       i <- transferStore.transferTo(store, srcPath, dstPath)
       c1 <- transferStore
         .getContents(srcPath)
-        .handleError(e => s"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
+        .handleError(e => show"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
       c2 <- store
         .getContents(dstPath)
-        .handleError(e => s"FAILED store.getContents $dstPath: ${e.getMessage}")
+        .handleError(e => show"FAILED store.getContents $dstPath: ${e.getMessage}")
       _ <- transferStore.remove(srcPath).handleError(_ => ())
       _ <- store.remove(dstPath).handleError(_ => ())
     } yield {
@@ -235,7 +233,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dstDir = dirUrl("transfer-dir-to-dir-dst")
 
     val paths = (1 until 10).toList
-      .map(i => s"filename-$i.txt")
+      .map(i => show"filename-$i.txt")
       .map(writeLocalFile(transferStore, srcDir))
 
     val test = for {
@@ -243,12 +241,12 @@ abstract class AbstractStoreTest[B <: FsObject]
       c1 <- paths.traverse { p =>
         transferStore
           .getContents(p)
-          .handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
+          .handleError(e => show"FAILED transferStore.getContents $p: ${e.getMessage}")
       }
       c2 <- paths.traverse { p =>
         store
           .getContents(dstDir / p.lastSegment)
-          .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
+          .handleError(e => show"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
       }
       _ <- paths.traverse(transferStore.remove(_).handleError(_ => ()))
       _ <- paths.traverse(p => store.remove(dstDir / p.lastSegment).handleError(_ => ()))
@@ -265,11 +263,11 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dstDir = dirUrl("transfer-dir-rec-dst")
 
     val paths1 = (1 to 5).toList
-      .map(i => s"filename-$i.txt")
+      .map(i => show"filename-$i.txt")
       .map(writeLocalFile(transferStore, srcDir))
 
     val paths2 = (6 until 10).toList
-      .map(i => s"subdir/filename-$i.txt")
+      .map(i => show"subdir/filename-$i.txt")
       .map(writeLocalFile(transferStore, srcDir))
 
     val paths = paths1 ++ paths2
@@ -277,18 +275,18 @@ abstract class AbstractStoreTest[B <: FsObject]
     val test = for {
       i <- transferStore.transferTo(store, srcDir, dstDir)
       c1 <- paths.traverse { p =>
-        transferStore.getContents(p).handleError(e => s"FAILED transferStore.getContents $p: ${e.getMessage}")
+        transferStore.getContents(p).handleError(e => show"FAILED transferStore.getContents $p: ${e.getMessage}")
       }
       c2 <- {
         paths1.map { p =>
           store
             .getContents(dstDir / p.lastSegment)
-            .handleError(e => s"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
+            .handleError(e => show"FAILED store.getContents ${dstDir / p.lastSegment}: ${e.getMessage}")
         } ++
           paths2.map { p =>
             store
               .getContents(dstDir / "subdir" / p.lastSegment)
-              .handleError(e => s"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
+              .handleError(e => show"FAILED store.getContents ${dstDir / "subdir" / p.lastSegment}: ${e.getMessage}")
           }
       }.sequence
       _ <- paths.traverse(transferStore.remove(_).handleError(_ => ()))
@@ -312,10 +310,10 @@ abstract class AbstractStoreTest[B <: FsObject]
       _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
       c1 <- store
         .getContents(srcDir / "filename.txt")
-        .handleError(e => s"FAILED getContents: ${e.getMessage}")
+        .handleError(e => show"FAILED getContents: ${e.getMessage}")
       c2 <- store
         .getContents(dstDir / "filename.txt")
-        .handleError(e => s"FAILED getContents: ${e.getMessage}")
+        .handleError(e => show"FAILED getContents: ${e.getMessage}")
       _ <- store.remove(dstDir / "filename.txt")
       _ <- store.remove(srcDir / "filename.txt")
     } yield {
@@ -329,10 +327,10 @@ abstract class AbstractStoreTest[B <: FsObject]
     val srcDir = dirUrl("rm-dir-to-dir-src")
 
     (1 to 10).toList
-      .map(i => s"filename-$i.txt")
+      .map(i => show"filename-$i.txt")
       .map(writeFile(store, srcDir))
 
-    (1 to 5).map(i => s"filename-$i.txt").map(writeFile(store, srcDir / "sub"))
+    (1 to 5).map(i => show"filename-$i.txt").map(writeFile(store, srcDir / "sub"))
 
     store.remove(srcDir, recursive = true).unsafeRunSync()
 
@@ -482,7 +480,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val test = for {
       counter <- Ref.of[IO, Int](0)
       _ <- data
-        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / s"$i"), fileLength.toLong))
+        .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / i.toString), fileLength.toLong))
         .compile
         .drain
       files        <- store.list(dir).compile.toList
@@ -520,7 +518,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dir = dirUrl("read-write")
 
     check[List[Byte], Int, Boolean] { case (bytes: List[Byte], n: Int) =>
-      val filePath = dir / s"file-$n"
+      val filePath = dir / show"file-$n"
       val blob     = Stream.emits(bytes)
 
       def test =
@@ -554,7 +552,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   def localDirPath(name: String): Path.Plain = transferStoreRootDir / name
 
-  def contents(filename: String): String = s"file contents to upload: $filename"
+  def contents(filename: String): String = show"file contents to upload: $filename"
 
   def writeFile(store: Store[IO, B], tmpDir: Url.Plain)(filename: String): Url.Plain = {
     def retry[AA](io: IO[AA], count: Int, times: Int): IO[AA] = io.handleErrorWith { t =>

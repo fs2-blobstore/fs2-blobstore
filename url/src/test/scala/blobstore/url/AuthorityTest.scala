@@ -3,7 +3,7 @@ package blobstore.url
 import cats.data.Validated.{Invalid, Valid}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers
-import cats.syntax.all._
+import cats.syntax.all.*
 import org.scalatest.Inside
 
 class AuthorityTest extends AnyFlatSpec with Matchers with Inside {

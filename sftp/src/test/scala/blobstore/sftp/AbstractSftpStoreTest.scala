@@ -19,6 +19,7 @@ package sftp
 import java.nio.file.Paths
 import blobstore.url.{Authority, Host, Path, Port}
 import cats.effect.IO
+import cats.syntax.all.*
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{Session, SftpException}
 
@@ -31,13 +32,13 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
   override def authority: Authority =
     Authority(Host.unsafe(container.containerIpAddress), None, Some(Port.unsafe(container.mappedPort(22))))
 
-  override lazy val testRunRoot: Path.Plain = Path(s"sftp_tests/test-$testRun")
+  override lazy val testRunRoot: Path.Plain = Path(show"sftp_tests/test-$testRun")
   override val fileSystemRoot: Path.Plain   = Path("sftp_tests")
 
   private val rootDir = Paths.get("tmp/sftp-store-root/").toAbsolutePath.normalize
 
-  lazy val sftpStore: SftpStore[IO] =
-    SftpStore[IO](session, blocker).allocated.map(_._1).unsafeRunSync()
+  lazy val (sftpStore, shutDown) =
+    SftpStore.resourceBuilder[IO](session, blocker).build.allocated.unsafeRunSync()
 
   def mkStore(): Store[IO, SftpFile] = sftpStore.lift
 
@@ -48,12 +49,12 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
 
   override def afterAll(): Unit = {
     try {
-      sftpStore.session.disconnect()
+      shutDown.unsafeRunSync()
     } catch {
       case _: Throwable =>
     }
 
-    cleanup(rootDir.resolve(s"$authority/test-$testRun"))
+    cleanup(rootDir.resolve(show"$authority/test-$testRun"))
     container.stop()
     super.afterAll()
   }
@@ -96,7 +97,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
     val dir = dirUrl("list-more-than-64")
 
     val urls = (1 to 256).toList
-      .map(i => s"filename-$i.txt")
+      .map(i => show"filename-$i.txt")
       .map(writeFile(store, dir))
 
     val exp = urls.map(_.path.lastSegment).toSet

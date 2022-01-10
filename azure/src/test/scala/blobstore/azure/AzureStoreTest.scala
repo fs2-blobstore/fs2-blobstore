@@ -5,6 +5,7 @@ import blobstore.url.Path.Plain
 import blobstore.url.{Authority, Path, Url}
 import blobstore.url.general.GeneralStorageClass
 import cats.effect.IO
+import cats.syntax.all.*
 import fs2.Stream
 import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.azure.storage.blob.models.{AccessTier, BlobItemProperties, BlobType}
@@ -30,13 +31,20 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
 
   lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
     .connectionString(
-      s"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${container.containerIpAddress}:${container.mappedPort(10000)}/devstoreaccount1;"
+      show"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${container.containerIpAddress}:${container.mappedPort(10000)}/devstoreaccount1;"
     )
     .retryOptions(options)
     .buildAsyncClient()
 
   override def mkStore(): Store[IO, AzureBlob] =
-    new AzureStore[IO](azure, defaultFullMetadata = true, defaultTrailingSlashFiles = true) {
+    new AzureStore[IO](
+      azure = azure,
+      defaultFullMetadata = true,
+      defaultTrailingSlashFiles = true,
+      blockSize = 50 * 1024 * 1024,
+      numBuffers = 2,
+      queueSize = 32
+    ) {
       // TODO: Remove override when Azurite supports Batch API
       override def remove[A](url: Url[A], recursive: Boolean): IO[Unit] =
         if (recursive) new StoreOps[IO, AzureBlob](this).removeAll(url).void

@@ -1,41 +1,93 @@
 package blobstore.s3
 
-import cats.syntax.all.*
-import blobstore.url.{Path, Url}
+import blobstore.{IntegrationTest, Store}
+import blobstore.url.{Authority, Path, Url}
 import cats.effect.IO
-import com.dimafeng.testcontainers.GenericContainer
+import cats.syntax.all.*
 import fs2.Stream
-import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
+import software.amazon.awssdk.transfer.s3.internal.S3CrtAsyncClient
 
-import java.net.URI
 import java.nio.charset.StandardCharsets
+import scala.jdk.CollectionConverters.*
 import scala.util.Random
 
-class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
-  override val container: GenericContainer = GenericContainer(
-    dockerImage = "minio/minio",
-    exposedPorts = List(9000),
-    command = List("server", "--compat", "/data"),
-    env = Map(
-      "MINIO_ACCESS_KEY" -> "minio_access_key",
-      "MINIO_SECRET_KEY" -> "minio_secret_key"
-    )
-  )
+@IntegrationTest
+class S3StoreIntegrationTest extends AbstractS3StoreTest {
+  val bucketEnv = "S3_IT_BUCKET"
+  val regionEnv = "S3_IT_REGION"
+  def authority: Authority = sys.env.get(bucketEnv) match {
+    case Some(bucket) => Authority.unsafe(bucket)
+    case None         => cancel(show"No test bucket found. Please set $bucketEnv.")
+  }
 
-  override def client: S3AsyncClient = S3AsyncClient
+  def region: Region = sys.env.get(regionEnv)
+    .flatMap(potentialRegion => Region.regions().asScala.find(_.id() == potentialRegion.toLowerCase)) match {
+    case Some(r) => r
+    case None    => cancel(show"No test bucket region found. Please set $regionEnv.")
+  }
+
+  lazy val client: S3AsyncClient = S3AsyncClient
     .builder()
-    .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(show"http://${container.containerIpAddress}:${container.mappedPort(9000)}"))
-    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
-      "minio_access_key",
-      "minio_secret_key"
-    )))
+    .region(region)
     .build()
 
-  behavior of "S3 - MinIO test"
+  lazy val crtAsyncClient: S3CrtAsyncClient = S3CrtAsyncClient.builder().region(region).build()
+
+  override def afterAll(): Unit = {
+    store.remove(Url(scheme, authority, testRunRoot), recursive = true)
+    super.afterAll()
+  }
+
+  override def mkStore(): Store[IO, S3Blob] = S3Store
+    .builder[IO](client)
+    .withCrtClient(crtAsyncClient)
+    .withBufferSize(5 * 1024 * 1024)
+    .enableFullMetadata
+    .unsafe
+
+  it should "pick up correct storage class" in {
+    val dir     = dirUrl("foo")
+    val fileUrl = dir / "file"
+
+    store.putContent(fileUrl, "test").unsafeRunSync()
+
+    s3Store.listUnderlying(dir, fullMetadata = false, expectTrailingSlashFiles = false, recursive = true).map { u =>
+      u.path.storageClass mustBe Some(StorageClass.STANDARD)
+    }.compile.lastOrError.unsafeRunSync()
+
+    val storeGeneric: Store.Generic[IO] = store
+
+    storeGeneric.list(dir).map { u =>
+      u.path.storageClass mustBe None
+    }.compile.lastOrError.unsafeRunSync()
+  }
+
+  it should "handle files with trailing / in name" in {
+    val dir      = dirUrl("trailing-slash")
+    val filePath = dir / "file-with-slash/"
+
+    store.putContent(filePath, "test").unsafeRunSync()
+
+    val entities = s3Store
+      .listUnderlying(dir, fullMetadata = false, expectTrailingSlashFiles = true, recursive = false)
+      .compile
+      .toList
+      .unsafeRunSync()
+
+    entities.foreach { listedUrl =>
+      listedUrl.path.fileName mustBe Some("file-with-slash/")
+      listedUrl.path.isDir mustBe false
+    }
+
+    store.getContents(filePath).unsafeRunSync() mustBe "test"
+
+    store.remove(filePath).unsafeRunSync()
+
+    store.list(dir).compile.toList.unsafeRunSync() mustBe Nil
+  }
 
   it should "pick up metadata from resolved blob" in {
     val url = dirUrl("foo") / "bar" / "file"
@@ -59,7 +111,7 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
     val filePath = Path(show"test-$testRun/set-underlying/file1")
-    Stream("data".getBytes.toIndexedSeq: _*).through(
+    Stream("data".getBytes.toIndexedSeq*).through(
       s3Store.put(Url("s3", authority, filePath), overwrite = true, size = None, meta = Some(s3Meta))
     ).compile.drain.unsafeRunSync()
     val entities = s3Store.list(Url("s3", authority, filePath)).compile.toList.unsafeRunSync()
@@ -79,7 +131,7 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
     val sc = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
-    val filePath = Path(show"test-$testRun/set-underlying/file2")
+    val filePath = Path(s"test-$testRun/set-underlying/file2")
     val arr      = new Array[Byte](6 * 1024 * 1024)
     Random.nextBytes(arr)
     Stream.emits(arr).covary[IO]

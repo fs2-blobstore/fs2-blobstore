@@ -5,11 +5,11 @@ import java.io.{File, FileNotFoundException, FileReader}
 import java.time.{Instant, ZoneOffset}
 import blobstore.url.Authority
 import cats.effect.IO
-import cats.syntax.all._
+import cats.syntax.all.*
 import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnection, BoxFile, BoxFolder}
 import org.slf4j.LoggerFactory
 
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
 
 /** Run these with extreme caution. If configured properly, this test as will attempt to write to your Box server. See
@@ -27,7 +27,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val authority: Authority = Authority.unsafe("foo")
 
-  private lazy val boxStore: BoxStore[IO]    = BoxStore[IO](api, blocker)
+  private lazy val boxStore: BoxStore[IO]    = BoxStore.builder[IO](api, blocker).unsafe
   override def mkStore(): Store[IO, BoxPath] = boxStore.lift
 
   val rootFolderName = "BoxStoreTest"
@@ -40,17 +40,17 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
       .map(u => new FileReader(new File(u.toURI)))
       .map(BoxConfig.readFrom)
       .map(BoxDeveloperEditionAPIConnection.getAppEnterpriseConnection)
-      .flatTap(_ => Try(log.info(s"Authenticated with credentials file $fileCredentialName")))
+      .flatTap(_ => Try(log.info(show"Authenticated with credentials file $fileCredentialName")))
 
     val devToken = sys.env
       .get(BoxDevToken)
-      .toRight(new Exception(s"Environment variable not set: $BoxDevToken"))
+      .toRight(new Exception(show"Environment variable not set: $BoxDevToken"))
       .toTry
       .map(new BoxAPIConnection(_))
       .flatTap(_ => Try(log.info("Authenticated with dev token")))
 
     devToken.orElse(fileCredentials) match {
-      case Failure(e) => cancel(s"No box credentials found. Please set $BoxDevToken or $BoxAppKey", e)
+      case Failure(e) => cancel(show"No box credentials found. Please set $BoxDevToken or $BoxAppKey", e)
       case Success(c) => c
     }
   }
@@ -63,7 +63,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
 
     rootInfo match {
       case Some(i) => i
-      case None    => fail(new Exception(s"Root folder not found: $authority"))
+      case None    => fail(new Exception(show"Root folder not found: $authority"))
     }
   }
 
@@ -72,18 +72,18 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
     val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
 
     rootFolder.getResource // scalafix:ok
-      .getChildren(BoxFolder.ALL_FIELDS: _*)
+      .getChildren(BoxFolder.ALL_FIELDS*)
       .asScala
       .toList
       .filter(_.getCreatedAt.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))
       .foreach {
         case i: BoxFolder#Info =>
-          log.info(s"Deleting outdated test folder ${i.getName}")
+          log.info(show"Deleting outdated test folder ${i.getName}")
           Try(i.getResource.delete(true))
         case i: BoxFile#Info =>
-          log.info(s"Deleting outdated test file ${i.getName}")
+          log.info(show"Deleting outdated test file ${i.getName}")
           Try(i.getResource.delete())
-        case i => log.info(s"Ignoring old item $i")
+        case i => log.info(show"Ignoring old item ${i.getName}")
       }
   }
 

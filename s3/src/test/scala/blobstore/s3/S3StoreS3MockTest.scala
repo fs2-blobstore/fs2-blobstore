@@ -17,7 +17,7 @@ package blobstore
 package s3
 
 import cats.effect.IO
-
+import cats.syntax.all.*
 import java.net.URI
 import com.dimafeng.testcontainers.GenericContainer
 import software.amazon.awssdk.auth.credentials.{AwsBasicCredentials, StaticCredentialsProvider}
@@ -25,7 +25,7 @@ import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
 
-class S3StoreS3MockTest extends AbstractS3StoreTest {
+class S3StoreS3MockTest extends ContainerizedAbstractS3StoreTest {
 
   override val container: GenericContainer = GenericContainer(
     dockerImage = "adobe/s3mock",
@@ -35,7 +35,7 @@ class S3StoreS3MockTest extends AbstractS3StoreTest {
   override def client: S3AsyncClient = S3AsyncClient
     .builder()
     .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(s"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
+    .endpointOverride(URI.create(show"http://${container.containerIpAddress}:${container.mappedPort(9090)}"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("a", "s")))
     .build()
 
