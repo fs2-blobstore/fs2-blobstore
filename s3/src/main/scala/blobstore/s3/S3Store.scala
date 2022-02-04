@@ -25,12 +25,13 @@ import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
 import fs2.{Chunk, Pipe, Pull, Stream}
 import fs2.interop.reactivestreams.*
+import io.netty.buffer.PooledByteBufAllocator
 import org.reactivestreams.Publisher
 import software.amazon.awssdk.core.async.{AsyncRequestBody, AsyncResponseTransformer, SdkPublisher}
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.*
 
-import java.nio.{Buffer, ByteBuffer}
+import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
@@ -274,7 +275,7 @@ class S3Store[F[_]: Async](
     val makeRequest: F[CreateMultipartUploadResponse] =
       Async[F].fromCompletableFuture(Async[F].delay(s3.createMultipartUpload(request)))
 
-    Stream.eval((makeRequest, Semaphore(2)).tupled).flatMap { case (muResp, semaphore) =>
+    Stream.eval((makeRequest, Semaphore[F](2)).tupled).flatMap { case (muResp, semaphore) =>
       val partRef                                        = Ref.unsafe(1)
       val completedPartsRef: Ref[F, List[CompletedPart]] = Ref.unsafe(Nil)
 
@@ -320,19 +321,19 @@ class S3Store[F[_]: Async](
             }
           }
         case None =>
-          lazy val directBuffers = (
-            ByteBuffer.allocateDirect(bufferSize),
-            ByteBuffer.allocateDirect(bufferSize)
-          )
-
-          def selectBuffer(part: Int) = if (part % 2 == 0) directBuffers._1 else directBuffers._2
-
-          def acquireBuffer(part: Int) = for {
-            _ <- semaphore.acquire
-            _ <- Async[F].blocking {
-              selectBuffer(part).asInstanceOf[Buffer].clear() // scalafix:ok
+          val buffersResource = Resource.make {
+            Async[F].blocking {
+              (
+                PooledByteBufAllocator.DEFAULT.buffer(S3Store.multiUploadMinimumPartSize.toInt, bufferSize),
+                PooledByteBufAllocator.DEFAULT.buffer(S3Store.multiUploadMinimumPartSize.toInt, bufferSize)
+              )
             }
-          } yield ()
+          } { case (b1, b2) =>
+            Async[F].blocking {
+              b1.release()
+              b2.release()
+            }.void
+          }
 
           val resource = for {
             part <- Resource.eval(partRef.getAndUpdate(_ + 1))
@@ -340,7 +341,11 @@ class S3Store[F[_]: Async](
               if (part > S3Store.maxMultipartParts) S3Store.multipartUploadPartsError.raiseError
               else Async[F].unit
             }
-            _ <- Resource.make(acquireBuffer(part))(_ => semaphore.release)
+            buffers <- buffersResource
+            selectBuffer = { (part: Int) => if (part % 2 == 0) buffers._1 else buffers._2 }
+            _ <- Resource.make {
+              semaphore.acquire.flatMap(_ => Async[F].blocking(selectBuffer(part).clear())).void
+            } { _ => semaphore.release }
             _ <- Resource.onFinalize {
               Async[F].fromCompletableFuture(Async[F].delay {
                 s3.uploadPart(
@@ -352,9 +357,7 @@ class S3Store[F[_]: Async](
                     part,
                     None
                   ),
-                  AsyncRequestBody.fromByteBuffer(
-                    selectBuffer(part).asInstanceOf[Buffer].flip().asInstanceOf[ByteBuffer] // scalafix:ok
-                  )
+                  AsyncRequestBody.fromByteBuffer(selectBuffer(part).nioBuffer())
                 )
               }).flatMap { resp =>
                 completedPartsRef.update(CompletedPart.builder().eTag(resp.eTag()).partNumber(part).build() :: _)
@@ -362,7 +365,9 @@ class S3Store[F[_]: Async](
             }
           } yield selectBuffer(part)
 
-          putRotateBase(bufferSize.toLong, resource)(bb => chunk => Async[F].blocking(bb.put(chunk.toArray)).void)
+          putRotateBase(bufferSize.toLong, resource)(bb =>
+            chunk => Async[F].blocking(bb.writeBytes(chunk.toArray)).void
+          )
       }
 
       in.through(pipe).onFinalizeCase {
