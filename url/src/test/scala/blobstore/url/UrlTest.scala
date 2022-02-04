@@ -173,7 +173,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
     }
   }
 
-  it should "give correct error messaages" in {
+  it should "give correct error messages" in {
     inside(Url.parse("foo")) {
       case Invalid(e) =>
         val missingScheme = e.toList.collect {
