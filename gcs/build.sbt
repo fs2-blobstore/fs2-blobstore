@@ -2,5 +2,5 @@ name := "gcs"
 
 libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-storage" % "2.4.4",
-  "com.google.cloud" % "google-cloud-nio"     % "0.123.22" % Test
+  "com.google.cloud" % "google-cloud-nio"     % "0.123.23" % Test
 )
