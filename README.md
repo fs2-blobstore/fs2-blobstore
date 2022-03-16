@@ -30,4 +30,4 @@ libraryDependencies ++= Seq(
 * `azure` module provides `AzureStore` and depends on [Azure Storage SDK Client library for Java](https://docs.microsoft.com/en-us/java/api/overview/azure/storage)
 * `box` module provides `BoxStore` and depends on the [Box SDK for Java](https://github.com/box/box-java-sdk/)
 
-Head over to the [microsite](https://jgogstad.github.io/fs2-blobstore/) for documentation
+Head over to the [microsite](https://fs2-blobstore.github.io/fs2-blobstore/) for documentation
