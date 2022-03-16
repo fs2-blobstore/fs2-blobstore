@@ -36,8 +36,6 @@ lazy val azure = project.dependsOn(core % "compile->compile;test->test")
 
 lazy val `integration-tests` = project.dependsOn(s3, sftp, box, gcs, azure)
 
-lazy val docs = project in file("project-docs")
-
 lazy val microsite = project
   .settings(
     Compile / scalacOptions --= Seq("-Ywarn-unused:locals", "-Wunused:locals"),
