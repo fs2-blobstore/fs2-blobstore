@@ -10,8 +10,6 @@ Unified Scala interface based on [fs2](https://fs2.io) for hierarhical and flat 
 
 ### Quick Start
 
-The latest version is **@stableVersion@**, published for **Scala @scalaVersions@**
-
 ```scala
 libraryDependencies ++= Seq(
   "com.github.fs2-blobstore" %% "core"  % "<version>",
