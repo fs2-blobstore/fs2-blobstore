@@ -7,7 +7,6 @@ on:
     branches: [ master ]
     paths-ignore:
       - 'README.md'
-      - 'docs/**'
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,7 +53,7 @@ jobs:
         run: sbt ++${{ matrix.scala }} 'all compile Test/compile doc'
 
       - name: Compile readme
-        run: sbt ++${{ matrix.scala }} docs/mdoc
+        run: sbt ++${{ matrix.scala }} microsite/mdoc
 
       - name: Run Scalafix
         run: sbt ++${{ matrix.scala }} 'scalafixAll --check'

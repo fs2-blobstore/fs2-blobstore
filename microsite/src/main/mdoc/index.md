@@ -1,4 +1,8 @@
-# fs2-blobstore
+---
+layout: home
+title:  Home
+section: home
+---
 
 [![CI](https://github.com/fs2-blobstore/fs2-blobstore/workflows/CI/badge.svg)](https://github.com/fs2-blobstore/fs2-blobstore/actions?query=workflow:CI)
 [![Release](https://github.com/fs2-blobstore/fs2-blobstore/workflows/Release/badge.svg)](https://github.com/fs2-blobstore/fs2-blobstore/actions?query=workflow:Release)
@@ -6,7 +10,8 @@
 [![codecov](https://codecov.io/gh/fs2-blobstore/fs2-blobstore/branch/master/graph/badge.svg)](https://codecov.io/gh/fs2-blobstore/fs2-blobstore)
 [![Join the chat at https://gitter.im/fs2-blobstore/Lobby](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fs2-blobstore/Lobby)
 
-Unified Scala interface based on [fs2](https://fs2.io) for hierarhical and flat object stores. This library lets you integrate fs2 programs with various storage technologies such as S3, GCS, Azure Blob Storage, SFTP and Box. It also offers an interface that abstracts over the underlying storage technology, this lets you write fs2 programs that are agnostic to what storage provider files are hosted on.
+
+Unified Scala interface based on [fs2](https://fs2.io) for hierarhical and flat object stores. This library lets you integrate fs2 programs with various storage technologies such as S3, GCS, Azure Blob Storage, SFTP and Box. It also offers an interface that abstracts over the underlying storage technology, this lets you write fs2 programs that are agnostic to what storage provider files are hosted on.   
 
 ### Quick Start
 
@@ -14,12 +19,12 @@ The latest version is **@stableVersion@**, published for **Scala @scalaVersions@
 
 ```scala
 libraryDependencies ++= Seq(
-  "com.github.fs2-blobstore" %% "core"  % "<version>",
-  "com.github.fs2-blobstore" %% "sftp"  % "<version>",
-  "com.github.fs2-blobstore" %% "s3"    % "<version>",
-  "com.github.fs2-blobstore" %% "gcs"   % "<version>",
-  "com.github.fs2-blobstore" %% "azure" % "<version>",
-  "com.github.fs2-blobstore" %% "box"   % "<version>",
+  "com.github.fs2-blobstore" %% "core"  % "@stableVersion@",
+  "com.github.fs2-blobstore" %% "sftp"  % "@stableVersion@",
+  "com.github.fs2-blobstore" %% "s3"    % "@stableVersion@",
+  "com.github.fs2-blobstore" %% "gcs"   % "@stableVersion@",
+  "com.github.fs2-blobstore" %% "azure" % "@stableVersion@",
+  "com.github.fs2-blobstore" %% "box"   % "@stableVersion@",
 ) 
 ```
 
@@ -30,4 +35,4 @@ libraryDependencies ++= Seq(
 * `azure` module provides `AzureStore` and depends on [Azure Storage SDK Client library for Java](https://docs.microsoft.com/en-us/java/api/overview/azure/storage)
 * `box` module provides `BoxStore` and depends on the [Box SDK for Java](https://github.com/box/box-java-sdk/)
 
-Head over to the [microsite](https://fs2-blobstore.github.io/fs2-blobstore/) for documentation
+See the [documentation](documentation/data-model) for how to use

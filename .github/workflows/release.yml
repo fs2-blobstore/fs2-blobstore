@@ -10,7 +10,6 @@ on:
     branches: [ master ]
     paths-ignore:
       - 'README.md'
-      - 'docs/**'
 
 concurrency:
   group: release-${{ github.ref }}
@@ -38,24 +37,3 @@ jobs:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: sbt ci-release
-
-  readme:
-    name: Update Readme
-    if: github.event_name == 'release'
-    needs: [publish]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout current branch (fast)
-        uses: actions/checkout@v3
-
-      - uses: coursier/cache-action@v6
-
-      - name: Generate updated README.md
-        run: sbt 'docs/mdoc --out .'
-
-      - uses: EndBug/add-and-commit@v8
-        with:
-          message: Update readme for released version
-          add: README.md
-          ref: master
