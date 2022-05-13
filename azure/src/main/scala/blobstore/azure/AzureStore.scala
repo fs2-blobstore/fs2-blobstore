@@ -70,7 +70,7 @@ class AzureStore[F[_]: Async](
     put(
       url,
       overwrite,
-      size.fold(none[BlobItemProperties])(s => new BlobItemProperties().setContentLength(s).some),
+      size.fold(none[BlobItemProperties])(s => new BlobItemProperties.setContentLength(s).some),
       Map.empty
     )
 
@@ -86,7 +86,7 @@ class AzureStore[F[_]: Async](
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blobName)
       val flux = Flux.from(publisher)
-      val pto  = new ParallelTransferOptions().setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
+      val pto  = new ParallelTransferOptions.setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
       val (overwriteCheck, requestConditions) =
         if (overwrite) {
           Mono.empty -> null // scalafix:ok
@@ -94,7 +94,7 @@ class AzureStore[F[_]: Async](
           blobClient.exists.flatMap((exists: java.lang.Boolean) =>
             if (exists) Mono.error[Unit](new IllegalArgumentException(Constants.BLOB_ALREADY_EXISTS))
             else Mono.empty[Unit]
-          ) -> new BlobRequestConditions().setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
+          ) -> new BlobRequestConditions.setIfNoneMatch(Constants.HeaderConstants.ETAG_WILDCARD)
         }
 
       val headers = properties.map(AzureStore.toHeaders)
@@ -172,7 +172,7 @@ class AzureStore[F[_]: Async](
       blobClient = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blob)
-      pto    = new ParallelTransferOptions().setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
+      pto    = new ParallelTransferOptions.setBlockSizeLong(blockSize.toLong).setMaxConcurrency(numBuffers.max(2))
       flux   = Flux.from(publisher)
       upload = blobClient.upload(flux, pto, true)
       _ <-
@@ -207,9 +207,9 @@ class AzureStore[F[_]: Async](
     recursive: Boolean
   ): Stream[F, Url[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-    val options = new ListBlobsOptions()
+    val options = new ListBlobsOptions
       .setPrefix(if (blobName == "/") "" else blobName)
-      .setDetails(new BlobListDetails().setRetrieveMetadata(fullMetadata))
+      .setDetails(new BlobListDetails.setRetrieveMetadata(fullMetadata))
     val containerClient = azure.getBlobContainerAsyncClient(container)
     val blobPagedFlux =
       if (recursive) containerClient.listBlobs(options)
@@ -294,7 +294,7 @@ object AzureStore {
     (url.authority.show, url.path.show.stripPrefix("/"))
 
   private def toBlobItemProperties(bp: BlobProperties): (BlobItemProperties, Map[String, String]) = {
-    val bip = new BlobItemProperties()
+    val bip = new BlobItemProperties
       .setAccessTier(bp.getAccessTier)
       .setAccessTierChangeTime(bp.getAccessTierChangeTime)
       .setArchiveStatus(bp.getArchiveStatus)
@@ -323,7 +323,7 @@ object AzureStore {
   }
 
   private def toHeaders(bip: BlobItemProperties): BlobHttpHeaders =
-    new BlobHttpHeaders()
+    new BlobHttpHeaders
       .setCacheControl(bip.getCacheControl)
       .setContentDisposition(bip.getContentDisposition)
       .setContentEncoding(bip.getContentEncoding)

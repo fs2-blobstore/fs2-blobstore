@@ -31,7 +31,7 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   val options =
     new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 5, null.asInstanceOf[Integer], null, null, null) // scalafix:ok
 
-  lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
+  lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder
     .connectionString(
       show"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${container.containerIpAddress}:${container.mappedPort(10000)}/devstoreaccount1;"
     )
@@ -122,7 +122,7 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   it should "set underlying metadata on write" in {
     val ct         = "text/plain"
     val at         = AccessTier.COOL
-    val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
+    val properties = new BlobItemProperties.setAccessTier(at).setContentType(ct)
     val fileUrl    = dirUrl("set-underlying") / "file"
     Stream("data".getBytes.toIndexedSeq*).through(azureStore.put(
       fileUrl,

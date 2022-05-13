@@ -55,8 +55,8 @@ sealed trait Path[+A] {
     val emptyElements = Chain(segment.reverse.takeWhile(_ == '/').map(_ => "").toList*)
 
     val stripSuffix = segments.initLast match {
-      case Some((init, "")) => init
-      case _                => segments
+      case Some(init, "") => init
+      case _              => segments
     }
     val newChain = stripSuffix ++ nonEmpty ++ emptyElements
 
@@ -120,8 +120,8 @@ sealed trait Path[+A] {
   def up: Path.Plain = {
     @tailrec
     def dropLastSegment(segments: Chain[String], levels: Int): Chain[String] = segments.initLast match {
-      case Some((init, last)) => if (last.isEmpty && levels === 0) dropLastSegment(init, levels + 1) else init
-      case None               => segments
+      case Some(init, last) => if (last.isEmpty && levels === 0) dropLastSegment(init, levels + 1) else init
+      case None             => segments
     }
     val upSegments     = dropLastSegment(segments, 0)
     val representation = upSegments.mkString_("/")
@@ -135,8 +135,8 @@ sealed trait Path[+A] {
 
   def stripSlashSuffix: Path[A] = {
     val newSegments = segments.initLast match {
-      case Some((init, "")) => init
-      case _                => segments
+      case Some(init, "") => init
+      case _              => segments
     }
 
     this match {

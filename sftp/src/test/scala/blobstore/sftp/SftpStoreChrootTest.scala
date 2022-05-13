@@ -15,7 +15,7 @@ class SftpStoreChrootTest extends AbstractSftpStoreTest {
   )
 
   override val session: IO[Session] = IO {
-    val jsch = new JSch()
+    val jsch = new JSch
 
     val session = jsch.getSession("blob", container.containerIpAddress, container.mappedPort(22))
 

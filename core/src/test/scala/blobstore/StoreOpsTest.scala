@@ -77,7 +77,7 @@ class StoreOpsTest extends AnyFlatSpec with Matchers {
 }
 
 final case class DummyStore() extends Store[IO, String] {
-  val buf = new ArrayBuffer[Byte]()
+  val buf = new ArrayBuffer[Byte]
   override def put[A](url: Url[A], overwrite: Boolean, size: Option[Long] = None): Pipe[IO, Byte, Unit] = {
     in =>
       {

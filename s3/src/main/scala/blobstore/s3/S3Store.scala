@@ -88,7 +88,7 @@ class S3Store[F[_]: Async](
   }
 
   private def performGet(request: GetObjectRequest) = {
-    val cf = new CompletableFuture[Publisher[ByteBuffer]]()
+    val cf = new CompletableFuture[Publisher[ByteBuffer]]
     val transformer: AsyncResponseTransformer[GetObjectResponse, Publisher[ByteBuffer]] =
       new AsyncResponseTransformer[GetObjectResponse, Publisher[ByteBuffer]] {
         override def prepare(): CompletableFuture[Publisher[ByteBuffer]] = cf
@@ -283,7 +283,7 @@ class S3Store[F[_]: Async](
         case Some(size) =>
           val partSize     = size.max(S3Store.multiUploadMinimumPartSize).min(S3Store.multiUploadDefaultPartSize)
           val totalParts   = (size.toDouble / partSize).ceil.toInt
-          val lastPartSize = size - ((totalParts - 1) * partSize)
+          val lastPartSize = size - (totalParts - 1) * partSize
           val resource = for {
             part <- Resource.eval(partRef.getAndUpdate(_ + 1))
             _ <- Resource.eval(if (part > totalParts)
@@ -419,9 +419,9 @@ class S3Store[F[_]: Async](
         in.pull.unconsN(S3Store.multiUploadMinimumPartSize.toInt, allowFewer = true).flatMap {
           case None =>
             Pull.eval(putSingle(bucket, key, meta, Array.emptyByteArray))
-          case Some((chunk, _)) if chunk.size < S3Store.multiUploadMinimumPartSize.toInt =>
+          case Some(chunk, _) if chunk.size < S3Store.multiUploadMinimumPartSize.toInt =>
             Pull.eval(putSingle(bucket, key, meta, chunk.toArray))
-          case Some((chunk, rest)) =>
+          case Some(chunk, rest) =>
             Pull.eval(putMultiPart(bucket, key, meta, none, rest.consChunk(chunk)).compile.drain)
         }.stream
       case Some(size) if size <= S3Store.multiUploadThreshold =>

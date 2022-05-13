@@ -42,7 +42,7 @@ package object blobstore {
   )(consume: T => Chunk[Byte] => F[Unit]): Pipe[F, Byte, Unit] = { in =>
     in.pull.uncons.flatMap {
       case None => Pull.done
-      case Some((h, t)) =>
+      case Some(h, t) =>
         Pull.eval(Stream
           .resource(Hotswap(openNewFile))
           .flatMap {
@@ -68,14 +68,14 @@ package object blobstore {
   ): Pull[F, Unit, Unit] = {
     val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
     s.pull.unconsLimit(toWrite).flatMap {
-      case Some((hd, tl)) =>
+      case Some(hd, tl) =>
         val newAcc = acc + hd.size
         consume(consumer)(hd).flatMap { consumer =>
           if (newAcc >= limit) {
             tl.pull.uncons.flatMap {
               case None =>
                 Pull.done
-              case Some((h, t)) =>
+              case Some(h, t) =>
                 Pull
                   .eval(hotswap.swap(resource))
                   .flatMap(a => extract(a).pull.headOrError)

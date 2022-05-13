@@ -47,7 +47,7 @@ class BoxStore[F[_]: Async](
 
   override def get[A](path: Path[A], chunkSize: Int): Stream[F, Byte] = {
     val init: F[(OutputStream, InputStream)] = Async[F].blocking {
-      val is = new PipedInputStream()
+      val is = new PipedInputStream
       val os = new PipedOutputStream(is)
       (os, is)
     }
@@ -80,7 +80,7 @@ class BoxStore[F[_]: Async](
           Stream.raiseError(new IllegalArgumentException(show"Specified path '$path' doesn't point to a file."))
         case Some(name) =>
           val init: F[(OutputStream, InputStream, Either[BoxFile, BoxFolder])] = {
-            val os = new PipedOutputStream()
+            val os = new PipedOutputStream
             val is = new PipedInputStream(os)
             boxFileAtPath(path).flatMap {
               case Some(existing) if overwrite =>
@@ -167,7 +167,7 @@ class BoxStore[F[_]: Async](
         case Some(file) => file.asLeft[BoxFolder].pure[F]
       })
       (os, is) <- Resource.make(Async[F].delay {
-        val os = new PipedOutputStream()
+        val os = new PipedOutputStream
         val is = new PipedInputStream(os)
         (os, is)
       }) {

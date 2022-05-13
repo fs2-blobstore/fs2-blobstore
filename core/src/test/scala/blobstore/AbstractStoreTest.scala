@@ -487,7 +487,7 @@ abstract class AbstractStoreTest[B <: FsObject]
       files        <- store.list(dir).compile.toList
       fileContents <- files.traverse(u => store.get(u, fileLength).compile.to(Array).map(u -> _))
     } yield {
-      files must have size (fileCount + 1)
+      files must have size fileCount + 1
       files.flatMap(_.path.fileName) must contain allElementsOf (0L to fileCount).map(_.toString)
       files.foreach { u =>
         u.path.isDir mustBe false
@@ -543,7 +543,7 @@ abstract class AbstractStoreTest[B <: FsObject]
       _     <- store.move(src, dst)
       files <- store.listAll(dir, recursive = true)
     } yield {
-      files.map(_.show) must contain only (dst.show)
+      files.map(_.show) must contain only dst.show
     }
 
     test.unsafeRunSync()
@@ -581,7 +581,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   def cleanup(root: NioPath): Unit = {
 
-    val fv: FileVisitor[NioPath] = new SimpleFileVisitor[NioPath]() {
+    val fv: FileVisitor[NioPath] = new SimpleFileVisitor[NioPath] {
       override def postVisitDirectory(dir: NioPath, exc: IOException): FileVisitResult = {
         Files.delete(dir)
         FileVisitResult.CONTINUE

@@ -23,7 +23,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
   val storage: Storage = StorageOptions
     .newBuilder().setServiceRpcFactory(
-      new ServiceRpcFactory[StorageOptions]() {
+      new ServiceRpcFactory[StorageOptions] {
         override def create(options: StorageOptions): ServiceRpc = new FixedFakeStorageRpc(true)
       }
     ).build().getService

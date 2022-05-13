@@ -9,19 +9,19 @@ object CrossCompile extends AutoPlugin {
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(
     libraryDependencies ++= (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, _)) => List(
+      case Some(2, _) => List(
           compilerPlugin("org.typelevel" %% "kind-projector"     % "0.13.2" cross CrossVersion.full),
           compilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1")
         )
       case _ => Nil
     }),
     scalacOptions := (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((3, _)) =>
+      case Some(3, _) =>
         "-source:future" :: scalacOptions.value.map {
           case "-Ykind-projector" => "-Ykind-projector:underscores"
           case x                  => x
         }.toList
-      case Some((2, 13)) | Some((2, 12)) =>
+      case Some(2, 13) | Some(2, 12) =>
         scalacOptions.value ++ List("-Xsource:3", "-P:kind-projector:underscore-placeholders")
       case _ => scalacOptions.value
     }),
