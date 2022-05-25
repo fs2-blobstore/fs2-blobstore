@@ -71,7 +71,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v3.0.1
+        uses: mikepenz/action-junit-report@v3.0.3
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
@@ -81,7 +81,7 @@ jobs:
         run: sbt ++${{ matrix.scala }} coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v2.1.0
+        uses: codecov/codecov-action@v3.1.0
         with:
           flags: scala-${{ matrix.scala }}
 
@@ -117,7 +117,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v3.0.1
+        uses: mikepenz/action-junit-report@v3.0.3
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
@@ -126,6 +126,6 @@ jobs:
         run: sbt coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v2.1.0
+        uses: codecov/codecov-action@v3.1.0
         with:
           flags: scala-it
