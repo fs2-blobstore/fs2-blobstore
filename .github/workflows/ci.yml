@@ -41,7 +41,7 @@ jobs:
     needs: [scalafmt]
     strategy:
       matrix:
-        scala: [ 2.12.15, 2.13.8, 3.1.1 ]
+        scala: [ 2.12.16, 2.13.8, 3.1.1 ]
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v3
