@@ -521,7 +521,7 @@ object S3Store {
       val validateCrtClient: ValidatedNec[IllegalArgumentException, Unit] = _crtClient match {
         case Some(client) if !checkExpectedCrtClientClass(client) =>
           new IllegalArgumentException(
-            "CRT client must implement software.amazon.awssdk.transfer.s3.internal.S3CrtAsyncClient."
+            "CRT client must implement software.amazon.awssdk.services.s3.internal.crt.S3CrtAsyncClient."
           ).invalidNec
         case _ => ().validNec
       }
@@ -558,7 +558,7 @@ object S3Store {
 
     private def checkExpectedCrtClientClass(client: S3AsyncClient): Boolean =
       client.getClass.getInterfaces.map(_.getCanonicalName).contains(
-        "software.amazon.awssdk.transfer.s3.internal.S3CrtAsyncClient"
+        "software.amazon.awssdk.services.s3.internal.crt.S3CrtAsyncClient"
       )
   }
 }
