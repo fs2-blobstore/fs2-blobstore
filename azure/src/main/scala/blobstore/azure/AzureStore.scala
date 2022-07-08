@@ -58,7 +58,7 @@ class AzureStore[F[_]: Async](
 
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).download(), 2)
+    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).downloadStream(), 2)
       .flatMap(byteBuffer => Stream.chunk(Chunk.byteBuffer(byteBuffer)))
   }
 
