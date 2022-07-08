@@ -103,7 +103,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       .build()
 
     Stream("data".getBytes.toIndexedSeq*).through(
-      gcsStore.put(url.path.as(GcsBlob(blobInfo)), List.empty)
+      gcsStore.put[Unit](url.path.as(GcsBlob(blobInfo)), List.empty)
     ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()
 

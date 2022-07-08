@@ -17,7 +17,7 @@ package blobstore
 package sftp
 
 import java.nio.file.Paths
-import blobstore.url.{Authority, Host, Path, Port}
+import blobstore.url.{Authority, Host, Path, Port, Url}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.implicits.showInterpolator
@@ -120,7 +120,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
       files <- store.list(dir).compile.toList
     } yield files
 
-    result.unsafeRunSync() must be(List.empty)
+    result.unsafeRunSync() must be(List.empty[Url[SftpFile]])
   }
 
   it should "not be able to remove a directory if it is not empty" in {
