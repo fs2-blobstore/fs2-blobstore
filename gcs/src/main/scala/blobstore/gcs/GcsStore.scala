@@ -152,7 +152,7 @@ class GcsStore[F[_]: Async](
     newOutputStream(blobInfo, opts)
   }
 
-  private def newOutputStream[A](blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
+  private def newOutputStream(blobInfo: BlobInfo, options: List[BlobWriteOption]): F[OutputStream] =
     Async[F].blocking(Channels.newOutputStream(storage.writer(blobInfo, options*)))
 
   /** Moves bytes from srcPath to dstPath. Stores should optimize to use native move functions to avoid data transfer.

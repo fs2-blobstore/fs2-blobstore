@@ -252,16 +252,18 @@ class BoxStore[F[_]: Async](
       case None =>
         boxInfoAtPathStream(rootFolder, path.stripSlashSuffix.segments.toList, fields).compile.last.map {
           case Some(info) =>
-            if (BoxStore.isFile(info)) path.as(BoxPath(info.asInstanceOf[BoxFile#Info].asLeft)).some // scalafix:ok
+            // scalafix:off
+            if (BoxStore.isFile(info)) path.as(BoxPath(info.asInstanceOf[BoxFile#Info].asLeft)).some
             else if (BoxStore.isFolder(info))
-              path.as(BoxPath(info.asInstanceOf[BoxFolder#Info].asRight)).some // scalafix:ok
+              path.as(BoxPath(info.asInstanceOf[BoxFolder#Info].asRight)).some
             else none[Path[BoxPath]]
+          // scalafix:on
           case None => None
         }
       case someInfo => someInfo.pure
     }
 
-  private def boxInfoAtPathStream[A](
+  private def boxInfoAtPathStream(
     parentFolder: BoxFolder,
     pathParts: List[String],
     fields: Array[String]

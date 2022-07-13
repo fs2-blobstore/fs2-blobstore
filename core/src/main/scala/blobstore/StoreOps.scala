@@ -73,7 +73,9 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     *   F[Unit]
     */
   def getToNio[A](src: Url[A], dst: java.nio.file.Path, chunkSize: Int): F[Unit] =
+    // scalafix:off
     store.get(src, chunkSize).through(Files[F].writeAll(Path.fromNioPath(dst))).compile.drain
+    // scalafix:on
 
   def putContent[A](url: Url[A], content: String): F[Unit] = {
     val bytes = content.getBytes(StandardCharsets.UTF_8)

@@ -71,8 +71,8 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   override def beforeAll(): Unit = {
     super.beforeAll()
     val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
-
-    rootFolder.getResource // scalafix:ok
+    // scalafix:off
+    rootFolder.getResource
       .getChildren(BoxFolder.ALL_FIELDS*)
       .asScala
       .toList
@@ -86,6 +86,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
           Try(i.getResource.delete())
         case i => log.info(show"Ignoring old item ${i.getName}")
       }
+    // scalafix:off
   }
 
   behavior of "BoxStore"
