@@ -9,8 +9,8 @@ import cats.syntax.all.*
 import fs2.{Chunk, Stream}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
+import software.amazon.awssdk.services.s3.internal.crt.S3CrtAsyncClient
 import software.amazon.awssdk.services.s3.model.StorageClass
-import software.amazon.awssdk.transfer.s3.internal.S3CrtAsyncClient
 
 import java.nio.charset.StandardCharsets
 import scala.jdk.CollectionConverters.*
