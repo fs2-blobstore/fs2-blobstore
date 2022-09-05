@@ -71,7 +71,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v3.2.0
+        uses: mikepenz/action-junit-report@v3.4.0
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
@@ -117,7 +117,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v3.2.0
+        uses: mikepenz/action-junit-report@v3.4.0
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
