@@ -1,6 +1,6 @@
 name := "core"
 
-val fs2Version = "3.2.10"
+val fs2Version = "3.2.14"
 
 libraryDependencies ++= Seq(
   "co.fs2" %% "fs2-core" % fs2Version,
