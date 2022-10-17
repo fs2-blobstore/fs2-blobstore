@@ -59,7 +59,7 @@ class AzureStore[F[_]: ConcurrentEffect](
 
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).download())
+    fromPublisher(azure.getBlobContainerAsyncClient(container).getBlobAsyncClient(blobName).downloadStream())
       .flatMap(byteBuffer => Stream.chunk(Chunk.byteBuffer(byteBuffer)))
   }
 

@@ -1,6 +1,6 @@
 name := "sftp"
 
 libraryDependencies ++= Seq(
-  "com.github.mwiede" % "jsch"                      % "0.1.72",
-  "com.dimafeng"     %% "testcontainers-scala-core" % "0.39.12" % Test
+  "com.github.mwiede" % "jsch"                      % "0.2.4",
+  "com.dimafeng"     %% "testcontainers-scala-core" % "0.40.10" % Test
 )

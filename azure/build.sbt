@@ -1,10 +1,10 @@
 name := "azure"
 
-val fs2Version = "2.5.10"
+val fs2Version = "2.5.11"
 
 libraryDependencies ++= Seq(
-  "com.azure"     % "azure-storage-blob"        % "12.14.2",
-  "com.azure"     % "azure-storage-blob-batch"  % "12.11.2",
+  "com.azure"     % "azure-storage-blob"        % "12.20.0",
+  "com.azure"     % "azure-storage-blob-batch"  % "12.16.0",
   "co.fs2"       %% "fs2-reactive-streams"      % fs2Version,
-  "com.dimafeng" %% "testcontainers-scala-core" % "0.39.12" % Test
+  "com.dimafeng" %% "testcontainers-scala-core" % "0.40.10" % Test
 )
