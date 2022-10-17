@@ -64,7 +64,7 @@ class TransferIt(gcs: GcsStore[IO], s3: S3Store[IO]) {
     (resolve(from), resolve(to)).tupled.flatMap {
       case (src: Store.Generic[IO], dst: Store.Generic[IO]) =>
         src.list(from, recursive = true)
-          .filter((url: Url[FsObject]) => url.representation.storageClass.contains(GeneralStorageClass.Standard))
+          .filter((url: Url[FsObject]) => url.representation.storageClass.contains(blobstore.url.general.GeneralStorageClass.Standard))
           .mapFilter((url: Url[FsObject]) => url.path.fileName.map(_ -> url))
           .map {
             case (fileName: String, obj: Url[FsObject]) => src.get(obj).through(dst.put(to / fileName))
