@@ -440,15 +440,7 @@ class S3Store[F[_]: Async](
         S3Blob(url.authority.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
       )
       url.withPath(path).some
-    }
-      .recover {
-        case _: NoSuchKeyException =>
-          val meta = (!url.path.show.endsWith("/")).guard[Option].as(S3MetaInfo.const()).filterNot(_ =>
-            defaultTrailingSlashFiles
-          )
-          val path = Path.of(url.path.show, S3Blob(url.authority.show, url.path.relative.show, meta))
-          url.withPath(path).some
-      }).unNone
+    }.recover { case _: NoSuchKeyException => None }).unNone
 
 }
 
