@@ -165,6 +165,13 @@ abstract class AbstractStoreTest[B <: FsObject]
     b.path.fileName mustBe Some("file-1.txt")
   }
 
+  it should "empty stat non-existing" in {
+    val dir = dirUrl("list-dirs")
+    val b = store.stat(dir / "non-existing" / "unknown.txt").compile.last.unsafeRunSync()
+
+    b mustBe None
+  }
+
   it should "list files and directories correctly" in {
     val dir   = dirUrl("list-dirs")
     val paths = List("subdir/file-1.txt", "file-2.txt").map(writeFile(store, dir))
