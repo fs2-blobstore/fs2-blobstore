@@ -8,6 +8,6 @@ object Logging extends AutoPlugin {
   override def requires = JvmPlugin
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(
-    libraryDependencies += "org.slf4j" % "slf4j-simple" % "2.0.3" % Test
+    libraryDependencies += "org.slf4j" % "slf4j-simple" % "2.0.5" % Test
   )
 }
