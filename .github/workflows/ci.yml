@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v3.1.0
+      - uses: actions/checkout@v3.2.0
       - name: Check format
         run: |
           version=$(sed -E "s/(\/\/|#).*//g" .scalafmt.conf | grep "version" | sed -E "s/version|=|\"|\s*//g")
@@ -44,7 +44,7 @@ jobs:
         scala: [ 2.12.*, 2.13.*, 3.2.* ]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3.2.0
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
@@ -93,7 +93,7 @@ jobs:
     needs: [scalafmt, tests]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v3.1.0
+        uses: actions/checkout@v3.2.0
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
