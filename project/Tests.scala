@@ -6,7 +6,7 @@ object Tests extends AutoPlugin {
 
   override def buildSettings: Seq[Def.Setting[_]] = Seq(
     libraryDependencies ++= Seq(
-      "org.scalatest"     %% "scalatest"       % "3.2.14"   % Test,
+      "org.scalatest"     %% "scalatest"       % "3.2.15"   % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % "3.2.14.0" % Test
     )
   )
