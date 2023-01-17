@@ -1,6 +1,6 @@
 name := "azure"
 
-val fs2Version = "3.3.0"
+val fs2Version = "3.5.0"
 
 libraryDependencies ++= Seq(
   "com.azure"     % "azure-storage-blob"        % "12.20.0",
