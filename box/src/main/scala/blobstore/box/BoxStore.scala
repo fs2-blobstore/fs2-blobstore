@@ -181,7 +181,7 @@ class BoxStore[F[_]: Async](
         case (_, Resource.ExitCase.Succeeded) =>
           Async[F].blocking {
             os.close()
-            fileOrFolder.fold(_.uploadNewVersion(is), _.uploadFile(is, name))
+            val _ = fileOrFolder.fold(_.uploadNewVersion(is), _.uploadFile(is, name))
             ()
           }
         case (_, _) =>
