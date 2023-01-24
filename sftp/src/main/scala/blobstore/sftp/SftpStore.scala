@@ -61,7 +61,7 @@ class SftpStore[F[_]: Async](
     }
 
     val stream = for {
-      dispatcher <- Stream.resource(Dispatcher[F])
+      dispatcher <- Stream.resource(Dispatcher.sequential[F])
       q          <- Stream.eval(Queue.bounded[F, Option[ChannelSftp.LsEntry]](64))
       channel    <- Stream.resource(channelResource)
       entry <- Stream.fromQueueNoneTerminated(q)
