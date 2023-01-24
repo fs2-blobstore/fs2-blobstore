@@ -29,7 +29,7 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
   override def client: S3AsyncClient = S3AsyncClient
     .builder()
     .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(show"http://${container.containerIpAddress}:${container.mappedPort(9000)}"))
+    .endpointOverride(URI.create(show"http://127.0.0.1:${container.mappedPort(9000)}"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
       "minio_access_key",
       "minio_secret_key"
