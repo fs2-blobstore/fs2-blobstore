@@ -4,7 +4,7 @@ import _root_.io.github.davidgregory084.TpolecatPlugin
 import _root_.io.github.davidgregory084.TpolecatPlugin.autoImport._
 
 object Tests extends AutoPlugin {
-  override def trigger = allRequirements
+  override def trigger  = allRequirements
   override def requires = TpolecatPlugin
 
   override def buildSettings: Seq[Def.Setting[_]] = Seq(
