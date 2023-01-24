@@ -16,8 +16,7 @@ lazy val fs2blobstore = project
   .in(file("."))
   .settings(
     moduleName     := "root",
-    publish / skip := true,
-    Test / tpolecatScalacOptions ~= { _ - ScalacOptions.warnNonUnitStatement }
+    publish / skip := true
   )
   .aggregate(url, core, s3, sftp, gcs, azure, box, `integration-tests`)
 
