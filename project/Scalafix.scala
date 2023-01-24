@@ -2,21 +2,20 @@ import sbt.{Def, _}
 import sbt.Keys._
 import scalafix.sbt.ScalafixPlugin
 import scalafix.sbt.ScalafixPlugin.autoImport._
+import _root_.io.github.davidgregory084.{ScalaVersion, TpolecatPlugin, ScalacOption}
+import _root_.io.github.davidgregory084.TpolecatPlugin.autoImport._
 
 object Scalafix extends AutoPlugin {
 
   override def trigger  = allRequirements
-  override def requires = ScalafixPlugin
+  override def requires = ScalafixPlugin && TpolecatPlugin
 
   override def projectSettings: Seq[Def.Setting[_]] = Seq(
-    scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((3, _)) => Seq.empty
-      case Some((2, _)) => List(
-          "-Yrangepos", // required by SemanticDB compiler plugin
-          "-P:semanticdb:synthetics:on"
-        )
-      case _ => Seq.empty
-    })
+    tpolecatScalacOptions ~= { _ ++ List(
+        ScalacOptions.privateOption("rangepos", version => version.isBetween(ScalaVersion.V2_12_0, ScalaVersion.V3_0_0)),
+        ScalacOption("-P:semanticdb:synthetics:on", version => version.isBetween(ScalaVersion.V2_12_0, ScalaVersion.V3_0_0))
+      )
+    }
   )
 
   override def buildSettings: Seq[Def.Setting[_]] = Seq(
