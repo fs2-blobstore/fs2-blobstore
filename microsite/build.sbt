@@ -24,4 +24,6 @@ mdocVariables := Map(
 )
 
 publish / skip := true
-Compile / scalacOptions -= "-Wdead-code"
+Compile / tpolecatScalacOptions ~= {
+  _ -- (ScalacOptions.warnUnusedOptions ++ ScalacOptions.privateWarnUnusedOptions + ScalacOptions.warnNonUnitStatement)
+}
