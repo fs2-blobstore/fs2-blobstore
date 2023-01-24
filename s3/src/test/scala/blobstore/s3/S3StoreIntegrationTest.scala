@@ -37,7 +37,7 @@ class S3StoreIntegrationTest extends AbstractS3StoreTest {
     .httpClient(httpClient)
     .build()
 
-  lazy val crtAsyncClient: S3CrtAsyncClient = S3CrtAsyncClient.builder().region(region).build()
+  lazy val crtAsyncClient: S3AsyncClient = S3CrtAsyncClient.builder().region(region).build()
 
   override def afterAll(): Unit = {
     store.remove(Url(scheme, authority, testRunRoot), recursive = true)
