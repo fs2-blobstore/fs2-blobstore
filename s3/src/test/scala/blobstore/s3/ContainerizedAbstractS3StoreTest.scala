@@ -19,7 +19,10 @@ abstract class ContainerizedAbstractS3StoreTest extends AbstractS3StoreTest {
 
   override def beforeAll(): Unit = {
     container.start()
-    client.createBucket(CreateBucketRequest.builder().bucket(authority.show).build()).get()
+
+    val request: CreateBucketRequest = CreateBucketRequest.builder().bucket(authority.show).build()
+    println(request.toString)
+    client.createBucket(request).get()
     super.beforeAll()
   }
 
