@@ -16,7 +16,7 @@ case class GcsBlob(blob: BlobInfo) extends FsObject {
 
   override def isDir: Boolean = blob.isDirectory
 
-  override def lastModified: Option[Instant] = Option(blob.getUpdateTime).map(Instant.ofEpochMilli(_))
+  override def lastModified: Option[Instant] = Option(blob.getUpdateTimeOffsetDateTime).map(_.toInstant)
 
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] =
     Option(blob.getStorageClass).map {
