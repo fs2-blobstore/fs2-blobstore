@@ -26,17 +26,21 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
     )
   )
 
-  override def client: S3AsyncClient = S3AsyncClient
-    .builder()
-    .region(Region.US_EAST_1)
-    .endpointOverride(URI.create(show"http://${container.containerIpAddress}:${container.mappedPort(9000)}"))
-    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
-      "minio_access_key",
-      "minio_secret_key"
-    )))
-    .overrideConfiguration(overrideConfiguration)
-    .httpClient(httpClient)
-    .build()
+  override def client: S3AsyncClient = {
+    val endpoint = URI.create(show"http://${container.containerIpAddress}:${container.mappedPort(9000)}")
+    println(endpoint)
+    S3AsyncClient
+      .builder()
+      .region(Region.US_EAST_1)
+      .endpointOverride(endpoint)
+      .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
+        "minio_access_key",
+        "minio_secret_key"
+      )))
+      .overrideConfiguration(overrideConfiguration)
+      .httpClient(httpClient)
+      .build()
+  }
 
   behavior of "S3 - MinIO test"
 
