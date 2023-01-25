@@ -127,7 +127,7 @@ class BoxStore[F[_]: Async](
         .flatMap(folder =>
           Async[F].blocking(file.move(
             folder,
-            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo.getName)
+            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo("name").getName)
           )).void
         )
     case None => ().pure[F]
@@ -139,7 +139,7 @@ class BoxStore[F[_]: Async](
         .flatMap(folder =>
           Async[F].blocking(file.copy(
             folder,
-            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo.getName)
+            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo("name").getName)
           )).void
         )
     case None => ().pure[F]
@@ -270,7 +270,7 @@ class BoxStore[F[_]: Async](
   ): Stream[F, BoxItem#Info] =
     pathParts match {
       case Nil =>
-        if (parentFolder == rootFolder) Stream.emit(rootFolder.getInfo).covary[F]
+        if (parentFolder == rootFolder) Stream.emit(rootFolder.getInfo()).covary[F]
         else Stream.empty
       case head :: Nil =>
         Stream
