@@ -41,7 +41,7 @@ jobs:
     needs: [scalafmt]
     strategy:
       matrix:
-        scala: [ 2.12.*, 2.13.*, 3.2.* ]
+        scala: [ 2.12, 2.13, 3.2 ]
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v3
@@ -50,24 +50,19 @@ jobs:
         uses: coursier/cache-action@v6
 
       - name: Compile all sources
-        run: sbt ++${{ matrix.scala }} 'all compile Test/compile doc'
+        run: sbt ++${{ matrix.scala }}.* 'all compile Test/compile doc'
 
       - name: Compile readme
-        run: sbt ++${{ matrix.scala }} microsite/mdoc
+        run: sbt ++${{ matrix.scala }}.* microsite/mdoc
 
       - name: Run Scalafix
-        run: sbt ++${{ matrix.scala }} 'scalafixAll --check'
+        run: sbt ++${{ matrix.scala }}.* 'scalafixAll --check'
 
       - name: Create tmp directory
         run: mkdir tmp
 
       - name: Test with coverage
-        if: ${{ matrix.scala != '3.2.x' }}
-        run: sbt ++${{ matrix.scala }} '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
-
-      - name: Test without coverage
-        if: ${{ matrix.scala == '3.2.x' }}
-        run: sbt ++${{ matrix.scala }} 'testOnly * -- -l blobstore.IntegrationTest'
+        run: sbt ++${{ matrix.scala }}.* '; coverage ; testOnly * -- -l blobstore.IntegrationTest'
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
@@ -77,7 +72,6 @@ jobs:
           report_paths: '**/target/test-reports/*.xml'
 
       - name: Generate coverage report
-        if: ${{ matrix.scala != '3.2.x' }}
         run: sbt ++${{ matrix.scala }} coverageReport
 
       - name: Upload code coverage to codecov
