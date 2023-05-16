@@ -19,7 +19,7 @@ import blobstore.box.BoxStore
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 
-def createBoxStore[F[_]: Async]: F[BoxStore[F]] = Files[F].readAll(Path("/foo.txt"))
+def createBoxStore[F[_]: Async]: F[BoxStore[F]] = Files.forAsync[F].readAll(Path("/foo.txt"))
   .through(fs2.io.toInputStream)
   .map(new InputStreamReader(_, StandardCharsets.UTF_8))
   .evalMap(r => Sync[F].delay(BoxConfig.readFrom(r)))
