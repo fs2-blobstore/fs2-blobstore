@@ -22,7 +22,7 @@ jobs:
           git config --global user.email 'fs2-blobstore@users.noreply.github.com'
 
       - name: Setup SSH agent
-        uses: webfactory/ssh-agent@v0.7.0
+        uses: webfactory/ssh-agent@v0.8.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
