@@ -1,4 +1,4 @@
-addSbtPlugin("org.scoverage"             % "sbt-scoverage"  % "2.0.7")
+addSbtPlugin("org.scoverage"             % "sbt-scoverage"  % "2.0.8")
 addSbtPlugin("com.github.sbt"            % "sbt-ci-release" % "1.5.12")
 addSbtPlugin("ch.epfl.scala"             % "sbt-scalafix"   % "0.11.0")
 addSbtPlugin("io.github.davidgregory084" % "sbt-tpolecat"   % "0.4.2")
