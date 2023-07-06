@@ -3,6 +3,7 @@ package blobstore.sftp
 import java.util.Properties
 import cats.effect.IO
 import com.dimafeng.testcontainers.GenericContainer
+import com.dimafeng.testcontainers.GenericContainer.FileSystemBind
 import com.jcraft.jsch.{JSch, Session}
 import org.testcontainers.containers.BindMode
 
@@ -13,7 +14,7 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
     "atmoz/sftp",
     exposedPorts = List(22),
     command = List("blob:password:::sftp_tests"),
-    classpathResourceMapping = List(("sshd_config", "/etc/ssh/sshd_config", BindMode.READ_ONLY))
+    classpathResourceMapping = List(FileSystemBind("sshd_config", "/etc/ssh/sshd_config", BindMode.READ_ONLY))
   )
 
   override val session: IO[Session] = IO {

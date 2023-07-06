@@ -59,7 +59,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   lazy val testRunRoot: Path.Plain = Path(s"test-$testRun")
 
   // Store being tested
-  protected final var store: Store[IO, B] = _ // scalafix:ok
+  protected final var store: Store[IO, B] = null // scalafix:ok
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -167,7 +167,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
   it should "empty stat non-existing" in {
     val dir = dirUrl("list-dirs")
-    val b = store.stat(dir / "non-existing" / "unknown.txt").compile.last.unsafeRunSync()
+    val b   = store.stat(dir / "non-existing" / "unknown.txt").compile.last.unsafeRunSync()
 
     b mustBe None
   }
@@ -381,7 +381,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = writeFile(store, dir)("existing.txt")
 
     fs2
-      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path))
       .compile
       .drain
@@ -402,7 +402,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = writeFile(store, dir)("existing.txt")
 
     val result = fs2
-      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path, overwrite = false))
       .compile
       .drain
@@ -417,7 +417,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val path = dir / "new.txt"
 
     fs2
-      .Stream("new content".getBytes().toIndexedSeq: _*)
+      .Stream("new content".getBytes().toIndexedSeq*)
       .through(store.put(path, overwrite = false))
       .compile
       .drain
@@ -588,7 +588,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   def cleanup(root: NioPath): Unit = {
 
     import java.io.IOException
-    import java.nio.file.{FileVisitor, FileVisitResult, Files, SimpleFileVisitor, Path => NioPath}
+    import java.nio.file.{FileVisitor, FileVisitResult, Files, SimpleFileVisitor, Path as NioPath}
     import java.nio.file.attribute.BasicFileAttributes
 
     val fv: FileVisitor[NioPath] = new SimpleFileVisitor[NioPath]() {

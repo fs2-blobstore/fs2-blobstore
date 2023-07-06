@@ -130,7 +130,7 @@ class BoxStore[F[_]: Concurrent: ContextShift](
         .flatMap(folder =>
           blocker.delay(file.move(
             folder,
-            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo.getName)
+            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo().getName)
           )).void
         )
     case None => ().pure[F]
@@ -142,7 +142,7 @@ class BoxStore[F[_]: Concurrent: ContextShift](
         .flatMap(folder =>
           blocker.delay(file.copy(
             folder,
-            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo.getName)
+            dst.lastSegment.filter(s => !s.endsWith("/")).getOrElse(file.getInfo().getName)
           )).void
         )
     case None => ().pure[F]
@@ -184,7 +184,7 @@ class BoxStore[F[_]: Concurrent: ContextShift](
         case (_, ExitCase.Completed) =>
           blocker.delay {
             os.close()
-            fileOrFolder.fold(_.uploadNewVersion(is), _.uploadFile(is, name))
+            val _ = fileOrFolder.fold(_.uploadNewVersion(is), _.uploadFile(is, name))
             ()
           }
         case (_, _) =>
@@ -267,7 +267,7 @@ class BoxStore[F[_]: Concurrent: ContextShift](
   ): Stream[F, BoxItem#Info] =
     pathParts match {
       case Nil =>
-        if (parentFolder == rootFolder) Stream.emit(rootFolder.getInfo).covary[F]
+        if (parentFolder == rootFolder) Stream.emit(rootFolder.getInfo()).covary[F]
         else Stream.empty
       case head :: Nil =>
         Stream

@@ -1,4 +1,5 @@
-import io.github.davidgregory084.TpolecatPlugin
+import io.github.davidgregory084.{ScalaVersion, TpolecatPlugin}
+import io.github.davidgregory084.TpolecatPlugin.autoImport._
 import sbt.Keys._
 import sbt.{Def, _}
 
@@ -15,22 +16,15 @@ object CrossCompile extends AutoPlugin {
         )
       case _ => Nil
     }),
-    scalacOptions := (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((3, _)) =>
-        "-source:future" :: scalacOptions.value.map {
-          case "-Ykind-projector" => "-Ykind-projector:underscores"
-          case x                  => x
-        }.toList
-      case Some((2, 13)) | Some((2, 12)) =>
-        scalacOptions.value ++ List("-Xsource:3", "-P:kind-projector:underscore-placeholders")
-      case _ => scalacOptions.value
-    }),
-    // TODO: Remove this after switching from scalatest to weaver-test
-    Test / scalacOptions ~= {
-      _.map {
-        case x if x.startsWith("-source") => "-source:3.0"
-        case x                            => x
-      }
+    tpolecatScalacOptions ~= {
+      _ ++ List(
+        ScalacOptions.sourceFuture,
+        ScalacOptions.source3,
+        ScalacOptions.languageFeatureOption(
+          "adhocExtensions",
+          version => ScalaVersion.scalaVersionOrdering.gteq(version, ScalaVersion.V3_0_0)
+        )
+      )
     }
   )
 

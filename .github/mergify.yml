@@ -1,15 +1,21 @@
+queue_rules:
+  - name: default
+    conditions: # to merge
+      - "check-success=Formatting"
+      - "check-success=Tests"
+
 pull_request_rules:
   - name: Automatic merge on approval and label
     conditions:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
-      - "label=mergify:merge"
+      - "label=ready to merge"
       - "check-success=Formatting"
       - "check-success=Tests"
     actions:
-      merge:
-        method: merge
-        strict: true
+      queue:
+        name: default
+        method: squash
 
   - name: Automatic merge for scala steward
     conditions:
@@ -19,6 +25,6 @@ pull_request_rules:
       - "check-success=Formatting"
       - "check-success=Tests"
     actions:
-      merge:
+      queue:
+        name: default
         method: squash
-        strict: true
