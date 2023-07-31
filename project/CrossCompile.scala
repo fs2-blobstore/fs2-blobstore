@@ -1,7 +1,8 @@
-import io.github.davidgregory084.{ScalaVersion, TpolecatPlugin}
-import io.github.davidgregory084.TpolecatPlugin.autoImport._
 import sbt.Keys._
 import sbt.{Def, _}
+import org.typelevel.sbt.tpolecat.TpolecatPlugin
+import org.typelevel.sbt.tpolecat.TpolecatPlugin.autoImport._
+import org.typelevel.scalacoptions.{ScalaVersion, ScalacOptions}
 
 object CrossCompile extends AutoPlugin {
   override def trigger = allRequirements

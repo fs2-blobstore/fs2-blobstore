@@ -1,7 +1,8 @@
 import sbt._
 import sbt.Keys._
-import _root_.io.github.davidgregory084.TpolecatPlugin
-import _root_.io.github.davidgregory084.TpolecatPlugin.autoImport._
+import org.typelevel.sbt.tpolecat.TpolecatPlugin
+import org.typelevel.sbt.tpolecat.TpolecatPlugin.autoImport._
+import org.typelevel.scalacoptions.ScalacOptions
 
 object Tests extends AutoPlugin {
   override def trigger  = allRequirements

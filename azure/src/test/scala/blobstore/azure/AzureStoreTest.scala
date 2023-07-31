@@ -122,7 +122,7 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
     val at         = AccessTier.COOL
     val properties = new BlobItemProperties().setAccessTier(at).setContentType(ct)
     val fileUrl    = dirUrl("set-underlying") / "file"
-    Stream("data".getBytes.toIndexedSeq *).through(azureStore.put(
+    Stream("data".getBytes.toIndexedSeq*).through(azureStore.put(
       fileUrl,
       overwrite = true,
       properties = Some(properties),

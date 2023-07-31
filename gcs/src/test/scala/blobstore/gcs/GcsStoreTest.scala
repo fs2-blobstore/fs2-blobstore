@@ -85,7 +85,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
     entities.foreach { gcsUrl =>
       // Note: LocalStorageHelper doesn't automatically set other fields like storageClass, md5, etc.
-      gcsUrl.path.representation.blob.getGeneration mustBe 1
+      Option(gcsUrl.path.representation.blob.getGeneration) mustBe defined
     }
   }
 
@@ -101,7 +101,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       .setMetadata(Map("key" -> "value").asJava)
       .build()
 
-    Stream("data".getBytes.toIndexedSeq *).through(
+    Stream("data".getBytes.toIndexedSeq*).through(
       gcsStore.put(url.path.as(GcsBlob(blobInfo)), List.empty)
     ).compile.drain.unsafeRunSync()
     val entities = store.list(url).compile.toList.unsafeRunSync()

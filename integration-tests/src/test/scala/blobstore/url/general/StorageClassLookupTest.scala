@@ -19,7 +19,8 @@ class StorageClassLookupTest extends AnyFlatSpec with Matchers {
       bucket = "foo",
       key = "bar",
       meta = Some(S3MetaInfo.const(constStorageClass =
-        Some(software.amazon.awssdk.services.s3.model.StorageClass.DEEP_ARCHIVE)))
+        Some(software.amazon.awssdk.services.s3.model.StorageClass.DEEP_ARCHIVE)
+      ))
     )
     val lub1: FsObject = if (true) gcs else s3
     val lub2: FsObject = if (true) s3 else gcs
