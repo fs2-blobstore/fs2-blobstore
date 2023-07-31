@@ -1,6 +1,7 @@
 import microsites.ConfigYml
 import java.time.Instant
 import java.util.Date
+import org.typelevel.scalacoptions.ScalacOptions
 
 micrositeName             := "fs2-blobstore"
 micrositeDescription      := "Unified fs2 interface for various storage services"
