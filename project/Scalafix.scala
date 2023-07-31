@@ -4,7 +4,7 @@ import scalafix.sbt.ScalafixPlugin
 import scalafix.sbt.ScalafixPlugin.autoImport._
 import org.typelevel.sbt.tpolecat.TpolecatPlugin
 import org.typelevel.sbt.tpolecat.TpolecatPlugin.autoImport._
-import org.typelevel.scalacoptions.{ScalaVersion, ScalacOptions, ScalacOption}
+import org.typelevel.scalacoptions.{ScalaVersion, ScalacOption, ScalacOptions}
 
 object Scalafix extends AutoPlugin {
 
