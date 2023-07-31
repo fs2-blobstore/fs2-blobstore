@@ -2,8 +2,9 @@ import sbt.{Def, _}
 import sbt.Keys._
 import scalafix.sbt.ScalafixPlugin
 import scalafix.sbt.ScalafixPlugin.autoImport._
-import _root_.io.github.davidgregory084.{ScalaVersion, ScalacOption, TpolecatPlugin}
-import _root_.io.github.davidgregory084.TpolecatPlugin.autoImport._
+import org.typelevel.sbt.tpolecat.TpolecatPlugin
+import org.typelevel.sbt.tpolecat.TpolecatPlugin.autoImport._
+import org.typelevel.scalacoptions.{ScalaVersion, ScalacOptions}
 
 object Scalafix extends AutoPlugin {
 
