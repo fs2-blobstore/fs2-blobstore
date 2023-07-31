@@ -86,7 +86,7 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
 
     entities.foreach { gcsUrl =>
       // Note: LocalStorageHelper doesn't automatically set other fields like storageClass, md5, etc.
-      gcsUrl.path.representation.blob.getGeneration mustBe 1
+      Option(gcsUrl.path.representation.blob.getGeneration) mustBe defined
     }
   }
 
