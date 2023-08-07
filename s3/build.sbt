@@ -1,6 +1,6 @@
 name := "s3"
 
-val fs2Version = "3.7.0"
+val fs2Version = "3.8.0"
 val awsVersion = "2.20.115"
 
 libraryDependencies ++= Seq(
