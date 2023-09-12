@@ -130,7 +130,7 @@ class GcsStore[F[_]: Async](
             }
             .map { paths =>
               (
-                Chunk.seq(paths.map(blob => Path(blob.getName).as(blob))),
+                Chunk.from(paths.map(blob => Path(blob.getName).as(blob))),
                 () => if (page.hasNextPage) Some(page.getNextPage) else None
               ).some
             }
