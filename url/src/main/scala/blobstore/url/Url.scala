@@ -106,15 +106,17 @@ object Url {
     def tryOpt[A](a: => A): Try[Option[A]] = Try(a).map(Option.apply)
 
     def parseFileUrl(u: String): ValidatedNec[UrlParseError, Url.Plain] = {
-      val fileRegex = "file:/([^:]+)".r
+      val fileRegex      = "file:/([^:]+)".r
+      def invalidFileUrl = InvalidFileUrl(show"Not a valid file uri: $u")
       fileRegex.findFirstMatchIn(u).map { m =>
-        val matchRegex = tryOpt(m.group(1)).toEither.leftMap(_ => InvalidFileUrl(show"Not a valid file uri: $u"))
+        val matchRegex = tryOpt(m.group(1)).toEither.leftMap(_ => invalidFileUrl)
         OptionT(matchRegex.leftWiden[UrlParseError])
           .getOrElseF(InvalidFileUrl(show"File uri didn't match regex: ${fileRegex.pattern.toString}").asLeft[String])
-          .map { pathPart =>
-            if (!pathPart.startsWith("/"))
-              Url("file", Authority.localhost, Path("/" + pathPart))
-            else Url("file", Authority.localhost, Path(pathPart.stripPrefix("/")))
+          .flatMap {
+            case "/" => invalidFileUrl.asLeft
+            case pathPart if pathPart.startsWith("/") =>
+              Url("file", Authority.localhost, Path(pathPart.stripPrefix("/"))).asRight
+            case pathPart => Url("file", Authority.localhost, Path("/" + pathPart)).asRight
           }
           .toValidatedNec
       }.getOrElse(InvalidFileUrl(show"File uri didn't match regex: ${fileRegex.pattern.toString}").invalidNec)
