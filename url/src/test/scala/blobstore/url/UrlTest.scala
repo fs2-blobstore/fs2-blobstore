@@ -130,6 +130,16 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
     }
   }
 
+  it should "fail to parse ambiguous/invalid uris" in {
+    List("file", "sftp", "gs", "s3").foreach { schema =>
+      inside(Url.parse(s"$schema://")) {
+        case Invalid(e) =>
+          e.toList must have size 1
+          e.head mustBe a[UrlParseError]
+      }
+    }
+  }
+
   it should "userinfo and port are allowed for standard urls, but not buckets" in {
     val values = List(User("foo"), Password("bar"), Port.unsafe(8080))
     val cross  = values.flatMap(v => values.map(v -> _))
