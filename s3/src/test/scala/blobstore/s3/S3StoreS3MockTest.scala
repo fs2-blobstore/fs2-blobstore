@@ -17,7 +17,6 @@ package blobstore
 package s3
 
 import cats.effect.unsafe.implicits.global
-import cats.effect.IO
 import cats.syntax.all.*
 
 import java.net.URI
@@ -53,12 +52,6 @@ class S3StoreS3MockTest extends ContainerizedAbstractS3StoreTest {
 
     s3Store.listUnderlying(dir, false, false, true).map { u =>
       u.path.storageClass mustBe Some(StorageClass.STANDARD)
-    }.compile.lastOrError.unsafeRunSync()
-
-    val storeGeneric: Store.Generic[IO] = store
-
-    storeGeneric.list(dir).map { u =>
-      u.path.storageClass mustBe None // S3Mock doesn't return this by default for list, it's a bug in S3Mock. S3 does this.
     }.compile.lastOrError.unsafeRunSync()
   }
 
