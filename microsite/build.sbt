@@ -1,4 +1,3 @@
-import microsites.ConfigYml
 import java.time.Instant
 import java.util.Date
 import org.typelevel.scalacoptions.ScalacOptions
