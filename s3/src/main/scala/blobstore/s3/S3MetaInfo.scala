@@ -1,9 +1,9 @@
 package blobstore.s3
 
 import java.time.Instant
-
 import software.amazon.awssdk.services.s3.model.*
 
+import scala.annotation.nowarn
 import scala.jdk.CollectionConverters.*
 
 trait S3MetaInfo {
@@ -105,16 +105,17 @@ object S3MetaInfo {
     override def eTag: Option[String]               = Option(headObjectResponse.eTag())
     override def storageClass: Option[StorageClass] = Option(headObjectResponse.storageClass())
     override def deleteMarker: Boolean = Option(headObjectResponse.deleteMarker(): Boolean).getOrElse[Boolean](false)
-    override def acceptRanges: Option[String]            = Option(headObjectResponse.acceptRanges())
-    override def expiration: Option[String]              = Option(headObjectResponse.expiration())
-    override def restore: Option[String]                 = Option(headObjectResponse.restore())
-    override def missingMeta: Option[Int]                = Option(headObjectResponse.missingMeta(): Int)
-    override def versionId: Option[String]               = Option(headObjectResponse.versionId())
-    override def cacheControl: Option[String]            = Option(headObjectResponse.cacheControl())
-    override def contentDisposition: Option[String]      = Option(headObjectResponse.contentDisposition())
-    override def contentEncoding: Option[String]         = Option(headObjectResponse.contentEncoding())
-    override def contentLanguage: Option[String]         = Option(headObjectResponse.contentLanguage())
-    override def contentType: Option[String]             = Option(headObjectResponse.contentType())
+    override def acceptRanges: Option[String]       = Option(headObjectResponse.acceptRanges())
+    override def expiration: Option[String]         = Option(headObjectResponse.expiration())
+    override def restore: Option[String]            = Option(headObjectResponse.restore())
+    override def missingMeta: Option[Int]           = Option(headObjectResponse.missingMeta(): Int)
+    override def versionId: Option[String]          = Option(headObjectResponse.versionId())
+    override def cacheControl: Option[String]       = Option(headObjectResponse.cacheControl())
+    override def contentDisposition: Option[String] = Option(headObjectResponse.contentDisposition())
+    override def contentEncoding: Option[String]    = Option(headObjectResponse.contentEncoding())
+    override def contentLanguage: Option[String]    = Option(headObjectResponse.contentLanguage())
+    override def contentType: Option[String]        = Option(headObjectResponse.contentType())
+    @nowarn("cat=deprecation")
     override def expires: Option[Instant]                = Option(headObjectResponse.expires())
     override def websiteRedirectLocation: Option[String] = Option(headObjectResponse.websiteRedirectLocation())
     override def serverSideEncryption: Option[ServerSideEncryption] =
