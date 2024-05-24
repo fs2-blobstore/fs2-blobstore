@@ -6,6 +6,6 @@ val awsVersion = "2.25.58"
 libraryDependencies ++= Seq(
   "software.amazon.awssdk"     % "s3"                        % awsVersion,
   "co.fs2"                    %% "fs2-reactive-streams"      % fs2Version,
-  "software.amazon.awssdk.crt" % "aws-crt"                   % "0.29.18" % Test,
+  "software.amazon.awssdk.crt" % "aws-crt"                   % "0.29.19" % Test,
   "com.dimafeng"              %% "testcontainers-scala-core" % "0.41.3"  % Test
 )
