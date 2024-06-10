@@ -95,15 +95,16 @@ object S3MetaInfo {
     override def size: Option[Long]            = Option(s3Object.size(): Long)
     override def lastModified: Option[Instant] = Option(s3Object.lastModified())
     override def storageClass: Option[StorageClass] =
-      Option(s3Object.storageClass()).map(osc => StorageClass.fromValue(osc.toString))
+      Some(Option(s3Object.storageClass()).fold(StorageClass.STANDARD)(osc => StorageClass.fromValue(osc.toString)))
     override def eTag: Option[String] = Option(s3Object.eTag())
   }
 
   class HeadObjectResponseMetaInfo(headObjectResponse: HeadObjectResponse) extends S3MetaInfo {
-    override def size: Option[Long]                 = Option(headObjectResponse.contentLength(): Long)
-    override def lastModified: Option[Instant]      = Option(headObjectResponse.lastModified())
-    override def eTag: Option[String]               = Option(headObjectResponse.eTag())
-    override def storageClass: Option[StorageClass] = Option(headObjectResponse.storageClass())
+    override def size: Option[Long]            = Option(headObjectResponse.contentLength(): Long)
+    override def lastModified: Option[Instant] = Option(headObjectResponse.lastModified())
+    override def eTag: Option[String]          = Option(headObjectResponse.eTag())
+    override def storageClass: Option[StorageClass] =
+      Some(Option(headObjectResponse.storageClass()).getOrElse(StorageClass.STANDARD))
     override def deleteMarker: Boolean = Option(headObjectResponse.deleteMarker(): Boolean).getOrElse[Boolean](false)
     override def acceptRanges: Option[String]       = Option(headObjectResponse.acceptRanges())
     override def expiration: Option[String]         = Option(headObjectResponse.expiration())
