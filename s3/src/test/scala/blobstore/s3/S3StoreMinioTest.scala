@@ -50,7 +50,7 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
       url.path.size mustBe Some("test".getBytes(StandardCharsets.UTF_8).length)
       url.path.isDir mustBe false
       url.path.lastModified must not be None
-      url.path.storageClass mustBe None // Not supported by minio
+      url.path.storageClass mustBe Some(StorageClass.STANDARD)
       url.path.dirName mustBe None
     }.compile.lastOrError.unsafeRunSync()
   }
