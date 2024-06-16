@@ -33,7 +33,8 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
 
   lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
     .connectionString(
-      show"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${container.containerIpAddress}:${container.mappedPort(10000)}/devstoreaccount1;"
+      show"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://${container
+          .containerIpAddress}:${container.mappedPort(10000)}/devstoreaccount1;"
     )
     .retryOptions(options)
     .buildAsyncClient()
