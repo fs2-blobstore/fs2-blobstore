@@ -32,7 +32,7 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
     new RequestRetryOptions(RetryPolicyType.EXPONENTIAL, 5, null.asInstanceOf[Integer], null, null, null) // scalafix:ok
 
   lazy val blobEndpoint = show"http://${container.containerIpAddress}:${container.mappedPort(10000)}"
-  
+
   lazy val azure: BlobServiceAsyncClient = new BlobServiceClientBuilder()
     .connectionString(
       show"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=$blobEndpoint/devstoreaccount1;"
