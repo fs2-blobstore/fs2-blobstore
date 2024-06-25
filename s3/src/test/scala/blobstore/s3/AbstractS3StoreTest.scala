@@ -8,9 +8,8 @@ import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import fs2.{Chunk, Stream}
 import org.scalatest.{Assertion, Inside}
+import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
-import software.amazon.awssdk.core.retry.RetryPolicy
-import software.amazon.awssdk.core.retry.conditions.RetryCondition
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 
@@ -29,10 +28,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
     ClientOverrideConfiguration.builder()
       .apiCallTimeout(Duration.ofSeconds(30))
       .apiCallAttemptTimeout(Duration.ofSeconds(20))
-      .retryPolicy(RetryPolicy.builder()
-        .numRetries(5)
-        .retryCondition(RetryCondition.defaultRetryCondition())
-        .build())
+      .retryStrategy(AwsRetryStrategy.standardRetryStrategy().toBuilder.maxAttempts(5).build())
       .build()
 
   override val scheme: String             = "s3"
