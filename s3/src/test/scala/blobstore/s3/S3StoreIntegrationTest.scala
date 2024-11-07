@@ -1,5 +1,6 @@
 package blobstore.s3
 
+import blobstore.url.general.GeneralStorageClass
 import blobstore.{IntegrationTest, Store}
 import blobstore.url.{Authority, Path, Url}
 import cats.effect.unsafe.implicits.global
@@ -64,7 +65,7 @@ class S3StoreIntegrationTest extends AbstractS3StoreTest {
     val storeGeneric: Store.Generic[IO] = store
 
     storeGeneric.list(dir).map { u =>
-      u.path.storageClass mustBe None
+      u.path.storageClass mustBe Some(GeneralStorageClass.Standard)
     }.compile.lastOrError.unsafeRunSync()
   }
 
@@ -102,7 +103,7 @@ class S3StoreIntegrationTest extends AbstractS3StoreTest {
       url.path.size mustBe Some("test".getBytes(StandardCharsets.UTF_8).length)
       url.path.isDir mustBe false
       url.path.lastModified must not be None
-      url.path.storageClass mustBe None // Not supported by minio
+      url.path.storageClass mustBe Some(StorageClass.STANDARD)
       url.path.dirName mustBe None
     }.compile.lastOrError.unsafeRunSync()
   }
