@@ -3,7 +3,7 @@ package box
 
 import java.io.FileNotFoundException
 import java.time.{Instant, ZoneOffset}
-import blobstore.url.Authority
+import blobstore.url.{Authority, Url}
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
@@ -14,6 +14,8 @@ import com.box.sdkgen.managers.folders.DeleteFolderByIdQueryParams
 import com.box.sdkgen.schemas.folderfull.FolderFull
 import com.box.sdkgen.schemas.items.Items
 import org.slf4j.LoggerFactory
+
+import com.box.sdkgen.managers.files.UpdateFileByIdRequestBody
 
 import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
@@ -99,6 +101,17 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
         case item => log.info(show"Ignoring old item ${item.getName}")
       }
   }
+
+  override def modifyFile(url: Url.Plain): IO[Unit] =
+    boxStore.stat(url.path).flatMap {
+      case Some(p) =>
+        val fileId = p.representation.file.map(_.getId).orNull
+        IO.blocking {
+          val body = new UpdateFileByIdRequestBody.Builder().description("modified").build()
+          boxClient.files.updateFileById(fileId, body)
+        }.void
+      case None => IO.raiseError(new IllegalArgumentException(show"File not found: $url"))
+    }
 
   behavior of "BoxStore"
 

@@ -375,7 +375,7 @@ class BoxStore[F[_]: Async](
 
 object BoxStore {
 
-  private val defaultItemFields = List("type", "id", "name", "size", "modified_at")
+  private val defaultItemFields = List("type", "id", "name", "size", "modified_at", "created_at")
 
   def builder[F[_]: Async](boxClient: BoxClient): BoxStoreBuilder[F] =
     BoxStoreBuilderImpl[F](boxClient)

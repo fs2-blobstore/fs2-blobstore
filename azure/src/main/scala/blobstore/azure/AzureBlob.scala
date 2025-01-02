@@ -23,6 +23,8 @@ case class AzureBlob(
 
   override def lastModified: Option[Instant] = properties.flatMap(bp => Option(bp.getLastModified).map(_.toInstant))
 
+  override def created: Option[Instant] = properties.flatMap(bp => Option(bp.getCreationTime).map(_.toInstant))
+
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] =
     storageClass.map {
       case AccessTier.ARCHIVE => GeneralStorageClass.ColdStorage

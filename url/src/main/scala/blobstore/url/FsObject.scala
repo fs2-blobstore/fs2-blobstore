@@ -15,6 +15,8 @@ trait FsObject {
 
   def lastModified: Option[Instant]
 
+  def created: Option[Instant]
+
   def storageClass(implicit scl: StorageClassLookup[this.type]): Option[scl.StorageClassType] =
     scl.storageClass(this)
 

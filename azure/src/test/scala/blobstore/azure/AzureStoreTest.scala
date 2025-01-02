@@ -14,6 +14,7 @@ import com.azure.storage.common.policy.{RequestRetryOptions, RetryPolicyType}
 import com.dimafeng.testcontainers.GenericContainer
 import org.scalatest.Inside
 
+import java.util.Collections
 import java.util.concurrent.TimeUnit
 
 class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
@@ -55,6 +56,17 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
         if (recursive) new StoreOps[IO, AzureBlob](this).removeAll(url).void
         else super.remove(url, recursive)
     }
+
+  override def modifyFile(url: Url.Plain): IO[Unit] = {
+    val container = url.authority.show
+    val blobName  = url.path.show.stripPrefix("/")
+    IO.fromCompletableFuture(IO.delay {
+      azure.getBlobContainerAsyncClient(container)
+        .getBlobAsyncClient(blobName)
+        .setMetadata(Collections.singletonMap("modified", System.currentTimeMillis().toString))
+        .toFuture
+    }).void
+  }
 
   def azureStore: AzureStore[IO] = store.asInstanceOf[AzureStore[IO]] // scalafix:ok
 
