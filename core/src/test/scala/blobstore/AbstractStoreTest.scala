@@ -556,6 +556,23 @@ abstract class AbstractStoreTest[B <: FsObject]
     test.unsafeRunSync()
   }
 
+  it should "return modification and creation (if supported) time" in {
+    val dir  = dirUrl("time")
+    val file = writeFile(store, dir)("time-file")
+
+    val test = for {
+      stat1 <- store.stat(file).compile.lastOrError
+      _     <- IO.sleep(1.second)
+      _     <- Stream.empty.through(store.put(file)).compile.drain
+      stat2 <- store.stat(file).compile.lastOrError
+    } yield {
+      stat1.path.lastModified must not be stat2.path.lastModified
+      stat1.path.created mustBe stat2.path.created
+    }
+
+    test.unsafeRunSync()
+  }
+
   def dirUrl(name: String): Url.Plain = Url(scheme, authority, testRunRoot `//` name)
 
   def localDirPath(name: String): Path.Plain = transferStoreRootDir / name
