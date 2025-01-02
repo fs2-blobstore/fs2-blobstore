@@ -31,6 +31,11 @@ case class BoxPath(fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]) extends F
     case Right(folder) => folder.getModifiedAt.toInstant.some
   }
 
+  override def created: Option[Instant] = fileOrFolder match {
+    case Left(file)    => file.getCreatedAt.toInstant.some
+    case Right(folder) => folder.getCreatedAt.toInstant.some
+  }
+
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] = None
 
 }

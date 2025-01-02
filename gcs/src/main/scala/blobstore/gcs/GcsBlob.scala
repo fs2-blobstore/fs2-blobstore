@@ -18,6 +18,8 @@ case class GcsBlob(blob: BlobInfo) extends FsObject {
 
   override def lastModified: Option[Instant] = Option(blob.getUpdateTimeOffsetDateTime).map(_.toInstant)
 
+  override def created: Option[Instant] = Option(blob.getCreateTimeOffsetDateTime).map(_.toInstant)
+
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] =
     Option(blob.getStorageClass).map {
       case StorageClass.COLDLINE | StorageClass.ARCHIVE => GeneralStorageClass.ColdStorage
