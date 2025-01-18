@@ -241,7 +241,11 @@ class S3Store[F[_]: Async](
             ))
           }
         } else {
-          Path(s3Object.key()).as(S3Blob(bucket, s3Object.key(), new S3MetaInfo.S3ObjectMetaInfo(s3Object).some)).pure[F]
+          Path(s3Object.key()).as(S3Blob(
+            bucket,
+            s3Object.key(),
+            new S3MetaInfo.S3ObjectMetaInfo(s3Object).some
+          )).pure[F]
         }
       }
       (Stream.eval(fDirs).flatMap(dirs => Stream(dirs*)) ++
