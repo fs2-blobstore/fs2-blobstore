@@ -321,7 +321,7 @@ class BoxStore[F[_]: Async](
     new Store.DelegatingStore[F, BoxPath](this, g)
 
   override def transferTo[B, P, A](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  ev: B <:< FsObject): F[Int] = defaultTransferTo(this, dstStore, srcPath, dstUrl)
+    ev: B <:< FsObject): F[Int] = defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
     get(path, chunkSize).through(fs2.text.utf8.decode).compile.string
