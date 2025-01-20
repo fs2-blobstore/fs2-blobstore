@@ -46,6 +46,9 @@ jobs:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v4
 
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
 
@@ -88,6 +91,9 @@ jobs:
     steps:
       - name: Checkout current branch (fast)
         uses: actions/checkout@v4
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
 
       - name: Cache project dependencies between workflow runs
         uses: coursier/cache-action@v6
