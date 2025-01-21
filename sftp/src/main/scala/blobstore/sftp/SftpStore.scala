@@ -207,7 +207,7 @@ class SftpStore[F[_]: Async](
     new Store.DelegatingStore[F, SftpFile](this, g)
 
   override def transferTo[B, P, A](dstStore: Store[F, B], srcPath: Path[P], dstUrl: Url[A])(implicit
-  ev: B <:< FsObject): F[Int] =
+    ev: B <:< FsObject): F[Int] =
     defaultTransferTo(this, dstStore, srcPath, dstUrl)
 
   override def getContents[A](path: Path[A], chunkSize: Int): F[String] =
