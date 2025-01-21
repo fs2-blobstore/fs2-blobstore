@@ -26,6 +26,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
       - uses: coursier/cache-action@v6
 
       - uses: olafurpg/setup-gpg@v3
