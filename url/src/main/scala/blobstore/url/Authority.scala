@@ -71,7 +71,7 @@ object Authority {
   implicit val show: Show[Authority]         = s => s.host.show + s.port.map(_.show).map(":" + _).getOrElse("")
   implicit val order: Order[Authority]       = Order.by(_.show)
   implicit val ordering: Ordering[Authority] = order.toOrdering
-  implicit val eq: Eq[Authority] = (x, y) => {
+  implicit val eq: Eq[Authority]             = (x, y) => {
     x.host === y.host && x.port === y.port
   }
 }

@@ -37,7 +37,7 @@ class StoreOps[F[_]: Files: Concurrent, B](store: Store[F, B]) {
     */
   def putFromNio[A](src: java.nio.file.Path, dst: Url[A], overwrite: Boolean): F[Unit] = {
     val fs2Path = Path.fromNioPath(src)
-    val put = Files[F].size(fs2Path).flatMap {
+    val put     = Files[F].size(fs2Path).flatMap {
       case size if size > 0 =>
         Files[F]
           .readAll(fs2Path)
