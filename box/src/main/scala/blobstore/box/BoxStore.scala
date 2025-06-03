@@ -156,7 +156,7 @@ class BoxStore[F[_]: Async](
 
   override def putRotate[A](computePath: F[Path[A]], limit: Long): Pipe[F, Byte, Unit] = {
     val openNewFile: Resource[F, OutputStream] = for {
-      p <- Resource.eval(computePath)
+      p    <- Resource.eval(computePath)
       name <- Resource.eval(
         Async[F].fromEither(p.lastSegment.filter(s => !s.endsWith("/")).toRight(new IllegalArgumentException(
           show"Specified path '$p' doesn't point to a file."
@@ -217,7 +217,7 @@ class BoxStore[F[_]: Async](
               }
               .unNone
               .map { fileOrFolder =>
-                val lub = BoxStore.lub(fileOrFolder)
+                val lub      = BoxStore.lub(fileOrFolder)
                 val pathList = lub.getPathCollection.asScala.toList.tail.map(_.getName) match {
                   case "All Files" :: t => t
                   case list             => list
@@ -288,7 +288,7 @@ class BoxStore[F[_]: Async](
     }
 
   private def putFolderAtPath(parentFolder: BoxFolder, parts: List[String]): F[BoxFolder] = parts match {
-    case Nil => parentFolder.pure[F]
+    case Nil          => parentFolder.pure[F]
     case head :: tail =>
       Stream
         .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, Array.empty), 64)

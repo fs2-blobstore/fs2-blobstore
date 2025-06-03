@@ -89,7 +89,7 @@ class HostTest extends AnyFlatSpec with Matchers with Inside {
   }
 
   it should "order" in {
-    val sorted = (validHostnames ++ validIps).map(Host.parse(_).toOption).flattenOption.map(_.show).sorted
+    val sorted         = (validHostnames ++ validIps).map(Host.parse(_).toOption).flattenOption.map(_.show).sorted
     val correctSorting =
       List(
         "1.1.1.1",

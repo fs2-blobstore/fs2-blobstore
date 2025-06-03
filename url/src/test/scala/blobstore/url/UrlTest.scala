@@ -76,7 +76,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
   behavior of "parsing"
 
   it should "parse valid urls" in {
-    val schemes = List("gs", "s3", "sftp", "http", "https")
+    val schemes   = List("gs", "s3", "sftp", "http", "https")
     val validUrls = List(
       "foo",
       "foo/",
@@ -144,7 +144,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
     val values = List(User("foo"), Password("bar"), Port.unsafe(8080))
     val cross  = values.flatMap(v => values.map(v -> _))
 
-    val all = show"https://foo:bar@example.com:8080/foo/"
+    val all         = show"https://foo:bar@example.com:8080/foo/"
     val allExpected = Url(
       "https",
       Authority(Host.unsafe("example.com"), Some(UserInfo("foo", "bar".some)), Port.unsafe(8080).some),
@@ -161,7 +161,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         val url = Url("https", Authority(Host.unsafe("example.com"), Some(UserInfo(u, p.some)), None), Path("foo/"))
         (v -> url).some
       case (User(u), Port(p)) =>
-        val v = show"https://$u@example.com:$p/foo/"
+        val v   = show"https://$u@example.com:$p/foo/"
         val url = Url(
           "https",
           Authority(Host.unsafe("example.com"), Some(UserInfo(u, None)), blobstore.url.Port.unsafe(p).some),
@@ -169,7 +169,7 @@ class UrlTest extends AnyFlatSpec with Matchers with Inside {
         )
         (v -> url).some
       case (Port(p), Port(_)) =>
-        val v = show"https://example.com:$p/foo/"
+        val v   = show"https://example.com:$p/foo/"
         val url =
           Url("https", Authority(Host.unsafe("example.com"), None, blobstore.url.Port.unsafe(p).some), Path("foo/"))
         (v -> url).some

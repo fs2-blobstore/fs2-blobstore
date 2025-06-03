@@ -10,7 +10,7 @@ import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 abstract class ContainerizedAbstractS3StoreTest extends AbstractS3StoreTest {
   def container: GenericContainer
   def client: S3AsyncClient
-  override val authority: Authority = Authority.unsafe("blobstore-test-bucket")
+  override val authority: Authority   = Authority.unsafe("blobstore-test-bucket")
   override def mkStore(): S3Store[IO] = S3Store
     .builder[IO](client)
     .withBufferSize(5 * 1024 * 1024)

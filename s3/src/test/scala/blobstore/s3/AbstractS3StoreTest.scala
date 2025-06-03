@@ -56,7 +56,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
 
   def testUploadNoSize(size: Long, name: String): IO[Assertion] =
     for {
-      r <- Random.scalaUtilRandom[IO]
+      r     <- Random.scalaUtilRandom[IO]
       bytes <- Stream.repeatEval(r.nextInt)
         .flatMap(n => Stream.chunk(Chunk.ArraySlice(n.toString.getBytes())))
         .take(size)
@@ -96,7 +96,7 @@ abstract class AbstractS3StoreTest extends AbstractStoreTest[S3Blob] with Inside
 
     val test = for {
       counter <- IO.ref(0)
-      _ <- data
+      _       <- data
         .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / i.toString), 6 * 1024 * 1024))
         .compile
         .drain

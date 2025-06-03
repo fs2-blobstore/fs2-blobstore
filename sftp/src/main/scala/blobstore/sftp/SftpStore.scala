@@ -34,7 +34,7 @@ class SftpStore[F[_]: Async](
   private val getChannel: F[ChannelSftp] =
     queue.tryTake.flatMap {
       case Some(channel) => channel.pure[F]
-      case None =>
+      case None          =>
         val openF = Async[F].blocking {
           val ch = session.openChannel("sftp").asInstanceOf[ChannelSftp] // scalafix:ok
           ch.connect(connectTimeoutMillis)
@@ -64,12 +64,12 @@ class SftpStore[F[_]: Async](
       dispatcher <- Stream.resource(Dispatcher.sequential[F])
       q          <- Stream.eval(Queue.bounded[F, Option[ChannelSftp.LsEntry]](64))
       channel    <- Stream.resource(channelResource)
-      entry <- Stream.fromQueueNoneTerminated(q)
+      entry      <- Stream.fromQueueNoneTerminated(q)
         .filter(e => e.getFilename != "." && e.getFilename != "..")
         .concurrently {
           // JSch hits index out of bounds on empty string, needs explicit handling
           val resolveEmptyPath = if (path.show.isEmpty) Async[F].blocking(channel.pwd()) else path.show.pure[F]
-          val performList = resolveEmptyPath.flatMap { path =>
+          val performList      = resolveEmptyPath.flatMap { path =>
             val es = entrySelector(e => dispatcher.unsafeRunSync(q.offer(Some(e))))
             Async[F].blocking(channel.ls(path.show, es)).attempt.flatMap(_ => q.offer(None))
           }
@@ -235,7 +235,7 @@ object SftpStore {
     _maxChannels: Option[Long] = None,
     _connectTimeout: Long = 10000
   ) extends SftpStoreResourceBuilder[F] {
-    def withMkSession(mkSession: F[Session]): SftpStoreResourceBuilder[F] = this.copy(_mkSession = mkSession)
+    def withMkSession(mkSession: F[Session]): SftpStoreResourceBuilder[F]           = this.copy(_mkSession = mkSession)
     def setMaxChannels(maybeMaxChannels: Option[Long]): SftpStoreResourceBuilder[F] =
       this.copy(_maxChannels = maybeMaxChannels)
     def withConnectTimeout(connectTimeoutMillis: Long): SftpStoreResourceBuilder[F] =
@@ -254,7 +254,7 @@ object SftpStore {
       }
 
       List(validateConnectTimeout, validateMaxChannels).combineAll match {
-        case Validated.Valid(_) => sessionResource.evalMap(init)
+        case Validated.Valid(_)    => sessionResource.evalMap(init)
         case Validated.Invalid(es) =>
           Resource.raiseError[F, SftpStore[F], Throwable](es.reduce(Throwables.collapsingSemigroup))
       }
@@ -276,7 +276,7 @@ object SftpStore {
       for {
         _         <- Async[F].fromValidated(_authority)
         semaphore <- _maxChannels.traverse(Semaphore.apply[F])
-        queue <- _maxChannels match {
+        queue     <- _maxChannels match {
           case Some(max) => Queue.circularBuffer[F, ChannelSftp](max.toInt)
           case None      => Queue.unbounded[F, ChannelSftp]
         }

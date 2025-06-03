@@ -192,7 +192,7 @@ object Path {
 
     val root: AbsolutePath[String] = AbsolutePath("/", Chain.empty)
 
-    implicit def show[A]: Show[AbsolutePath[A]] = "/" + _.segments.mkString_("/")
+    implicit def show[A]: Show[AbsolutePath[A]]          = "/" + _.segments.mkString_("/")
     implicit def order[A: Order]: Order[AbsolutePath[A]] =
       (x, y) => Order[A].compare(x.representation, y.representation)
   }
@@ -222,7 +222,7 @@ object Path {
 
     def root: RootlessPath[String] = RootlessPath("", Chain.empty)
 
-    implicit def show[A]: Show[RootlessPath[A]] = _.segments.mkString_("/")
+    implicit def show[A]: Show[RootlessPath[A]]          = _.segments.mkString_("/")
     implicit def order[A: Order]: Order[RootlessPath[A]] =
       (x, y) => Order[A].compare(x.representation, y.representation)
     implicit def ordering[A: Order]: Ordering[RootlessPath[A]] = order[A].toOrdering
@@ -268,7 +268,7 @@ object Path {
 
   implicit def order[A]: Order[Path[A]]       = (x: Path[A], y: Path[A]) => cmp(x, y)
   implicit def ordering[A]: Ordering[Path[A]] = order[A].toOrdering
-  implicit def show[A]: Show[Path[A]] = Show.show {
+  implicit def show[A]: Show[Path[A]]         = Show.show {
     case a: AbsolutePath[?] => a.show
     case r: RootlessPath[?] => r.show
   }

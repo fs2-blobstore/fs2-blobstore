@@ -41,7 +41,7 @@ package object blobstore {
     openNewFile: Resource[F, T]
   )(consume: T => Chunk[Byte] => F[Unit]): Pipe[F, Byte, Unit] = { in =>
     in.pull.uncons.flatMap {
-      case None => Pull.done
+      case None         => Pull.done
       case Some((h, t)) =>
         Pull.eval(Stream
           .resource(Hotswap(openNewFile))

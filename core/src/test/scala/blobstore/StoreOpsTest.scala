@@ -85,7 +85,7 @@ final case class DummyStore() extends Store[IO, String] {
         Stream.emit(())
       }
   }
-  override def get[A](url: Url[A], chunkSize: Int): Stream[IO, Byte] = Stream.emits(buf)
+  override def get[A](url: Url[A], chunkSize: Int): Stream[IO, Byte]                   = Stream.emits(buf)
   override def list[A](url: Url[A], recursive: Boolean = false): Stream[IO, Url.Plain] =
     Stream.emits(List(url.withPath(Path("the-file.txt"))))
   override def move[A, B](src: Url[A], dst: Url[B]): IO[Unit]                          = ???

@@ -141,7 +141,7 @@ abstract class AbstractStoreTest[B <: FsObject]
   // any problems that there might be with operating on a root level file/directory.
   it should "listAll lists files in a root level directory" in {
     val rootDir = Url(scheme, authority, fileSystemRoot)
-    val urls = (1 to 2).toList
+    val urls    = (1 to 2).toList
       .map(i => show"filename-$i-$testRun.txt")
       .map(writeFile(store, rootDir))
 
@@ -198,7 +198,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dstPath = dstDir / srcPath.lastSegment
 
     val test = for {
-      i <- transferStore.transferTo(store, srcPath, dstDir)
+      i  <- transferStore.transferTo(store, srcPath, dstDir)
       c1 <- transferStore
         .getContents(srcPath)
         .handleError(e => show"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
@@ -219,7 +219,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dstPath = dirUrl("transfer-file-to-file-dst") / "dst-file-name.txt"
 
     val test = for {
-      i <- transferStore.transferTo(store, srcPath, dstPath)
+      i  <- transferStore.transferTo(store, srcPath, dstPath)
       c1 <- transferStore
         .getContents(srcPath)
         .handleError(e => show"FAILED transferStore.getContents $srcPath: ${e.getMessage}")
@@ -245,7 +245,7 @@ abstract class AbstractStoreTest[B <: FsObject]
       .map(writeLocalFile(transferStore, srcDir))
 
     val test = for {
-      i <- transferStore.transferTo(store, srcDir, dstDir)
+      i  <- transferStore.transferTo(store, srcDir, dstDir)
       c1 <- paths.traverse { p =>
         transferStore
           .getContents(p)
@@ -281,7 +281,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val paths = paths1 ++ paths2
 
     val test = for {
-      i <- transferStore.transferTo(store, srcDir, dstDir)
+      i  <- transferStore.transferTo(store, srcDir, dstDir)
       c1 <- paths.traverse { p =>
         transferStore.getContents(p).handleError(e => show"FAILED transferStore.getContents $p: ${e.getMessage}")
       }
@@ -315,7 +315,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     writeFile(store, srcDir)("filename.txt")
 
     val test = for {
-      _ <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
+      _  <- store.copy(srcDir / "filename.txt", dstDir / "filename.txt")
       c1 <- store
         .getContents(srcDir / "filename.txt")
         .handleError(e => show"FAILED getContents: ${e.getMessage}")
@@ -436,8 +436,8 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "support paths with spaces" in {
-    val dir = dirUrl("path spaces")
-    val url = writeFile(store, dir)("file with spaces")
+    val dir    = dirUrl("path spaces")
+    val url    = writeFile(store, dir)("file with spaces")
     val result = for {
       list <- store
         .list(url)
@@ -456,8 +456,8 @@ abstract class AbstractStoreTest[B <: FsObject]
   }
 
   it should "be able to list recursively" in {
-    val dir   = dirUrl("list-recursively")
-    val files = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
+    val dir    = dirUrl("list-recursively")
+    val files  = List("a", "b", "c", "sub-folder/d", "sub-folder/sub-sub-folder/e", "x", "y", "z").map(dir / _)
     val result = for {
       _    <- files.traverse(p => Stream.emit(0: Byte).through(store.put(p)).compile.drain)
       urls <- store.list(dir, recursive = true).compile.toList
@@ -479,7 +479,7 @@ abstract class AbstractStoreTest[B <: FsObject]
     val dir            = dirUrl("put-rotating")
     val bytes          = randomBA(fileLength)
     val lastFileBytes  = randomBA(lastFileLength)
-    val data = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
+    val data           = Stream.emit(bytes).repeat.take(fileCount).flatMap(bs => Stream.emits(bs.toIndexedSeq)) ++
       Stream.emits(lastFileBytes.toIndexedSeq)
 
     // Check overwrite
@@ -487,7 +487,7 @@ abstract class AbstractStoreTest[B <: FsObject]
 
     val test = for {
       counter <- IO.ref(0)
-      _ <- data
+      _       <- data
         .through(store.putRotate(counter.getAndUpdate(_ + 1).map(i => dir / i.toString), fileLength.toLong))
         .compile
         .drain

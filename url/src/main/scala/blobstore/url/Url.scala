@@ -24,8 +24,8 @@ case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
   def toAzure(bucketName: Hostname): Url.Plain = copy(scheme = "https", authority = Authority(bucketName), path.plain)
   def toSftp(authority: Authority): Url.Plain  = copy(scheme = "sftp", authority = authority, path.plain)
 
-  def /[AA](path: Path[AA]): Url.Plain = copy(path = this.path./(path.show))
-  def /(segment: String): Url.Plain    = copy(path = path./(segment))
+  def /[AA](path: Path[AA]): Url.Plain      = copy(path = this.path./(path.show))
+  def /(segment: String): Url.Plain         = copy(path = path./(segment))
   def /(segment: Option[String]): Url.Plain = segment match {
     case Some(s) => /(s)
     case None    => copy(path = path.plain)
@@ -33,7 +33,7 @@ case class Url[+A](scheme: String, authority: Authority, path: Path[A]) {
 
   /** Ensure that path always is suffixed with '/'
     */
-  def `//`(segment: String): Url.Plain = copy(path = path.`//`(segment))
+  def `//`(segment: String): Url.Plain         = copy(path = path.`//`(segment))
   def `//`(segment: Option[String]): Url.Plain = segment match {
     case Some(s) => `//`(s)
     case None    => copy(path = path.plain)
@@ -113,7 +113,7 @@ object Url {
         OptionT(matchRegex.leftWiden[UrlParseError])
           .getOrElseF(InvalidFileUrl(show"File uri didn't match regex: ${fileRegex.pattern.toString}").asLeft[String])
           .flatMap {
-            case "/" => invalidFileUrl.asLeft
+            case "/"                                  => invalidFileUrl.asLeft
             case pathPart if pathPart.startsWith("/") =>
               Url("file", Authority.localhost, Path(pathPart.stripPrefix("/"))).asRight
             case pathPart => Url("file", Authority.localhost, Path("/" + pathPart)).asRight
@@ -135,7 +135,7 @@ object Url {
       // don't use chroot for user logins, while absolute paths will not.
       val pathGroup        = OptionT(tryOpt(m.group(5))).map(_.stripPrefix("/"))
       val path: Path.Plain = pathGroup.map(Path.apply).getOrElse(Path.empty).getOrElse(Path.empty)
-      val scheme =
+      val scheme           =
         OptionT(
           tryOpt(m.group(2)).toEither.leftMap(t => MissingScheme(c, Some(t))).leftWiden[UrlParseError]
         ).getOrElseF(MissingScheme(c, None).asLeft[String]).toValidatedNec
@@ -148,7 +148,7 @@ object Url {
 
   implicit def ordering[A]: Ordering[Url[A]] = (x: Url[A], y: Url[A]) => x.show.compare(y.show)
   implicit def order[A]: Order[Url[A]]       = Order.fromOrdering
-  implicit def show[A]: Show[Url[A]] = u => {
+  implicit def show[A]: Show[Url[A]]         = u => {
     val pathString = u.path match {
       case a @ AbsolutePath(_, _) => a.show.stripPrefix("/")
       case a                      => a.show

@@ -18,7 +18,7 @@ object UrlParseError {
   implicit val semigroup: Semigroup[UrlParseError] =
     (x, y) =>
       new UrlParseError {
-        override def error: String = show"${x.error}\n${y.error}"
+        override def error: String            = show"${x.error}\n${y.error}"
         override def cause: Option[Throwable] =
           (x.cause, y.cause).mapN(Throwables.collapsingSemigroup.combine).orElse(x.cause).orElse(y.cause)
       }
@@ -41,11 +41,11 @@ sealed trait AuthorityParseError extends UrlParseError
 object AuthorityParseError {
   case class InvalidHostname(c: String) extends AuthorityParseError { val error = show"Invalid hostname $c" }
   case class MissingHostname(c: String) extends AuthorityParseError { val error = show"Missing hostname $c" }
-  case class InvalidHost(t: Throwable) extends AuthorityParseError {
+  case class InvalidHost(t: Throwable)  extends AuthorityParseError {
     val error                             = show"Invalid host, got: ${t.getMessage}"
     override val cause: Option[Throwable] = Some(t)
   }
-  case class MissingHost(i: String) extends AuthorityParseError { val error = show"Missing host: $i" }
+  case class MissingHost(i: String)                   extends AuthorityParseError { val error = show"Missing host: $i" }
   case class InvalidFormat(c: String, format: String) extends AuthorityParseError {
     val error = show"Invalid format. Authorities must be on format $format, got $c"
   }
@@ -58,7 +58,7 @@ object AuthorityParseError {
 
 sealed trait PortParseError extends AuthorityParseError
 object PortParseError {
-  case class InvalidPort(s: String) extends PortParseError { val error = show"Invalid port numbers $s" }
+  case class InvalidPort(s: String)       extends PortParseError { val error = show"Invalid port numbers $s" }
   case class PortNumberOutOfRange(i: Int) extends PortParseError {
     val error = show"Port number out of range [0,65535]: $i"
   }

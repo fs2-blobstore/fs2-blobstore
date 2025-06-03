@@ -128,7 +128,7 @@ class S3Store[F[_]: Async](
             .flatMap {
               case Left(_: NoSuchKeyException) => Async[F].unit
               case Left(e)                     => Async[F].raiseError[Unit](e)
-              case Right(_) =>
+              case Right(_)                    =>
                 Async[F].raiseError[Unit](new IllegalArgumentException(show"File at path '$url' already exist."))
             }
         } else Async[F].unit
@@ -161,7 +161,7 @@ class S3Store[F[_]: Async](
     if (recursive) {
       list(url, recursive).groupWithin(1000, FiniteDuration(1, "ms")).evalMap { chunk =>
         val objects = chunk.map(u => ObjectIdentifier.builder().key(u.path.relative.show).build()).toList
-        val req =
+        val req     =
           DeleteObjectsRequest.builder().bucket(bucket).delete(Delete.builder().objects(objects.asJava).build()).build()
         Async[F].fromCompletableFuture(Async[F].delay(s3.deleteObjects(req))).flatMap[Unit] {
           case resp if resp.hasErrors =>
@@ -185,7 +185,7 @@ class S3Store[F[_]: Async](
     val newFile = for {
       path  <- Resource.eval(computeUrl)
       queue <- Resource.eval(Queue.bounded[F, Option[Chunk[Byte]]](queueSize))
-      _ <- Resource.make(
+      _     <- Resource.make(
         Async[F].start(
           Stream.fromQueueNoneTerminatedChunk(queue).through(put(path)).compile.drain
         )
@@ -201,8 +201,8 @@ class S3Store[F[_]: Async](
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
   ): Stream[F, Url[S3Blob]] = {
-    val bucket = url.authority.show
-    val key    = url.path.relative.show
+    val bucket  = url.authority.show
+    val key     = url.path.relative.show
     val request = {
       val b = ListObjectsV2Request
         .builder()
@@ -288,14 +288,14 @@ class S3Store[F[_]: Async](
           val partSize     = size.max(S3Store.multiUploadMinimumPartSize).min(S3Store.multiUploadDefaultPartSize)
           val totalParts   = (size.toDouble / partSize).ceil.toInt
           val lastPartSize = size - ((totalParts - 1) * partSize)
-          val resource = for {
+          val resource     = for {
             part <- Resource.eval(partRef.getAndUpdate(_ + 1))
-            _ <- Resource.eval(if (part > totalParts)
+            _    <- Resource.eval(if (part > totalParts)
               new IllegalArgumentException("Provided size doesn't match evaluated stream length.").raiseError
             else Async[F].unit)
             queue     <- Resource.eval(Queue.bounded[F, Option[ByteBuffer]](queueSize))
             publisher <- Stream.fromQueueNoneTerminated(queue).toUnicastPublisher
-            _ <- Resource.make(
+            _         <- Resource.make(
               Async[F].start(
                 Async[F].fromCompletableFuture(Async[F].delay {
                   s3.uploadPart(
@@ -341,7 +341,7 @@ class S3Store[F[_]: Async](
 
           val resource = for {
             part <- Resource.eval(partRef.getAndUpdate(_ + 1))
-            _ <- Resource.eval {
+            _    <- Resource.eval {
               if (part > S3Store.maxMultipartParts) S3Store.multipartUploadPartsError.raiseError
               else Async[F].unit
             }

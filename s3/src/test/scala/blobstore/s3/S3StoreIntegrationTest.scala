@@ -18,8 +18,8 @@ import scala.jdk.CollectionConverters.*
 
 @IntegrationTest
 class S3StoreIntegrationTest extends AbstractS3StoreTest {
-  val bucketEnv = "S3_IT_BUCKET"
-  val regionEnv = "S3_IT_REGION"
+  val bucketEnv            = "S3_IT_BUCKET"
+  val regionEnv            = "S3_IT_REGION"
   def authority: Authority = sys.env.get(bucketEnv) match {
     case Some(bucket) => Authority.unsafe(bucket)
     case None         => cancel(show"No test bucket found. Please set $bucketEnv.")
@@ -109,8 +109,8 @@ class S3StoreIntegrationTest extends AbstractS3StoreTest {
   }
 
   it should "set underlying metadata on write" in {
-    val ct = "text/plain"
-    val sc = StorageClass.REDUCED_REDUNDANCY
+    val ct     = "text/plain"
+    val sc     = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
@@ -131,8 +131,8 @@ class S3StoreIntegrationTest extends AbstractS3StoreTest {
   }
 
   it should "set underlying metadata on multipart-upload" in {
-    val ct = "text/plain"
-    val sc = StorageClass.REDUCED_REDUNDANCY
+    val ct     = "text/plain"
+    val sc     = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
     val filePath = Path(show"test-$testRun/set-underlying/file2")

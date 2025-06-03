@@ -29,7 +29,7 @@ abstract class AbstractSftpStoreTest extends AbstractStoreTest[SftpFile] {
   def container: GenericContainer
   def session: IO[Session]
 
-  override val scheme = "sftp"
+  override val scheme               = "sftp"
   override def authority: Authority =
     Authority(Host.unsafe(container.containerIpAddress), None, Some(Port.unsafe(container.mappedPort(22))))
 
