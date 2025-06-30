@@ -92,17 +92,17 @@ trait S3MetaInfo {
 
 object S3MetaInfo {
   class S3ObjectMetaInfo(s3Object: S3Object) extends S3MetaInfo {
-    override def size: Option[Long]            = Option(s3Object.size(): Long)
-    override def lastModified: Option[Instant] = Option(s3Object.lastModified())
+    override def size: Option[Long]                 = Option(s3Object.size(): Long)
+    override def lastModified: Option[Instant]      = Option(s3Object.lastModified())
     override def storageClass: Option[StorageClass] =
       Some(Option(s3Object.storageClass()).fold(StorageClass.STANDARD)(osc => StorageClass.fromValue(osc.toString)))
     override def eTag: Option[String] = Option(s3Object.eTag())
   }
 
   class HeadObjectResponseMetaInfo(headObjectResponse: HeadObjectResponse) extends S3MetaInfo {
-    override def size: Option[Long]            = Option(headObjectResponse.contentLength(): Long)
-    override def lastModified: Option[Instant] = Option(headObjectResponse.lastModified())
-    override def eTag: Option[String]          = Option(headObjectResponse.eTag())
+    override def size: Option[Long]                 = Option(headObjectResponse.contentLength(): Long)
+    override def lastModified: Option[Instant]      = Option(headObjectResponse.lastModified())
+    override def eTag: Option[String]               = Option(headObjectResponse.eTag())
     override def storageClass: Option[StorageClass] =
       Some(Option(headObjectResponse.storageClass()).getOrElse(StorageClass.STANDARD))
     override def deleteMarker: Boolean = Option(headObjectResponse.deleteMarker(): Boolean).getOrElse[Boolean](false)
@@ -130,7 +130,7 @@ object S3MetaInfo {
     override def replicationStatus: Option[ReplicationStatus] = Option(headObjectResponse.replicationStatus())
     override def partsCount: Option[Int]                      = Option(headObjectResponse.partsCount(): Int)
     override def objectLockMode: Option[ObjectLockMode]       = Option(headObjectResponse.objectLockMode())
-    override def objectLockRetainUntilDate: Option[Instant] =
+    override def objectLockRetainUntilDate: Option[Instant]   =
       Option(headObjectResponse.objectLockRetainUntilDate())
     override def objectLockLegalHoldStatus: Option[ObjectLockLegalHoldStatus] =
       Option(headObjectResponse.objectLockLegalHoldStatus())

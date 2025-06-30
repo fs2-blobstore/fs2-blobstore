@@ -82,7 +82,7 @@ class AzureStore[F[_]: Async](
   ): Pipe[F, Byte, Unit] = in =>
     Stream.resource(in.chunks.map(chunk => ByteBuffer.wrap(chunk.toArray)).toUnicastPublisher).flatMap { publisher =>
       val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-      val blobClient = azure
+      val blobClient            = azure
         .getBlobContainerAsyncClient(container)
         .getBlobAsyncClient(blobName)
       val flux = Flux.from(publisher)
@@ -118,7 +118,7 @@ class AzureStore[F[_]: Async](
   override def copy[A, B](src: Url[A], dst: Url[B]): F[Unit] = {
     val (srcContainer, srcBlob) = AzureStore.urlToContainerAndBlob(src)
     val (dstContainer, dstBlob) = AzureStore.urlToContainerAndBlob(dst)
-    val srcUrl = azure
+    val srcUrl                  = azure
       .getBlobContainerAsyncClient(srcContainer)
       .getBlobAsyncClient(srcBlob)
       .getBlobUrl
@@ -130,7 +130,7 @@ class AzureStore[F[_]: Async](
   }
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
-    val (container, blobOrPrefix) = AzureStore.urlToContainerAndBlob(url)
+    val (container, blobOrPrefix)                  = AzureStore.urlToContainerAndBlob(url)
     def recoverNotFound(m: Mono[Void]): Mono[Void] = m.onErrorResume(
       (t: Throwable) =>
         t match {
@@ -141,11 +141,11 @@ class AzureStore[F[_]: Async](
         def apply(t: Throwable): Mono[Void] = Mono.empty()
       }
     )
-    val containerClient = azure.getBlobContainerAsyncClient(container)
+    val containerClient  = azure.getBlobContainerAsyncClient(container)
     val mono: Mono[Void] =
       if (recursive) {
         val blobBatchClient = new BlobBatchClientBuilder(azure).buildAsyncClient()
-        val options = {
+        val options         = {
           val opts = new ListBlobsOptions
           opts.setPrefix(blobOrPrefix)
         }
@@ -207,11 +207,11 @@ class AzureStore[F[_]: Async](
     recursive: Boolean
   ): Stream[F, Url[AzureBlob]] = {
     val (container, blobName) = AzureStore.urlToContainerAndBlob(url)
-    val options = new ListBlobsOptions()
+    val options               = new ListBlobsOptions()
       .setPrefix(if (blobName == "/") "" else blobName)
       .setDetails(new BlobListDetails().setRetrieveMetadata(fullMetadata))
     val containerClient = azure.getBlobContainerAsyncClient(container)
-    val blobPagedFlux =
+    val blobPagedFlux   =
       if (recursive) containerClient.listBlobs(options)
       else containerClient.listBlobsByHierarchy("/", options)
     val flux = blobPagedFlux
