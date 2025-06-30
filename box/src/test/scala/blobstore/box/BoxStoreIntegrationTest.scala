@@ -34,7 +34,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   val rootFolderName = "BoxStoreTest"
 
   lazy val api: BoxAPIConnection = {
-    val fileCredentialName = sys.env.getOrElse(BoxAppKey, "box_appkey.json")
+    val fileCredentialName   = sys.env.getOrElse(BoxAppKey, "box_appkey.json")
     lazy val fileCredentials = Option(getClass.getClassLoader.getResource(fileCredentialName))
       .toRight(new FileNotFoundException(fileCredentialName))
       .toTry
@@ -57,7 +57,7 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   }
 
   lazy val rootFolder: BoxFolder#Info = {
-    val list = BoxFolder.getRootFolder(api).asScala.toList
+    val list     = BoxFolder.getRootFolder(api).asScala.toList
     val rootInfo = list.collectFirst {
       case f: BoxFolder#Info if f.getName == rootFolderName => f
     }

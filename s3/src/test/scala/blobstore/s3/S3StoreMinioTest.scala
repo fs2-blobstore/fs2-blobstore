@@ -56,8 +56,8 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
   }
 
   it should "set underlying metadata on write" in {
-    val ct = "text/plain"
-    val sc = StorageClass.REDUCED_REDUNDANCY
+    val ct     = "text/plain"
+    val sc     = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("key" -> "Value"))
 
@@ -78,8 +78,8 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
   }
 
   it should "set underlying metadata on multipart-upload" in {
-    val ct = "text/plain"
-    val sc = StorageClass.REDUCED_REDUNDANCY
+    val ct     = "text/plain"
+    val sc     = StorageClass.REDUCED_REDUNDANCY
     val s3Meta =
       S3MetaInfo.const(constContentType = Some(ct), constStorageClass = Some(sc), constMetadata = Map("Key" -> "Value"))
     val filePath = Path(show"test-$testRun/set-underlying/file2")

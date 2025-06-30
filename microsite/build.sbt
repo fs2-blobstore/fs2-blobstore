@@ -18,7 +18,7 @@ micrositeFooterText       := None
 
 mdocIn             := sourceDirectory.value / "main" / "mdoc"
 mdocExtraArguments := List("--no-link-hygiene")
-mdocVariables := Map(
+mdocVariables      := Map(
   "stableVersion" -> dynverGitPreviousStableVersion.value.version(Date.from(Instant.now())),
   "scalaVersions" -> crossScalaVersions.value.flatMap(CrossVersion.partialVersion).map(_._2).mkString("2.", "/", "")
 )

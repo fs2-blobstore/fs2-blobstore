@@ -2,7 +2,7 @@ ThisBuild / scalaVersion       := "2.13.16"
 ThisBuild / crossScalaVersions := Seq("2.12.20", "2.13.16", "3.3.6")
 ThisBuild / organization       := "com.github.fs2-blobstore"
 ThisBuild / licenses           := List("Apache-2.0" -> sbt.url("http://www.apache.org/licenses/LICENSE-2.0"))
-ThisBuild / developers := List(
+ThisBuild / developers         := List(
   Developer("rolandomanrique", "Rolando Manrique", "", sbt.url("http://github.com/rolandomanrique")),
   Developer("stew", "Stew O'Connor", "", sbt.url("https://github.com/stew")),
   Developer("gafiatulin", "Victor Gafiatulin", "", sbt.url("https://github.com/gafiatulin")),
