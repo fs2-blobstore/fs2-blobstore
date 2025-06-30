@@ -118,7 +118,7 @@ class GcsStore[F[_]: Async](
       Some(storage.list(blobId.getBucket, blobListOptions*))
     } { getPage =>
       Async[F].blocking(getPage()).flatMap {
-        case None => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
+        case None       => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
         case Some(page) =>
           page.getValues.asScala.toList
             .traverse {
@@ -222,7 +222,7 @@ object GcsStore {
     def disableDirectDownload: GcsStoreBuilder[F]         = this.copy(_defaultDirectDownload = false)
     def enableTrailingSlashFiles: GcsStoreBuilder[F]      = this.copy(_defaultTrailingSlashFiles = true)
     def disableTrailingSlashFiles: GcsStoreBuilder[F]     = this.copy(_defaultTrailingSlashFiles = false)
-    def build: ValidatedNec[Throwable, GcsStore[F]] =
+    def build: ValidatedNec[Throwable, GcsStore[F]]       =
       new GcsStore(
         storage = _storage,
         acls = _acls,
