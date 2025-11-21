@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 50
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
