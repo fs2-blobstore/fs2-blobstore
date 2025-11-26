@@ -102,7 +102,7 @@ class GcsStore[F[_]: Async](
     }
 
   private def getDirect(blob: Blob, chunkSize: Int): Stream[F, Byte] =
-    fs2.io.readOutputStream(chunkSize)(os => Async[F].blocking(blob.downloadTo(os)))
+    fs2.io.readOutputStream[F](chunkSize)(os => Async[F].blocking(blob.downloadTo(os)))
 
   def listUnderlying[A](
     url: Url[A],
@@ -223,7 +223,7 @@ object GcsStore {
     def enableTrailingSlashFiles: GcsStoreBuilder[F]      = this.copy(_defaultTrailingSlashFiles = true)
     def disableTrailingSlashFiles: GcsStoreBuilder[F]     = this.copy(_defaultTrailingSlashFiles = false)
     def build: ValidatedNec[Throwable, GcsStore[F]]       =
-      new GcsStore(
+      new GcsStore[F](
         storage = _storage,
         acls = _acls,
         defaultTrailingSlashFiles = _defaultTrailingSlashFiles,
