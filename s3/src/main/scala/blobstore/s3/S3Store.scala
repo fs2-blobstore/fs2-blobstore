@@ -104,7 +104,7 @@ class S3Store[F[_]: Async](
       }
 
     Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(bestClient.getObject(request, transformer))))
-      .flatMap(_.toStreamBuffered(2).flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
+      .flatMap(_.toStreamBuffered[F](2).flatMap(bb => Stream.chunk(Chunk.byteBuffer(bb))))
   }
 
   def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
@@ -211,7 +211,7 @@ class S3Store[F[_]: Async](
       val builder = if (recursive) b else b.delimiter("/")
       builder.build()
     }
-    s3.listObjectsV2Paginator(request).toStreamBuffered(16).flatMap { ol =>
+    s3.listObjectsV2Paginator(request).toStreamBuffered[F](16).flatMap { ol =>
       val fDirs =
         ol.commonPrefixes().asScala.toList.flatMap(cp => Option(cp.prefix())).traverse[F, Path[S3Blob]] { prefix =>
           if (expectTrailingSlashFiles) {
@@ -280,7 +280,7 @@ class S3Store[F[_]: Async](
       Async[F].fromCompletableFuture(Async[F].delay(s3.createMultipartUpload(request)))
 
     Stream.eval((makeRequest, Semaphore[F](2)).tupled).flatMap { case (muResp, semaphore) =>
-      val partRef                                        = Ref.unsafe(1)
+      val partRef                                        = Ref.unsafe[F, Int](1)
       val completedPartsRef: Ref[F, List[CompletedPart]] = Ref.unsafe(Nil)
 
       val pipe: Pipe[F, Byte, Unit] = maybeSize match {
@@ -318,7 +318,7 @@ class S3Store[F[_]: Async](
           } yield queue
 
           if (totalParts > S3Store.maxMultipartParts) {
-            _ => Stream.raiseError(S3Store.multipartUploadPartsError)
+            _ => Stream.raiseError[F](S3Store.multipartUploadPartsError)
           } else {
             putRotateBase(partSize, resource) { queue => chunk =>
               queue.offer(Some(ByteBuffer.wrap(chunk.toArray)))
