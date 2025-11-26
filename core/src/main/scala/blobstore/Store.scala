@@ -131,16 +131,16 @@ object Store {
     private def plainUrl[A](url: Url[A]): Url.Plain = url.copy(path = url.path.plain)
 
     override def list[A](url: Url[A], recursive: Boolean): Stream[F, Url[Blob]] =
-      Stream.fromEither(validateInput(plainUrl(url)).toEither)
+      Stream.fromEither[F](validateInput(plainUrl(url)).toEither)
         .flatMap(delegate.list(_, recursive))
         .map(p => url.copy(path = p))
 
     override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] =
-      Stream.fromEither(validateInput(plainUrl(url)).toEither).flatMap(delegate.get(_, chunkSize))
+      Stream.fromEither[F](validateInput(plainUrl(url)).toEither).flatMap(delegate.get(_, chunkSize))
 
     override def put[A](url: Url[A], overwrite: Boolean = true, size: Option[Long] = None): Pipe[F, Byte, Unit] =
       s =>
-        Stream.fromEither(validateInput(plainUrl(url)).toEither).flatMap(p =>
+        Stream.fromEither[F](validateInput(plainUrl(url)).toEither).flatMap(p =>
           s.through(delegate.put(p, overwrite, size))
         )
 
@@ -158,7 +158,7 @@ object Store {
       validateInput(plainUrl(url)).liftTo[F].flatMap(delegate.remove(_, recursive))
 
     override def stat[A](url: Url[A]): Stream[F, Url[Blob]] =
-      Stream.fromEither(validateInput(plainUrl(url)).toEither).flatMap(s =>
+      Stream.fromEither[F](validateInput(plainUrl(url)).toEither).flatMap(s =>
         Stream.eval(delegate.stat[String](s)).unNone.map(url.withPath)
       )
 
