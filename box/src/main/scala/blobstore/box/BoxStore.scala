@@ -68,7 +68,7 @@ class BoxStore[F[_]: Async](
 
     Stream.eval(boxFileAtPath(path)).flatMap {
       case None =>
-        Stream.raiseError(new IllegalArgumentException(show"Item at path '$path' doesn't exist or is not a File"))
+        Stream.raiseError[F](new IllegalArgumentException(show"Item at path '$path' doesn't exist or is not a File"))
       case Some(file) => Stream.bracket(init)(release).flatMap(consume(file))
     }
   }
@@ -77,7 +77,7 @@ class BoxStore[F[_]: Async](
     in =>
       path.lastSegment match {
         case None =>
-          Stream.raiseError(new IllegalArgumentException(show"Specified path '$path' doesn't point to a file."))
+          Stream.raiseError[F](new IllegalArgumentException(show"Specified path '$path' doesn't point to a file."))
         case Some(name) =>
           val init: F[(OutputStream, InputStream, Either[BoxFile, BoxFolder])] = {
             val os = new PipedOutputStream()
@@ -204,7 +204,7 @@ class BoxStore[F[_]: Async](
             Stream.emit(info)
           case f if BoxStore.isFolder(f) =>
             Stream
-              .fromBlockingIterator(
+              .fromBlockingIterator[F](
                 BoxStore.blockingIterator(new BoxFolder(api, f.getID), fields),
                 64
               )
@@ -274,11 +274,11 @@ class BoxStore[F[_]: Async](
         else Stream.empty
       case head :: Nil =>
         Stream
-          .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, fields), 64)
+          .fromBlockingIterator[F](BoxStore.blockingIterator(parentFolder, fields), 64)
           .find(_.getName.equalsIgnoreCase(head))
       case head :: tail =>
         Stream
-          .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, Array.empty), 64)
+          .fromBlockingIterator[F](BoxStore.blockingIterator(parentFolder, Array.empty), 64)
           .find { info =>
             BoxStore.isFolder(info) && info.getName.equalsIgnoreCase(head)
           }
@@ -291,7 +291,7 @@ class BoxStore[F[_]: Async](
     case Nil          => parentFolder.pure[F]
     case head :: tail =>
       Stream
-        .fromBlockingIterator(BoxStore.blockingIterator(parentFolder, Array.empty), 64)
+        .fromBlockingIterator[F](BoxStore.blockingIterator(parentFolder, Array.empty), 64)
         .find(_.getName.equalsIgnoreCase(head))
         .compile
         .last
