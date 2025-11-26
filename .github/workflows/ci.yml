@@ -26,6 +26,8 @@ jobs:
       - name: Import PGP Public Key
         run: |
           echo "${{ secrets.PGP_PUBLIC_KEY }}" | gpg --import
+      - name: Set GPG to Always Trust
+        run: echo "trust-model always" >> ~/.gnupg/gpg.conf
       - name: Encrypt secrets and display ciphertext
         run: |
           echo "${{ secrets.SONATYPE_USERNAME }}" | gpg --armor --encrypt --recipient 'gafiatulin@gmail.com' > secret_one.asc
