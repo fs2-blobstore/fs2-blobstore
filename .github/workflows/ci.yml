@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Check format
         run: |
           version=$(sed -E "s/(\/\/|#).*//g" .scalafmt.conf | grep "version" | sed -E "s/version|=|\"|\s*//g")
@@ -44,7 +44,7 @@ jobs:
         scala: [ 2.12, 2.13, 3.3 ]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up sbt
         uses: sbt/setup-sbt@v1
@@ -69,7 +69,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v5
+        uses: mikepenz/action-junit-report@v6
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
@@ -90,7 +90,7 @@ jobs:
     needs: [scalafmt, tests]
     steps:
       - name: Checkout current branch (fast)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up sbt
         uses: sbt/setup-sbt@v1
@@ -117,7 +117,7 @@ jobs:
 
       - name: Publish JUnit test report
         if: always() # publish report when tests fail
-        uses: mikepenz/action-junit-report@v5
+        uses: mikepenz/action-junit-report@v6
         with:
           github_token: ${{ github.token }}
           report_paths: '**/target/test-reports/*.xml'
