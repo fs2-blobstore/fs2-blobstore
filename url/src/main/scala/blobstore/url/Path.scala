@@ -92,8 +92,7 @@ sealed trait Path[+A] {
     *
     * If you're just working with String paths, see `/`
     */
-  def addSegment[B](segment: String, representation: B): Path[B] =
-    (plain / segment).as(representation)
+  def addSegment[B](segment: String, representation: B): Path[B] = (plain / segment).as(representation)
 
   override def toString: String = Show[Path[A]].show(this)
 
