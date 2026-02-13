@@ -50,7 +50,7 @@ jobs:
         uses: sbt/setup-sbt@v1
 
       - name: Cache project dependencies between workflow runs
-        uses: coursier/cache-action@v7
+        uses: coursier/cache-action@v8
 
       - name: Compile all sources
         run: sbt ++${{ matrix.scala }}.* 'all compile Test/compile doc'
@@ -96,7 +96,7 @@ jobs:
         uses: sbt/setup-sbt@v1
 
       - name: Cache project dependencies between workflow runs
-        uses: coursier/cache-action@v7
+        uses: coursier/cache-action@v8
 
       - name: Compile all sources
         run: sbt 'all compile Test/compile doc'
