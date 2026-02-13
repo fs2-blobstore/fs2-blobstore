@@ -1,7 +1,7 @@
 name := "s3"
 
 val fs2Version = "3.12.2"
-val awsVersion = "2.41.8"
+val awsVersion = "2.41.28"
 
 libraryDependencies ++= Seq(
   "software.amazon.awssdk"     % "s3"                        % awsVersion,
