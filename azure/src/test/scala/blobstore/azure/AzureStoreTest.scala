@@ -21,7 +21,8 @@ class AzureStoreTest extends AbstractStoreTest[AzureBlob] with Inside {
   val container: GenericContainer = GenericContainer(
     dockerImage = "mcr.microsoft.com/azure-storage/azurite",
     exposedPorts = List(10000),
-    command = List("azurite-blob", "--blobHost", "0.0.0.0", "--loose")
+    // TODO: Remove skipApiVersionCheck when https://github.com/Azure/Azurite/issues/2623 is resolved
+    command = List("azurite-blob", "--blobHost", "0.0.0.0", "--loose", "--skipApiVersionCheck")
   )
 
   override val scheme: String        = "https"
