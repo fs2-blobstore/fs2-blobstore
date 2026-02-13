@@ -35,6 +35,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters.*
+import fs2.concurrent.Channel
 
 /** @param s3
   *   S3 Async Client.
@@ -293,8 +294,8 @@ class S3Store[F[_]: Async](
             _    <- Resource.eval(if (part > totalParts)
               new IllegalArgumentException("Provided size doesn't match evaluated stream length.").raiseError
             else Async[F].unit)
-            queue     <- Resource.eval(Queue.bounded[F, Option[ByteBuffer]](queueSize))
-            publisher <- Stream.fromQueueNoneTerminated(queue).toUnicastPublisher
+            channel   <- Resource.eval(Channel.bounded[F, ByteBuffer](queueSize))
+            publisher <- channel.stream.toUnicastPublisher
             _         <- Resource.make(
               Async[F].start(
                 Async[F].fromCompletableFuture(Async[F].delay {
@@ -314,14 +315,14 @@ class S3Store[F[_]: Async](
             )(_.joinWithNever.flatMap(resp =>
               completedPartsRef.update(CompletedPart.builder().eTag(resp.eTag()).partNumber(part).build() :: _)
             ))
-            _ <- Resource.make(Async[F].unit)(_ => queue.offer(None))
-          } yield queue
+            _ <- Resource.make(Async[F].unit)(_ => channel.close.void)
+          } yield channel
 
           if (totalParts > S3Store.maxMultipartParts) {
             _ => Stream.raiseError[F](S3Store.multipartUploadPartsError)
           } else {
-            putRotateBase(partSize, resource) { queue => chunk =>
-              queue.offer(Some(ByteBuffer.wrap(chunk.toArray)))
+            putRotateBase(partSize, resource) { channel => chunk =>
+              channel.send(ByteBuffer.wrap(chunk.toArray)).void
             }
           }
         case None =>
