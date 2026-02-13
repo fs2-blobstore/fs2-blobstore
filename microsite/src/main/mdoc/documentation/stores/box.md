@@ -10,22 +10,18 @@ This store is used to interface with Box. Head over to the official [documentati
 Box typically require reading credentials from disk. In the example below, we've included reading credentials, thus producing a `F[BoxStore[F]]`:
 
 ```scala mdoc:compile-only
-import com.box.sdk.{BoxConfig, BoxDeveloperEditionAPIConnection}
+import com.box.sdkgen.box.jwtauth.{BoxJWTAuth, JWTConfig}
+import com.box.sdkgen.client.BoxClient
 
 import cats.effect.{Async, Sync}
-import fs2.io.file.{Files, Path}
 import blobstore.box.BoxStore
 
-import java.io.InputStreamReader
-import java.nio.charset.StandardCharsets
-
-def createBoxStore[F[_]: Async]: F[BoxStore[F]] = Files.forAsync[F].readAll(Path("/foo.txt"))
-  .through(fs2.io.toInputStream)
-  .map(new InputStreamReader(_, StandardCharsets.UTF_8))
-  .evalMap(r => Sync[F].delay(BoxConfig.readFrom(r)))
-  .map(BoxDeveloperEditionAPIConnection.getAppEnterpriseConnection)
-  .map(BoxStore.builder[F](_).unsafe)
-  .compile
-  .lastOrError
+def createBoxStore[F[_]: Async]: F[BoxStore[F]] =
+  Sync[F].delay {
+    val jwtConfig = JWTConfig.fromConfigFile("/foo.txt")
+    val auth = new BoxJWTAuth(jwtConfig)
+    val client = new BoxClient(auth)
+    BoxStore.builder[F](client).unsafe
+  }
 ```
- 
+
