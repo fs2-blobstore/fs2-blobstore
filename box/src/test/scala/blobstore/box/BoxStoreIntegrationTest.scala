@@ -1,13 +1,18 @@
 package blobstore
 package box
 
-import java.io.{File, FileNotFoundException, FileReader}
+import java.io.FileNotFoundException
 import java.time.{Instant, ZoneOffset}
 import blobstore.url.Authority
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
-import com.box.sdk.{BoxAPIConnection, BoxConfig, BoxDeveloperEditionAPIConnection, BoxFile, BoxFolder}
+import com.box.sdkgen.box.developertokenauth.BoxDeveloperTokenAuth
+import com.box.sdkgen.box.jwtauth.{BoxJWTAuth, JWTConfig}
+import com.box.sdkgen.client.BoxClient
+import com.box.sdkgen.managers.folders.DeleteFolderByIdQueryParams
+import com.box.sdkgen.schemas.folderfull.FolderFull
+import com.box.sdkgen.schemas.items.Items
 import org.slf4j.LoggerFactory
 
 import scala.jdk.CollectionConverters.*
@@ -28,26 +33,28 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
   // If your rootFolderId is a safe directory to test under, this root string doesn't matter that much.
   override val authority: Authority = Authority.unsafe("foo")
 
-  private lazy val boxStore: BoxStore[IO]    = BoxStore.builder[IO](api).unsafe
+  private lazy val boxStore: BoxStore[IO]    = BoxStore.builder[IO](boxClient).unsafe
   override def mkStore(): Store[IO, BoxPath] = boxStore.lift
 
   val rootFolderName = "BoxStoreTest"
 
-  lazy val api: BoxAPIConnection = {
+  lazy val boxClient: BoxClient = {
     val fileCredentialName   = sys.env.getOrElse(BoxAppKey, "box_appkey.json")
     lazy val fileCredentials = Option(getClass.getClassLoader.getResource(fileCredentialName))
       .toRight(new FileNotFoundException(fileCredentialName))
       .toTry
-      .map(u => new FileReader(new File(u.toURI)))
-      .map(BoxConfig.readFrom)
-      .map(BoxDeveloperEditionAPIConnection.getAppEnterpriseConnection)
+      .map(u => java.nio.file.Paths.get(u.toURI).toString)
+      .map(JWTConfig.fromConfigFile)
+      .map(new BoxJWTAuth(_))
+      .map(new BoxClient(_))
       .flatTap(_ => Try(log.info(show"Authenticated with credentials file $fileCredentialName")))
 
     val devToken = sys.env
       .get(BoxDevToken)
       .toRight(new Exception(show"Environment variable not set: $BoxDevToken"))
       .toTry
-      .map(new BoxAPIConnection(_))
+      .map(new BoxDeveloperTokenAuth(_))
+      .map(new BoxClient(_))
       .flatTap(_ => Try(log.info("Authenticated with dev token")))
 
     devToken.orElse(fileCredentials) match {
@@ -56,10 +63,10 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
     }
   }
 
-  lazy val rootFolder: BoxFolder#Info = {
-    val list     = BoxFolder.getRootFolder(api).asScala.toList
-    val rootInfo = list.collectFirst {
-      case f: BoxFolder#Info if f.getName == rootFolderName => f
+  lazy val rootFolder: FolderFull = {
+    val items    = boxClient.folders.getFolderItems("0")
+    val rootInfo = items.getEntries.asScala.collectFirst {
+      case item if item.isFolderFull && item.getFolderFull.getName == rootFolderName => item.getFolderFull
     }
 
     rootInfo match {
@@ -70,23 +77,27 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    val threshold = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
-    // scalafix:off
-    rootFolder.getResource
-      .getChildren(BoxFolder.ALL_FIELDS*)
-      .asScala
-      .toList
-      .filter(_.getCreatedAt.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))
-      .foreach {
-        case i: BoxFolder#Info =>
-          log.info(show"Deleting outdated test folder ${i.getName}")
-          Try(i.getResource.delete(true))
-        case i: BoxFile#Info =>
-          log.info(show"Deleting outdated test file ${i.getName}")
-          Try(i.getResource.delete())
-        case i => log.info(show"Ignoring old item ${i.getName}")
+    val threshold    = Instant.now().atZone(ZoneOffset.UTC).minusHours(1)
+    val items: Items = boxClient.folders.getFolderItems(rootFolder.getId)
+    items.getEntries.asScala.toList
+      .filter { item =>
+        val createdAt = if (item.isFileFull) Option(item.getFileFull.getCreatedAt)
+        else if (item.isFolderFull) Option(item.getFolderFull.getCreatedAt)
+        else None
+        createdAt.exists(_.toInstant.atZone(ZoneOffset.UTC).isBefore(threshold))
       }
-    // scalafix:off
+      .foreach {
+        case item if item.isFolderFull =>
+          log.info(show"Deleting outdated test folder ${item.getFolderFull.getName}")
+          val _ = Try {
+            val params = new DeleteFolderByIdQueryParams.Builder().recursive(true).build()
+            boxClient.folders.deleteFolderById(item.getFolderFull.getId, params)
+          }
+        case item if item.isFileFull =>
+          log.info(show"Deleting outdated test file ${item.getFileFull.getName}")
+          val _ = Try(boxClient.files.deleteFileById(item.getFileFull.getId))
+        case item => log.info(show"Ignoring old item ${item.getName}")
+      }
   }
 
   behavior of "BoxStore"
@@ -115,14 +126,14 @@ class BoxStoreIntegrationTest extends AbstractStoreTest[BoxPath] {
     val subFolderFile = writeFile(store, dirP / "subfolder")("cde.txt")
 
     val paths = boxStore
-      .listUnderlying(dirP.path, BoxFile.ALL_FIELDS ++ BoxFolder.ALL_FIELDS, recursive = false)
+      .listUnderlying(dirP.path, List("comment_count", "watermark_info"), recursive = false)
       .compile
       .toList
       .unsafeRunSync()
 
     paths.map(_.representation.fileOrFolder).foreach {
       case Left(file)    => Option(file.getCommentCount) mustBe a[Some[?]]
-      case Right(folder) => Option(folder.getIsWatermarked) mustBe a[Some[?]]
+      case Right(folder) => Option(folder.getWatermarkInfo) mustBe a[Some[?]]
     }
     (subFolderFile.path :: paths.map(_.plain)).map(boxStore.remove(_, false)).sequence.unsafeRunSync()
   }

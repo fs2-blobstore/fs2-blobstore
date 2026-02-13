@@ -4,13 +4,12 @@ import java.time.Instant
 import blobstore.url.{FsObject, FsObjectLowPri, Path}
 import blobstore.url.general.{GeneralStorageClass, StorageClassLookup}
 import cats.syntax.option.*
-import com.box.sdk.{BoxFile, BoxFolder, BoxItem}
+import com.box.sdkgen.schemas.filefull.FileFull
+import com.box.sdkgen.schemas.folderfull.FolderFull
 
-case class BoxPath(fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]) extends FsObject {
-  def file: Option[BoxFile#Info]     = fileOrFolder.swap.toOption
-  def folder: Option[BoxFolder#Info] = fileOrFolder.toOption
-
-  def lub: BoxItem#Info = fileOrFolder.fold[BoxItem#Info](identity, identity)
+case class BoxPath(fileOrFolder: Either[FileFull, FolderFull]) extends FsObject {
+  def file: Option[FileFull]     = fileOrFolder.swap.toOption
+  def folder: Option[FolderFull] = fileOrFolder.toOption
 
   override type StorageClassType = Nothing
 
@@ -20,8 +19,8 @@ case class BoxPath(fileOrFolder: Either[BoxFile#Info, BoxFolder#Info]) extends F
   }
 
   override def size: Option[Long] = fileOrFolder match {
-    case Left(file)    => file.getSize.some
-    case Right(folder) => folder.getSize.some
+    case Left(file)    => Option(file.getSize).map(_.longValue)
+    case Right(folder) => Option(folder.getSize).map(_.longValue)
   }
 
   override def isDir: Boolean = fileOrFolder.isRight
