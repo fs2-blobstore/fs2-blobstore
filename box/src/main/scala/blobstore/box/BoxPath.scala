@@ -26,8 +26,13 @@ case class BoxPath(fileOrFolder: Either[FileFull, FolderFull]) extends FsObject 
   override def isDir: Boolean = fileOrFolder.isRight
 
   override def lastModified: Option[Instant] = fileOrFolder match {
-    case Left(file)    => file.getModifiedAt.toInstant.some
-    case Right(folder) => folder.getModifiedAt.toInstant.some
+    case Left(file)    => Option(file.getModifiedAt).map(_.toInstant)
+    case Right(folder) => Option(folder.getModifiedAt).map(_.toInstant)
+  }
+
+  override def created: Option[Instant] = fileOrFolder match {
+    case Left(file)    => Option(file.getCreatedAt).map(_.toInstant)
+    case Right(folder) => Option(folder.getCreatedAt).map(_.toInstant)
   }
 
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] = None

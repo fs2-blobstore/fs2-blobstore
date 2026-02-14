@@ -8,7 +8,7 @@ import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import com.google.cloud.ServiceRpc
 import com.google.cloud.spi.ServiceRpcFactory
-import com.google.cloud.storage.{BlobInfo, Storage, StorageClass, StorageOptions}
+import com.google.cloud.storage.{BlobId, BlobInfo, Storage, StorageClass, StorageOptions}
 import com.google.cloud.storage.contrib.nio.testing.FixedFakeStorageRpc
 import fs2.Stream
 import org.scalatest.Inside
@@ -31,6 +31,12 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
   val gcsStore: GcsStore[IO] = GcsStore.builder[IO](storage).enableTrailingSlashFiles.unsafe
 
   override def mkStore(): GcsStore[IO] = gcsStore
+
+  override def modifyFile(url: Url.Plain): IO[Unit] = IO.blocking {
+    val blobId = BlobId.of(url.authority.show, url.path.show.stripPrefix("/"))
+    val blob   = storage.get(blobId)
+    storage.update(blob.toBuilder.setContentType("ABC").build())
+  }.void
 
   behavior of "GcsStore"
 

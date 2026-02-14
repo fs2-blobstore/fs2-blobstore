@@ -16,6 +16,9 @@ case class S3Blob(bucket: String, key: String, meta: Option[S3MetaInfo]) extends
 
   override def lastModified: Option[Instant] = meta.flatMap(_.lastModified)
 
+  // S3 doesn't provide creation time for objects
+  override def created: Option[Instant] = None
+
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] =
     meta.flatMap(_.storageClass).map {
       case StorageClass.GLACIER | StorageClass.DEEP_ARCHIVE => GeneralStorageClass.ColdStorage

@@ -148,6 +148,7 @@ sealed trait Path[+A] {
   def size(implicit ev: A <:< FsObject): Option[Long]            = ev(representation).size
   def isDir(implicit ev: A <:< FsObject): Boolean                = ev(representation).isDir
   def lastModified(implicit ev: A <:< FsObject): Option[Instant] = ev(representation).lastModified
+  def created(implicit ev: A <:< FsObject): Option[Instant]      = ev(representation).created
   def storageClass[SC](implicit storageClassLookup: StorageClassLookup.Aux[A, SC]): Option[SC] =
     storageClassLookup.storageClass(representation)
   def fileName(implicit ev: A <:< FsObject): Option[String] = if (isDir) None else lastSegment

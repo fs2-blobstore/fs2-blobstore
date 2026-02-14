@@ -14,6 +14,9 @@ case class SftpFile(name: String, attrs: SftpATTRS) extends FsObject {
 
   override def lastModified: Option[Instant] = Option(attrs.getMTime).map(i => Instant.ofEpochSecond(i.toLong))
 
+  // No file creation time over SFTP with jsch
+  override def created: Option[Instant] = None
+
   override private[blobstore] def generalStorageClass: Option[GeneralStorageClass] = None
 }
 
