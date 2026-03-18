@@ -15,11 +15,11 @@ Copyright 2018 LendUp Global, Inc.
  */
 
 import blobstore.url.{FsObject, Path, Url}
-import cats.effect.std.Hotswap
+import cats.effect.std.NonEmptyHotswap
 import cats.effect.{Concurrent, MonadCancelThrow, Resource}
 import cats.implicits.*
 import fs2.io.file.{Files, Flags}
-import fs2.{Chunk, Compiler, Pipe, Pull, RaiseThrowable, Stream}
+import fs2.{Chunk, Compiler, Pipe, Pull, Stream}
 
 package object blobstore {
 
@@ -44,23 +44,24 @@ package object blobstore {
       case None         => Pull.done
       case Some((h, t)) =>
         Pull.eval(Stream
-          .resource(Hotswap(openNewFile))
-          .flatMap {
-            case (hotswap, newFile) =>
+          .resource(NonEmptyHotswap(openNewFile))
+          .flatMap { hotswap =>
+            Stream.eval(hotswap.get.use(_.pure[F])).flatMap { newFile =>
               goRotate(limit, 0L, t.cons(h), newFile, hotswap, openNewFile)(
                 consume = consumer => bytes => Pull.eval(consume(consumer)(bytes)).as(consumer),
                 extract = Stream.emit
               ).stream
+            }
           }.compile.drain)
     }.stream
   }
 
-  private[blobstore] def goRotate[F[_]: RaiseThrowable, A, B](
+  private[blobstore] def goRotate[F[_]: Concurrent, A, B](
     limit: Long,
     acc: Long,
     s: Stream[F, Byte],
     consumer: B,
-    hotswap: Hotswap[F, A],
+    hotswap: NonEmptyHotswap[F, A],
     resource: Resource[F, A]
   )(
     consume: B => Chunk[Byte] => Pull[F, Unit, B],
@@ -78,6 +79,7 @@ package object blobstore {
               case Some((h, t)) =>
                 Pull
                   .eval(hotswap.swap(resource))
+                  .flatMap(_ => Pull.eval(hotswap.get.use(_.pure[F])))
                   .flatMap(a => extract(a).pull.headOrError)
                   .flatMap(nc => goRotate(limit, 0L, t.cons(h), nc, hotswap, resource)(consume, extract))
             }
