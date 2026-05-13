@@ -20,7 +20,7 @@ class SftpStoreChrootTest extends AbstractSftpStoreTest {
     val session = jsch.getSession("blob", container.containerIpAddress, container.mappedPort(22))
 
     session.setTimeout(10000)
-    session.setPassword("password")
+    session.setPassword("password".getBytes(StandardCharsets.UTF_8))
 
     val config = new Properties
     config.put("StrictHostKeyChecking", "no")
