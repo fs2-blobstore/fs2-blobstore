@@ -5,6 +5,8 @@ import cats.effect.IO
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{JSch, Session}
 
+import java.nio.charset.StandardCharsets
+
 /** sftp-container follows the default atmoz/sftp configuration and will have "/" mapped to the user's home directory
   */
 class SftpStoreChrootTest extends AbstractSftpStoreTest {
