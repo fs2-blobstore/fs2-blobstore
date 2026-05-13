@@ -110,6 +110,7 @@ jobs:
       - name: Test
         env:
           S3_IT_BUCKET: ${{ secrets.AWS_S3_BUCKET_IT }}
+          S3_IT_ACCESS_POINT: ${{ secrets.AWS_S3_ACCESS_POINT_IT }}
           S3_IT_REGION: ${{ secrets.AWS_S3_REGION_IT }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_ACCESS_KEY_IT }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_SECRET_KEY_IT }}

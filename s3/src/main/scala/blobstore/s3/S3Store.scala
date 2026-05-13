@@ -75,14 +75,14 @@ class S3Store[F[_]: Async](
     listUnderlying(url, defaultFullMetadata, defaultTrailingSlashFiles, recursive)
 
   override def get[A](url: Url[A], chunkSize: Int): Stream[F, Byte] = {
-    val bucket = url.authority.show
+    val bucket = S3Authority.bucketParam(url.authority)
     val key    = url.path.relative.show
 
     performGet(GetObjectRequest.builder().bucket(bucket).key(key).build())
   }
 
   def get[A](url: Url[A], meta: S3MetaInfo): Stream[F, Byte] = {
-    val bucket = url.authority.show
+    val bucket = S3Authority.bucketParam(url.authority)
     val key    = url.path.relative.show
 
     performGet(S3MetaInfo.mkGetObjectRequest(bucket, key, meta))
@@ -118,7 +118,7 @@ class S3Store[F[_]: Async](
     meta: Option[S3MetaInfo]
   ): Pipe[F, Byte, Unit] =
     in => {
-      val bucket = url.authority.show
+      val bucket = S3Authority.bucketParam(url.authority)
       val key    = url.path.relative.show
 
       val checkOverwrite =
@@ -146,9 +146,9 @@ class S3Store[F[_]: Async](
 
   def copy[A, B](src: Url[A], dst: Url[B], dstMeta: Option[S3MetaInfo]): F[Unit] = {
     val request = {
-      val srcBucket = src.authority.show
+      val srcBucket = S3Authority.bucketParam(src.authority)
       val srcKey    = src.path.relative.show
-      val dstBucket = dst.authority.show
+      val dstBucket = S3Authority.bucketParam(dst.authority)
       val dstKey    = dst.path.relative.show
 
       S3MetaInfo.mkCopyObjectRequest(sseAlgorithm, objectAcl, srcBucket, srcKey, dstBucket, dstKey, dstMeta)
@@ -157,7 +157,7 @@ class S3Store[F[_]: Async](
   }
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] = {
-    val bucket = url.authority.show
+    val bucket = S3Authority.bucketParam(url.authority)
 
     if (recursive) {
       list(url, recursive).groupWithin(1000, FiniteDuration(1, "ms")).evalMap { chunk =>
@@ -202,12 +202,12 @@ class S3Store[F[_]: Async](
     expectTrailingSlashFiles: Boolean,
     recursive: Boolean
   ): Stream[F, Url[S3Blob]] = {
-    val bucket  = url.authority.show
+    val bucket  = S3Authority.bucketParam(url.authority)
     val key     = url.path.relative.show
     val request = {
       val b = ListObjectsV2Request
         .builder()
-        .bucket(bucket.show)
+        .bucket(bucket)
         .prefix(if (key == "/") "" else key)
       val builder = if (recursive) b else b.delimiter("/")
       builder.build()
@@ -436,16 +436,18 @@ class S3Store[F[_]: Async](
     }
   }
 
-  override def stat[A](url: Url[A]): Stream[F, Url[S3Blob]] =
+  override def stat[A](url: Url[A]): Stream[F, Url[S3Blob]] = {
+    val bucket = S3Authority.bucketParam(url.authority)
     Stream.eval(Async[F].fromCompletableFuture(Async[F].delay(
-      s3.headObject(HeadObjectRequest.builder().bucket(url.authority.show).key(url.path.relative.show).build())
+      s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(url.path.relative.show).build())
     )).map { resp =>
       val path = Path.of(
         url.path.show,
-        S3Blob(url.authority.show, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
+        S3Blob(bucket, url.path.relative.show, new S3MetaInfo.HeadObjectResponseMetaInfo(resp).some)
       )
       url.withPath(path).some
     }.recover { case _: NoSuchKeyException => None }).unNone
+  }
 
 }
 
