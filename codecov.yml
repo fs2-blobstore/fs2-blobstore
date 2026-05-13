@@ -18,7 +18,7 @@ coverage:
 flags:
   scala-it:
     paths:
-      - *
+      - "*"
     carryforward: true
 
 ignore:
