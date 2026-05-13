@@ -2,9 +2,8 @@
 
 [![CI](https://github.com/fs2-blobstore/fs2-blobstore/workflows/CI/badge.svg)](https://github.com/fs2-blobstore/fs2-blobstore/actions?query=workflow:CI)
 [![Release](https://github.com/fs2-blobstore/fs2-blobstore/workflows/Release/badge.svg)](https://github.com/fs2-blobstore/fs2-blobstore/actions?query=workflow:Release)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.fs2-blobstore/core_2.12/badge.svg)](http://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.github.fs2-blobstore%22)
+[![MvnRepository](https://badges.mvnrepository.com/badge/com.github.fs2-blobstore/core/badge.svg?label=MvnRepository)](https://mvnrepository.com/artifact/com.github.fs2-blobstore)
 [![codecov](https://codecov.io/gh/fs2-blobstore/fs2-blobstore/branch/master/graph/badge.svg)](https://codecov.io/gh/fs2-blobstore/fs2-blobstore)
-[![Join the chat at https://gitter.im/fs2-blobstore/Lobby](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fs2-blobstore/Lobby)
 
 Unified Scala interface based on [fs2](https://fs2.io) for hierarchical and flat object stores. This library lets you integrate fs2 programs with various storage technologies such as S3, GCS, Azure Blob Storage, SFTP and Box. It also offers an interface that abstracts over the underlying storage technology, this lets you write fs2 programs that are agnostic to what storage provider files are hosted on.
 
