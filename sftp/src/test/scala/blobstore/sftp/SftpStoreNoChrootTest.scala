@@ -7,6 +7,8 @@ import com.dimafeng.testcontainers.GenericContainer.FileSystemBind
 import com.jcraft.jsch.{JSch, Session}
 import org.testcontainers.containers.BindMode
 
+import java.nio.charset.StandardCharsets
+
 /** sftp-no-chroot-container doesn't map user's home directory to "/". User's instead land in "/home/<username>/"
   */
 class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
@@ -22,7 +24,7 @@ class SftpStoreNoChrootTest extends AbstractSftpStoreTest {
 
     val session = jsch.getSession("blob", container.containerIpAddress, container.mappedPort(22))
     session.setTimeout(10000)
-    session.setPassword("password")
+    session.setPassword("password".getBytes(StandardCharsets.UTF_8))
 
     val config = new Properties
     config.put("StrictHostKeyChecking", "no")

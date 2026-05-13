@@ -14,12 +14,13 @@ import cats.effect.{Async, Resource}
 import cats.syntax.all.*
 import com.jcraft.jsch.JSch
 
+import java.nio.charset.StandardCharsets
 import java.util.Properties
 
 def createStore[F[_]: Async]: Resource[F, SftpStore[F]] = {
   val createSession = ApplicativeThrow[F].catchNonFatal(new JSch().getSession("username", "host")).map { session =>
     session.setTimeout(10000)
-    session.setPassword("password")
+    session.setPassword("password".getBytes(StandardCharsets.UTF_8))
  
     val config = new Properties
     config.put("StrictHostKeyChecking", "no")

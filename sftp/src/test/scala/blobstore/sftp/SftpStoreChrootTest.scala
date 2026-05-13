@@ -5,6 +5,8 @@ import cats.effect.IO
 import com.dimafeng.testcontainers.GenericContainer
 import com.jcraft.jsch.{JSch, Session}
 
+import java.nio.charset.StandardCharsets
+
 /** sftp-container follows the default atmoz/sftp configuration and will have "/" mapped to the user's home directory
   */
 class SftpStoreChrootTest extends AbstractSftpStoreTest {
@@ -20,7 +22,7 @@ class SftpStoreChrootTest extends AbstractSftpStoreTest {
     val session = jsch.getSession("blob", container.containerIpAddress, container.mappedPort(22))
 
     session.setTimeout(10000)
-    session.setPassword("password")
+    session.setPassword("password".getBytes(StandardCharsets.UTF_8))
 
     val config = new Properties
     config.put("StrictHostKeyChecking", "no")
