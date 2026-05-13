@@ -8,25 +8,25 @@
 
 <h3 id="quick-start">Quick Start</h3>
 
-<p>The latest version is <strong>0.9.6</strong>, published for <strong>Scala 2.12/13/1</strong></p>
+<p>The latest version is <strong>0.10.1</strong>, published for <strong>Scala 2.12/13/3</strong></p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">libraryDependencies</span> <span class="o">++=</span> <span class="nc">Seq</span><span class="o">(</span>
-  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"core"</span>  <span class="o">%</span> <span class="s">"0.9.6"</span><span class="o">,</span>
-  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"sftp"</span>  <span class="o">%</span> <span class="s">"0.9.6"</span><span class="o">,</span>
-  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"s3"</span>    <span class="o">%</span> <span class="s">"0.9.6"</span><span class="o">,</span>
-  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"gcs"</span>   <span class="o">%</span> <span class="s">"0.9.6"</span><span class="o">,</span>
-  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"azure"</span> <span class="o">%</span> <span class="s">"0.9.6"</span><span class="o">,</span>
-  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"box"</span>   <span class="o">%</span> <span class="s">"0.9.6"</span><span class="o">,</span>
+  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"core"</span>  <span class="o">%</span> <span class="s">"0.10.1"</span><span class="o">,</span>
+  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"sftp"</span>  <span class="o">%</span> <span class="s">"0.10.1"</span><span class="o">,</span>
+  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"s3"</span>    <span class="o">%</span> <span class="s">"0.10.1"</span><span class="o">,</span>
+  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"gcs"</span>   <span class="o">%</span> <span class="s">"0.10.1"</span><span class="o">,</span>
+  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"azure"</span> <span class="o">%</span> <span class="s">"0.10.1"</span><span class="o">,</span>
+  <span class="s">"com.github.fs2-blobstore"</span> <span class="o">%%</span> <span class="s">"box"</span>   <span class="o">%</span> <span class="s">"0.10.1"</span><span class="o">,</span>
 <span class="o">)</span> 
 </code></pre></div></div>
 
 <ul>
-  <li><code class="highlighter-rouge">core</code> module has minimal dependencies and only provides <code class="highlighter-rouge">FileStore</code> implementation.</li>
-  <li><code class="highlighter-rouge">sftp</code> module provides <code class="highlighter-rouge">SftpStore</code> and depends on <a href="http://www.jcraft.com/jsch/">Jsch client</a>.</li>
-  <li><code class="highlighter-rouge">s3</code> module provides <code class="highlighter-rouge">S3Store</code> and depends on <a href="https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/">AWS S3 SDK V2</a></li>
-  <li><code class="highlighter-rouge">gcs</code> module provides <code class="highlighter-rouge">GcsStore</code> and depends on <a href="https://github.com/googleapis/java-storage">Google Cloud Storage SDK</a></li>
-  <li><code class="highlighter-rouge">azure</code> module provides <code class="highlighter-rouge">AzureStore</code> and depends on <a href="https://docs.microsoft.com/en-us/java/api/overview/azure/storage">Azure Storage SDK Client library for Java</a></li>
-  <li><code class="highlighter-rouge">box</code> module provides <code class="highlighter-rouge">BoxStore</code> and depends on the <a href="https://github.com/box/box-java-sdk/">Box SDK for Java</a></li>
+  <li><code class="language-plaintext highlighter-rouge">core</code> module has minimal dependencies and only provides <code class="language-plaintext highlighter-rouge">FileStore</code> implementation.</li>
+  <li><code class="language-plaintext highlighter-rouge">sftp</code> module provides <code class="language-plaintext highlighter-rouge">SftpStore</code> and depends on <a href="http://www.jcraft.com/jsch/">Jsch client</a>.</li>
+  <li><code class="language-plaintext highlighter-rouge">s3</code> module provides <code class="language-plaintext highlighter-rouge">S3Store</code> and depends on <a href="https://docs.aws.amazon.com/sdk-for-java/v2/developer-guide/">AWS S3 SDK V2</a></li>
+  <li><code class="language-plaintext highlighter-rouge">gcs</code> module provides <code class="language-plaintext highlighter-rouge">GcsStore</code> and depends on <a href="https://github.com/googleapis/java-storage">Google Cloud Storage SDK</a></li>
+  <li><code class="language-plaintext highlighter-rouge">azure</code> module provides <code class="language-plaintext highlighter-rouge">AzureStore</code> and depends on <a href="https://docs.microsoft.com/en-us/java/api/overview/azure/storage">Azure Storage SDK Client library for Java</a></li>
+  <li><code class="language-plaintext highlighter-rouge">box</code> module provides <code class="language-plaintext highlighter-rouge">BoxStore</code> and depends on the <a href="https://github.com/box/box-java-sdk/">Box SDK for Java</a></li>
 </ul>
 
 <p>See the <a href="documentation/data-model">documentation</a> for how to use</p>

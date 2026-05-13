@@ -8,12 +8,13 @@
 <span class="k">import</span> <span class="nn">cats.syntax.all.</span><span class="o">*</span>
 <span class="k">import</span> <span class="nn">com.jcraft.jsch.JSch</span>
 
+<span class="k">import</span> <span class="nn">java.nio.charset.StandardCharsets</span>
 <span class="k">import</span> <span class="nn">java.util.Properties</span>
 
 <span class="k">def</span> <span class="nf">createStore</span><span class="o">[</span><span class="kt">F</span><span class="o">[</span><span class="k">_</span><span class="o">]</span><span class="kt">:</span> <span class="kt">Async</span><span class="o">]</span><span class="k">:</span> <span class="kt">Resource</span><span class="o">[</span><span class="kt">F</span>, <span class="kt">SftpStore</span><span class="o">[</span><span class="kt">F</span><span class="o">]]</span> <span class="k">=</span> <span class="o">{</span>
   <span class="k">val</span> <span class="nv">createSession</span> <span class="k">=</span> <span class="nc">ApplicativeThrow</span><span class="o">[</span><span class="kt">F</span><span class="o">].</span><span class="py">catchNonFatal</span><span class="o">(</span><span class="k">new</span> <span class="nc">JSch</span><span class="o">().</span><span class="py">getSession</span><span class="o">(</span><span class="s">"username"</span><span class="o">,</span> <span class="s">"host"</span><span class="o">)).</span><span class="py">map</span> <span class="o">{</span> <span class="n">session</span> <span class="k">=&gt;</span>
     <span class="nv">session</span><span class="o">.</span><span class="py">setTimeout</span><span class="o">(</span><span class="mi">10000</span><span class="o">)</span>
-    <span class="nv">session</span><span class="o">.</span><span class="py">setPassword</span><span class="o">(</span><span class="s">"password"</span><span class="o">)</span>
+    <span class="nv">session</span><span class="o">.</span><span class="py">setPassword</span><span class="o">(</span><span class="s">"password"</span><span class="o">.</span><span class="py">getBytes</span><span class="o">(</span><span class="nv">StandardCharsets</span><span class="o">.</span><span class="py">UTF_8</span><span class="o">))</span>
  
     <span class="k">val</span> <span class="nv">config</span> <span class="k">=</span> <span class="k">new</span> <span class="nc">Properties</span>
     <span class="nv">config</span><span class="o">.</span><span class="py">put</span><span class="o">(</span><span class="s">"StrictHostKeyChecking"</span><span class="o">,</span> <span class="s">"no"</span><span class="o">)</span>
@@ -25,11 +26,11 @@
 <span class="o">}</span>
 </code></pre></div></div>
 
-<p><code class="highlighter-rouge">SftpStore</code> creates a connection pool for JSch’s <a href="https://epaul.github.io/jsch-documentation/javadoc/com/jcraft/jsch/ChannelSftp.html"><code class="highlighter-rouge">ChannelSftp</code></a>, this is exposed as a <code class="highlighter-rouge">Resource[F, SftpStore[F]]</code>. You can control the size of this connection pool through the <code class="highlighter-rouge">SftpStore</code> constructor.</p>
+<p><code class="language-plaintext highlighter-rouge">SftpStore</code> creates a connection pool for JSch’s <a href="https://epaul.github.io/jsch-documentation/javadoc/com/jcraft/jsch/ChannelSftp.html"><code class="language-plaintext highlighter-rouge">ChannelSftp</code></a>, this is exposed as a <code class="language-plaintext highlighter-rouge">Resource[F, SftpStore[F]]</code>. You can control the size of this connection pool through the <code class="language-plaintext highlighter-rouge">SftpStore</code> constructor.</p>
 
 <h2 id="absolute--and-rootless-paths">Absolute- and rootless paths</h2>
 
-<p>Our <code class="highlighter-rouge">Path[A]</code> implementation is a co-product of <code class="highlighter-rouge">AbsolutePath[A]</code> and <code class="highlighter-rouge">RootlessPath[A]</code>,  the path constructor will do the right thing given a <code class="highlighter-rouge">String</code>:</p>
+<p>Our <code class="language-plaintext highlighter-rouge">Path[A]</code> implementation is a co-product of <code class="language-plaintext highlighter-rouge">AbsolutePath[A]</code> and <code class="language-plaintext highlighter-rouge">RootlessPath[A]</code>,  the path constructor will do the right thing given a <code class="language-plaintext highlighter-rouge">String</code>:</p>
 
 <div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">blobstore.url.Path</span>
 <span class="k">import</span> <span class="nn">blobstore.url.Path.</span><span class="o">{</span><span class="nc">AbsolutePath</span><span class="o">,</span> <span class="nc">RootlessPath</span><span class="o">}</span>
@@ -40,9 +41,9 @@
 <span class="c1">// res1: Boolean = true</span>
 </code></pre></div></div>
 
-<p>JSch uses SSH as the secure channel, and the semantics of relative paths is defined by SSH. Depending on how the SFTP server is configured, upon login you will either land in <code class="highlighter-rouge">/</code> (if the server uses chroot) or <code class="highlighter-rouge">/home/username/</code> (or anywhere else).</p>
+<p>JSch uses SSH as the secure channel, and the semantics of relative paths is defined by SSH. Depending on how the SFTP server is configured, upon login you will either land in <code class="language-plaintext highlighter-rouge">/</code> (if the server uses chroot) or <code class="language-plaintext highlighter-rouge">/home/username/</code> (or anywhere else).</p>
 
-<p>Rootless paths such as <code class="highlighter-rouge">foo/bar.txt</code> are always relative to your home directory under SSH. We don’t expose any APIs for changing the current working directory, so <code class="highlighter-rouge">./foo/bar.txt</code> and <code class="highlighter-rouge">foo/bar.txt</code> will always refer to the same object. In general, sticking to rootless paths is a good idea as you never risk to refer to anything outside the login directory.</p>
+<p>Rootless paths such as <code class="language-plaintext highlighter-rouge">foo/bar.txt</code> are always relative to your home directory under SSH. We don’t expose any APIs for changing the current working directory, so <code class="language-plaintext highlighter-rouge">./foo/bar.txt</code> and <code class="language-plaintext highlighter-rouge">foo/bar.txt</code> will always refer to the same object. In general, sticking to rootless paths is a good idea as you never risk to refer to anything outside the login directory.</p>
 </section></div></div></div></div><script src="/fs2-blobstore/highlight/highlight.pack.js"></script><script>
 // For all code blocks, copy the language from the containing div
 // to the inner code tag (where hljs expects it to be)

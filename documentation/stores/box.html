@@ -2,25 +2,21 @@
 
 <p>This store is used to interface with Box. Head over to the official <a href="https://github.com/box/box-java-sdk">documentation</a> for the Java client for details on how to configure it. You can also consult our <a href="https://github.com/fs2-blobstore/fs2-blobstore/blob/master/box/src/test/scala/blobstore/box/BoxStoreIntegrationTest.scala">BoxIntegrationTest</a> for some examples.</p>
 
-<p>Box typically require reading credentials from disk. In the example below, we’ve included reading credentials, thus producing a <code class="highlighter-rouge">F[BoxStore[F]]</code>:</p>
+<p>Box typically require reading credentials from disk. In the example below, we’ve included reading credentials, thus producing a <code class="language-plaintext highlighter-rouge">F[BoxStore[F]]</code>:</p>
 
-<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">com.box.sdk.</span><span class="o">{</span><span class="nc">BoxConfig</span><span class="o">,</span> <span class="nc">BoxDeveloperEditionAPIConnection</span><span class="o">}</span>
+<div class="language-scala highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="nn">com.box.sdkgen.box.jwtauth.</span><span class="o">{</span><span class="nc">BoxJWTAuth</span><span class="o">,</span> <span class="nc">JWTConfig</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">com.box.sdkgen.client.BoxClient</span>
 
 <span class="k">import</span> <span class="nn">cats.effect.</span><span class="o">{</span><span class="nc">Async</span><span class="o">,</span> <span class="nc">Sync</span><span class="o">}</span>
-<span class="k">import</span> <span class="nn">fs2.io.file.</span><span class="o">{</span><span class="nc">Files</span><span class="o">,</span> <span class="nc">Path</span><span class="o">}</span>
 <span class="k">import</span> <span class="nn">blobstore.box.BoxStore</span>
 
-<span class="k">import</span> <span class="nn">java.io.InputStreamReader</span>
-<span class="k">import</span> <span class="nn">java.nio.charset.StandardCharsets</span>
-
-<span class="k">def</span> <span class="nf">createBoxStore</span><span class="o">[</span><span class="kt">F</span><span class="o">[</span><span class="k">_</span><span class="o">]</span><span class="kt">:</span> <span class="kt">Async</span><span class="o">]</span><span class="k">:</span> <span class="kt">F</span><span class="o">[</span><span class="kt">BoxStore</span><span class="o">[</span><span class="kt">F</span><span class="o">]]</span> <span class="k">=</span> <span class="nc">Files</span><span class="o">[</span><span class="kt">F</span><span class="o">].</span><span class="py">readAll</span><span class="o">(</span><span class="nc">Path</span><span class="o">(</span><span class="s">"/foo.txt"</span><span class="o">))</span>
-  <span class="o">.</span><span class="py">through</span><span class="o">(</span><span class="nv">fs2</span><span class="o">.</span><span class="py">io</span><span class="o">.</span><span class="py">toInputStream</span><span class="o">)</span>
-  <span class="o">.</span><span class="py">map</span><span class="o">(</span><span class="k">new</span> <span class="nc">InputStreamReader</span><span class="o">(</span><span class="k">_</span><span class="o">,</span> <span class="nv">StandardCharsets</span><span class="o">.</span><span class="py">UTF_8</span><span class="o">))</span>
-  <span class="o">.</span><span class="py">evalMap</span><span class="o">(</span><span class="n">r</span> <span class="k">=&gt;</span> <span class="nc">Sync</span><span class="o">[</span><span class="kt">F</span><span class="o">].</span><span class="py">delay</span><span class="o">(</span><span class="nv">BoxConfig</span><span class="o">.</span><span class="py">readFrom</span><span class="o">(</span><span class="n">r</span><span class="o">)))</span>
-  <span class="o">.</span><span class="py">map</span><span class="o">(</span><span class="nv">BoxDeveloperEditionAPIConnection</span><span class="o">.</span><span class="py">getAppEnterpriseConnection</span><span class="o">)</span>
-  <span class="o">.</span><span class="py">map</span><span class="o">(</span><span class="nv">BoxStore</span><span class="o">.</span><span class="py">builder</span><span class="o">[</span><span class="kt">F</span><span class="o">](</span><span class="k">_</span><span class="o">).</span><span class="py">unsafe</span><span class="o">)</span>
-  <span class="o">.</span><span class="py">compile</span>
-  <span class="o">.</span><span class="py">lastOrError</span>
+<span class="k">def</span> <span class="nf">createBoxStore</span><span class="o">[</span><span class="kt">F</span><span class="o">[</span><span class="k">_</span><span class="o">]</span><span class="kt">:</span> <span class="kt">Async</span><span class="o">]</span><span class="k">:</span> <span class="kt">F</span><span class="o">[</span><span class="kt">BoxStore</span><span class="o">[</span><span class="kt">F</span><span class="o">]]</span> <span class="k">=</span>
+  <span class="nc">Sync</span><span class="o">[</span><span class="kt">F</span><span class="o">].</span><span class="py">delay</span> <span class="o">{</span>
+    <span class="k">val</span> <span class="nv">jwtConfig</span> <span class="k">=</span> <span class="nv">JWTConfig</span><span class="o">.</span><span class="py">fromConfigFile</span><span class="o">(</span><span class="s">"/foo.txt"</span><span class="o">)</span>
+    <span class="k">val</span> <span class="nv">auth</span> <span class="k">=</span> <span class="k">new</span> <span class="nc">BoxJWTAuth</span><span class="o">(</span><span class="n">jwtConfig</span><span class="o">)</span>
+    <span class="k">val</span> <span class="nv">client</span> <span class="k">=</span> <span class="k">new</span> <span class="nc">BoxClient</span><span class="o">(</span><span class="n">auth</span><span class="o">)</span>
+    <span class="nv">BoxStore</span><span class="o">.</span><span class="py">builder</span><span class="o">[</span><span class="kt">F</span><span class="o">](</span><span class="n">client</span><span class="o">).</span><span class="py">unsafe</span>
+  <span class="o">}</span>
 </code></pre></div></div>
 
 </section></div></div></div></div><script src="/fs2-blobstore/highlight/highlight.pack.js"></script><script>
