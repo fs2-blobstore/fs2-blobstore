@@ -8,6 +8,8 @@ on:
 jobs:
   documentation:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout project
         uses: actions/checkout@v6
@@ -20,22 +22,20 @@ jobs:
       - uses: coursier/cache-action@v8
 
       - name: Configure git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name 'Github actions'
           git config --global user.email 'fs2-blobstore@users.noreply.github.com'
-
-      - name: Setup SSH agent
-        uses: webfactory/ssh-agent@v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: 2.7
+          ruby-version: '3.3'
 
       - name: Setup Jekyll
-        run: gem install jekyll -v 4.0.0
+        run: gem install jekyll -v 4.4.1
 
       - name: Generate documentation
         run: sbt 'microsite/mdoc; microsite/publishMicrosite'
