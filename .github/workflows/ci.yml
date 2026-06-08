@@ -78,7 +78,7 @@ jobs:
         run: sbt ++${{ matrix.scala }} coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v6.0.1
+        uses: codecov/codecov-action@v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: scala-${{ matrix.scala }}
@@ -128,7 +128,7 @@ jobs:
         run: sbt coverageReport
 
       - name: Upload code coverage to codecov
-        uses: codecov/codecov-action@v6.0.1
+        uses: codecov/codecov-action@v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: scala-it
