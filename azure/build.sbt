@@ -4,7 +4,7 @@ val fs2Version = "3.13.0"
 
 libraryDependencies ++= Seq(
   "com.azure"     % "azure-storage-blob"        % "12.35.0",
-  "com.azure"     % "azure-storage-blob-batch"  % "12.30.0",
+  "com.azure"     % "azure-storage-blob-batch"  % "12.31.0",
   "co.fs2"       %% "fs2-reactive-streams"      % fs2Version,
   "com.dimafeng" %% "testcontainers-scala-core" % "0.44.1" % Test
 )
