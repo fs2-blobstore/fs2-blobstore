@@ -8,7 +8,7 @@ import cats.effect.{Async, Resource}
 import cats.syntax.all.*
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
-import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
+import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest, MoveBlobRequest}
 import fs2.{Chunk, Pipe, Stream}
 
 import java.io.OutputStream
@@ -164,8 +164,15 @@ class GcsStore[F[_]: Async](
     * @return
     *   F[Unit]
     */
-  override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-    copy(src, dst) >> remove(src)
+  override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] = {
+    if (src.authority == dst.authority) {
+      Async[F].blocking(storage.moveBlob(
+        MoveBlobRequest.newBuilder().setSource(GcsStore.toBlobId(src)).setTarget(GcsStore.toBlobId(dst)).build()
+      )).void
+    } else {
+      copy(src, dst) >> remove(src)
+    }
+  }
 
   /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     *
