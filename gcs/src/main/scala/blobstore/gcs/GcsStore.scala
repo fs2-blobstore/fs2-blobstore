@@ -4,11 +4,19 @@ import blobstore.url.exception.Throwables
 import blobstore.{putRotateBase, Store}
 import blobstore.url.{Path, Url}
 import cats.data.{Validated, ValidatedNec}
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
 import com.google.api.gax.paging.Page
 import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageException}
-import com.google.cloud.storage.Storage.{BlobGetOption, BlobListOption, BlobWriteOption, CopyRequest}
+import com.google.cloud.storage.Storage.{
+  BlobGetOption,
+  BlobListOption,
+  BlobWriteOption,
+  BucketField,
+  BucketGetOption,
+  CopyRequest,
+  MoveBlobRequest
+}
 import fs2.{Chunk, Pipe, Stream}
 
 import java.io.OutputStream
@@ -21,18 +29,23 @@ import scala.jdk.CollectionConverters.*
   * @param acls
   *   list of Access Control List objects to be set on all uploads.
   * @param defaultTrailingSlashFiles
-  *   test if folders returned by `list` are files with trailing slashes in their names. This controls behaviour of
-  *   `list` method from Store trait. Use [[listUnderlying]] to control on per-invocation basis.
+  *   test if folders returned by `list` are files with trailing slashes in their names. Only meaningful for flat
+  *   (non-HNS) buckets. This controls behavior of `list` method from Store trait. Use [[listUnderlying]] to control on
+  *   per-invocation basis.
   * @param defaultDirectDownload
   *   use direct download. When enabled the whole media content is downloaded in a single request (but still streamed).
-  *   Otherwise use the resumable media download protocol to download in data chunks. This controls behaviour of `get`
+  *   Otherwise, use the resumable media download protocol to download in data chunks. This controls behavior of `get`
   *   method from Store trait. Use [[getUnderlying]] to control on per-invocation basis.
+  * @param hnsCache
+  *   per-bucket HNS (Hierarchical Namespace) flag cache. Populated lazily on first `list` call per bucket by querying
+  *   bucket metadata. HNS detection drives which listing options are used — see [[listUnderlying]].
   */
 class GcsStore[F[_]: Async](
   storage: Storage,
   acls: List[Acl],
   defaultTrailingSlashFiles: Boolean,
-  defaultDirectDownload: Boolean
+  defaultDirectDownload: Boolean,
+  hnsCache: Ref[F, Map[String, Boolean]]
 ) extends Store[F, GcsBlob] {
 
   override def list[A](url: Url[A], recursive: Boolean = false): Stream[F, Url[GcsBlob]] =
@@ -111,29 +124,50 @@ class GcsStore[F[_]: Async](
     inputOptions: BlobListOption*
   ): Stream[F, Url[GcsBlob]] = {
     val blobId = GcsStore.toBlobId(url)
+    val bucket = blobId.getBucket
 
-    val options         = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ inputOptions
-    val blobListOptions = if (recursive) options else BlobListOption.currentDirectory() :: options
-    Stream.unfoldChunkEval[F, () => Option[Page[Blob]], Path[Blob]] { () =>
-      Some(storage.list(blobId.getBucket, blobListOptions*))
-    } { getPage =>
-      Async[F].blocking(getPage()).flatMap {
-        case None       => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
-        case Some(page) =>
-          page.getValues.asScala.toList
-            .traverse {
-              case blob if blob.isDirectory =>
-                if (expectTrailingSlashFiles) Async[F].blocking(Option(storage.get(blob.getBlobId)).getOrElse(blob))
-                else blob.pure[F]
-              case blob =>
-                blob.pure[F]
-            }
-            .map { paths =>
-              (
-                Chunk.from(paths.map(blob => Path(blob.getName).as(blob))),
-                () => if (page.hasNextPage) Some(page.getNextPage) else None
-              ).some
-            }
+    val resolveHns: F[Boolean] = hnsCache.get.flatMap { cache =>
+      cache.get(bucket) match {
+        case Some(isHns) => isHns.pure[F]
+        case None        =>
+          detectHns(bucket).flatMap { isHns =>
+            hnsCache.update(_ + (bucket -> isHns)).as(isHns)
+          }
+      }
+    }
+
+    Stream.eval(resolveHns).flatMap { isHns =>
+      val options = List(BlobListOption.prefix(if (blobId.getName == "/") "" else blobId.getName)) ++ inputOptions
+      val blobListOptions = if (recursive) {
+        options
+      } else if (isHns) {
+        BlobListOption.currentDirectory() :: BlobListOption.includeFolders(true) :: options
+      } else {
+        BlobListOption.currentDirectory() :: options
+      }
+      Stream.unfoldChunkEval[F, () => Option[Page[Blob]], Path[Blob]] { () =>
+        Some(storage.list(bucket, blobListOptions*))
+      } { getPage =>
+        Async[F].blocking(getPage()).flatMap {
+          case None       => none[(Chunk[Path[Blob]], () => Option[Page[Blob]])].pure[F]
+          case Some(page) =>
+            page.getValues.asScala.toList
+              .traverse {
+                case blob if blob.isDirectory && !isHns && expectTrailingSlashFiles =>
+                  // Flat bucket: synthetic prefix blob may correspond to a real trailing-slash object.
+                  // Fetch real metadata; fall back to the synthetic blob if none exists.
+                  Async[F].blocking(Option(storage.get(blob.getBlobId)).getOrElse(blob))
+                case blob =>
+                  // HNS folder (real directory resource), virtual dir, or no trailing-slash semantics.
+                  blob.pure[F]
+              }
+              .map { paths =>
+                (
+                  Chunk.from(paths.map(blob => Path(blob.getName).as(blob))),
+                  () => if (page.hasNextPage) Some(page.getNextPage) else None
+                ).some
+              }
+        }
       }
     }
   }.map(p => url.copy(path = p.as(GcsBlob(p.representation))))
@@ -164,8 +198,15 @@ class GcsStore[F[_]: Async](
     * @return
     *   F[Unit]
     */
-  override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] =
-    copy(src, dst) >> remove(src)
+  override def move[A, B](src: Url[A], dst: Url[B]): F[Unit] = {
+    if (src.authority == dst.authority) {
+      Async[F].blocking(storage.moveBlob(
+        MoveBlobRequest.newBuilder().setSource(GcsStore.toBlobId(src)).setTarget(GcsStore.toBlobId(dst)).build()
+      )).void
+    } else {
+      copy(src, dst) >> remove(src)
+    }
+  }
 
   /** Copies bytes from srcPath to dstPath. Stores should optimize to use native copy functions to avoid data transfer.
     *
@@ -183,6 +224,21 @@ class GcsStore[F[_]: Async](
     Stream.eval(Async[F].blocking(Option(storage.get(GcsStore.toBlobId(url)))))
       .unNone
       .map(b => url.withPath(Path.of(b.getName, GcsBlob(b))))
+
+  private def detectHns(bucket: String): F[Boolean] =
+    Async[F]
+      .blocking(Option(storage.get(bucket, BucketGetOption.fields(BucketField.HIERARCHICAL_NAMESPACE))))
+      .map(_
+        .flatMap(b => Option(b.getHierarchicalNamespace))
+        .flatMap(hn => Option(hn.getEnabled.booleanValue()))
+        .contains(true))
+      .recoverWith { case e: StorageException =>
+        Option(e.getCause) match {
+          case Some(_: UnsupportedOperationException) => false.pure[F]
+          case _                                      =>
+            Async[F].raiseError(e)
+        }
+      }
 
 }
 
@@ -227,7 +283,8 @@ object GcsStore {
         storage = _storage,
         acls = _acls,
         defaultTrailingSlashFiles = _defaultTrailingSlashFiles,
-        defaultDirectDownload = _defaultDirectDownload
+        defaultDirectDownload = _defaultDirectDownload,
+        hnsCache = Ref.unsafe[F, Map[String, Boolean]](Map.empty)
       ).validNec
   }
 
