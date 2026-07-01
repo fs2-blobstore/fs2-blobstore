@@ -6,9 +6,11 @@ import com.google.api.client.testing.http.MockHttpTransport
 import com.google.api.client.util.DateTime
 import com.google.api.services.storage.Storage
 import com.google.api.services.storage.model.StorageObject
+import com.google.cloud.storage.StorageException
 import com.google.cloud.storage.spi.v1.{RpcBatch, StorageRpc}
 
 import java.io.InputStream
+import java.util.Arrays
 import java.util.concurrent.ConcurrentHashMap
 
 class FixedFakeStorageRpc(throwIfOption: Boolean) extends FakeStorageRpc(throwIfOption) {
@@ -53,6 +55,35 @@ class FixedFakeStorageRpc(throwIfOption: Boolean) extends FakeStorageRpc(throwIf
   }
 
   override def createBatch(): RpcBatch = new FakeRpcBatch(this)
+
+  override def moveObject(
+    bucket: String,
+    sourceObject: String,
+    destinationObject: String,
+    sourceOptions: java.util.Map[StorageRpc.Option, ?],
+    targetOptions: java.util.Map[StorageRpc.Option, ?]
+  ): StorageObject = {
+    val sourceKey = s"http://localhost:65555/b/$bucket/o/$sourceObject"
+    if (!contents.containsKey(sourceKey)) {
+      // scalafix:off
+      throw new StorageException(404, s"File not found: $sourceKey")
+      // scalafix:on
+    }
+    val destKey  = s"http://localhost:65555/b/$bucket/o/$destinationObject"
+    val srcMeta  = metadata.get(sourceKey)
+    val destMeta = srcMeta.clone()
+    destMeta.setName(destinationObject)
+    val currentTime = now()
+    destMeta.setGeneration(destMeta.getGeneration + 1)
+    destMeta.setTimeCreated(currentTime)
+    destMeta.setUpdated(currentTime)
+    val srcData = contents.get(sourceKey)
+    metadata.put(destKey, destMeta)
+    contents.put(destKey, Arrays.copyOf(srcData, srcData.length))
+    metadata.remove(sourceKey)
+    contents.remove(sourceKey)
+    destMeta
+  }
 
   private class FakeStorageRpcHttpTransport extends MockHttpTransport {
     override def buildRequest(method: String, url: String): LowLevelHttpRequest = create(method, url)
