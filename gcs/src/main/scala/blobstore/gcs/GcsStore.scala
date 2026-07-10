@@ -235,8 +235,8 @@ class GcsStore[F[_]: Async](
       .recoverWith { case e: StorageException =>
         Option(e.getCause) match {
           case Some(_: UnsupportedOperationException) => false.pure[F]
-          case _                                      =>
-            Async[F].raiseError(e)
+          case _ if e.getCode == 403                  => false.pure[F] // no permission to read bucket metadata
+          case _                                      => Async[F].raiseError(e)
         }
       }
 
