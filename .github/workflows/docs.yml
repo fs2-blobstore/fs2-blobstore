@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up sbt
-        uses: sbt/setup-sbt@v1
+        uses: sbt/setup-sbt@v1.5.5
 
       - uses: coursier/cache-action@v8
 
