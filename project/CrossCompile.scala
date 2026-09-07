@@ -19,7 +19,7 @@ object CrossCompile extends AutoPlugin {
         case _ => Nil
       }),
     tpolecatScalacOptions ++= Set(
-      ScalacOptions.sourceFuture,
+      ScalacOptions.scala3Source("3.4"),
       ScalacOptions.source3,
       ScalacOptions.languageFeatureOption("adhocExtensions", _.isAtLeast(ScalaVersion.V3_0_0)),
       // we want to opt-in to the -Xsource:3 semantics changes, and opt-out from fatal warnings about the changes
