@@ -1,5 +1,5 @@
 name := "box"
 
 libraryDependencies ++= Seq(
-  "com.box" % "box-java-sdk" % "10.16.2"
+  "com.box" % "box-java-sdk" % "10.17.0"
 )
