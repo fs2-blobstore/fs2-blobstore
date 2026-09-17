@@ -15,14 +15,15 @@ import software.amazon.awssdk.services.s3.model.StorageClass
 import java.net.URI
 import java.nio.charset.StandardCharsets
 
-class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
+class S3StoreRustfsTest extends ContainerizedAbstractS3StoreTest {
   override val container: GenericContainer = GenericContainer(
-    dockerImage = "minio/minio",
+    dockerImage = "rustfs/rustfs:latest",
     exposedPorts = List(9000),
-    command = List("server", "--compat", "/data"),
+    command = List("/data"),
     env = Map(
-      "MINIO_ACCESS_KEY" -> "minio_access_key",
-      "MINIO_SECRET_KEY" -> "minio_secret_key"
+      "RUSTFS_ADDRESS"    -> ":9000",
+      "RUSTFS_ACCESS_KEY" -> "rustfs_access_key",
+      "RUSTFS_SECRET_KEY" -> "rustfs_secret_key"
     )
   )
 
@@ -31,14 +32,14 @@ class S3StoreMinioTest extends ContainerizedAbstractS3StoreTest {
     .region(Region.US_EAST_1)
     .endpointOverride(URI.create(show"http://127.0.0.1:${container.mappedPort(9000)}"))
     .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
-      "minio_access_key",
-      "minio_secret_key"
+      "rustfs_access_key",
+      "rustfs_secret_key"
     )))
     .overrideConfiguration(overrideConfiguration)
     .httpClient(httpClient)
     .build()
 
-  behavior of "S3 - MinIO test"
+  behavior of "S3 - RustFS test"
 
   it should "pick up metadata from resolved blob" in {
     val url = dirUrl("foo") / "bar" / "file"
