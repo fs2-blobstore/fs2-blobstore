@@ -35,8 +35,22 @@ class FixedFakeStorageRpc(throwIfOption: Boolean) extends FakeStorageRpc(throwIf
     content: InputStream,
     options: java.util.Map[StorageRpc.Option, ?]
   ): StorageObject = {
+    val existing = Option(metadata.get(fullname(obj)))
+    Option(options.get(StorageRpc.Option.IF_GENERATION_MATCH)).foreach { expected =>
+      val matches = expected.toString.toLong match {
+        case 0L => existing.isEmpty
+        case g  => existing.exists(m => Option(m.getGeneration).exists(_.longValue == g))
+      }
+      if (!matches) {
+        // scalafix:off
+        throw new StorageException(412, "Precondition Failed")
+        // scalafix:on
+      }
+    }
     obj.setTimeCreated(now())
-    super.create(obj, content, options)
+    obj.setGeneration(existing.flatMap(m => Option(m.getGeneration)).fold(1L)(_.longValue + 1))
+    // preconditions are enforced above; the parent rejects any non-empty options
+    super.create(obj, content, java.util.Collections.emptyMap[StorageRpc.Option, Object]())
   }
 
   override def patch(
