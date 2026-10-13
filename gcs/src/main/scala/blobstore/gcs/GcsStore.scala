@@ -11,6 +11,7 @@ import com.google.cloud.storage.{Acl, Blob, BlobId, BlobInfo, Storage, StorageEx
 import com.google.cloud.storage.Storage.{
   BlobGetOption,
   BlobListOption,
+  BlobTargetOption,
   BlobWriteOption,
   BucketField,
   BucketGetOption,
@@ -69,6 +70,35 @@ class GcsStore[F[_]: Async](
 
   def put[A](path: Path[GcsBlob], options: List[BlobWriteOption]): Pipe[F, Byte, Unit] =
     fs2.io.writeOutputStream(newOutputStream(path.representation.blob, options), closeAfterUse = true)
+
+  /** Writes an in-memory payload with a single upload request.
+    *
+    * Unlike the streaming `put` methods, which open a resumable-upload channel that allocates a buffer of
+    * `BlobWriteChannel`'s chunk size (16 MiB by default) on first write, this does not allocate a buffer proportional
+    * to the chunk size. Prefer it for payloads that are already in memory, especially under high concurrency.
+    *
+    * @param overwrite
+    *   when false, fails with a `StorageException` if the blob already exists.
+    */
+  def putBytes[A](
+    url: Url[A],
+    bytes: Array[Byte],
+    overwrite: Boolean = true,
+    options: List[BlobTargetOption] = List.empty
+  ): F[Unit] = {
+    val blobId   = GcsStore.toBlobId(url)
+    val builder  = BlobInfo.newBuilder(blobId)
+    val blobInfo = (if (acls.nonEmpty) builder.setAcl(acls.asJava) else builder).build()
+    val opts     = if (overwrite) options else options ++ List(BlobTargetOption.doesNotExist())
+
+    Async[F].blocking(storage.create(blobInfo, bytes, opts*)).void
+  }
+
+  /** Same as `putBytes` above, but uses the metadata of the given blob (content type, storage class, generation...) as
+    * is. Combine with `BlobTargetOption.generationMatch()` for optimistic locking.
+    */
+  def putBytes(path: Path[GcsBlob], bytes: Array[Byte], options: List[BlobTargetOption]): F[Unit] =
+    Async[F].blocking(storage.create(path.representation.blob, bytes, options*)).void
 
   override def remove[A](url: Url[A], recursive: Boolean = false): F[Unit] =
     if (recursive) {

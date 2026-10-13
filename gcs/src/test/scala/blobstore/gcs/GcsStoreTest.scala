@@ -8,7 +8,8 @@ import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import com.google.cloud.ServiceRpc
 import com.google.cloud.spi.ServiceRpcFactory
-import com.google.cloud.storage.{BlobId, BlobInfo, Storage, StorageClass, StorageOptions}
+import com.google.cloud.storage.Storage.BlobTargetOption
+import com.google.cloud.storage.{BlobId, BlobInfo, Storage, StorageClass, StorageException, StorageOptions}
 import com.google.cloud.storage.contrib.nio.testing.FixedFakeStorageRpc
 import fs2.Stream
 import org.scalatest.Inside
@@ -119,6 +120,54 @@ class GcsStoreTest extends AbstractStoreTest[GcsBlob] with Inside {
       gcsUrl.path.representation.blob.getMetadata must contain key "key"
       gcsUrl.path.representation.blob.getMetadata.get("key") mustBe "value"
     }
+  }
+
+  it should "write in-memory bytes with putBytes" in {
+    val url = dirUrl("put-bytes") / "file"
+
+    gcsStore.putBytes(url, "data".getBytes).unsafeRunSync()
+    gcsStore.putBytes(url, "data2".getBytes).unsafeRunSync() // overwrites by default
+
+    store.getContents(url).unsafeRunSync() mustBe "data2"
+  }
+
+  it should "fail putBytes when overwrite is false and blob exists" in {
+    val url = dirUrl("put-bytes-no-overwrite") / "file"
+
+    gcsStore.putBytes(url, "data".getBytes, overwrite = false).unsafeRunSync()
+
+    val result = gcsStore.putBytes(url, "other".getBytes, overwrite = false).attempt.unsafeRunSync()
+    inside(result) { case Left(_: StorageException) => succeed }
+    store.getContents(url).unsafeRunSync() mustBe "data"
+  }
+
+  it should "set underlying metadata on putBytes" in {
+    val url      = Url("gs", authority, Path(show"test-$testRun/put-bytes-metadata/file"))
+    val blobInfo = BlobInfo.newBuilder(url.authority.show, url.path.show).setContentType("text/plain").build()
+
+    gcsStore.putBytes(url.path.as(GcsBlob(blobInfo)), "data".getBytes, List.empty).unsafeRunSync()
+
+    store.list(url).compile.lastOrError.unsafeRunSync().path.representation.blob.getContentType mustBe "text/plain"
+  }
+
+  it should "honour generationMatch on putBytes" in {
+    val url     = dirUrl("put-bytes-generation") / "file"
+    val blobId  = BlobId.of(url.authority.show, url.path.show)
+    val blobFor = BlobInfo.newBuilder(blobId).build()
+    val path    = url.path.as(GcsBlob(blobFor))
+
+    gcsStore.putBytes(url, "v1".getBytes, overwrite = false).unsafeRunSync()
+    val generation = storage.get(blobId).getGeneration.longValue
+
+    val stale = gcsStore
+      .putBytes(path, "v2".getBytes, List(BlobTargetOption.generationMatch(generation + 1)))
+      .attempt
+      .unsafeRunSync()
+    inside(stale) { case Left(_: StorageException) => succeed }
+    store.getContents(url).unsafeRunSync() mustBe "v1"
+
+    gcsStore.putBytes(path, "v2".getBytes, List(BlobTargetOption.generationMatch(generation))).unsafeRunSync()
+    store.getContents(url).unsafeRunSync() mustBe "v2"
   }
 
   it should "support direct download" in {
