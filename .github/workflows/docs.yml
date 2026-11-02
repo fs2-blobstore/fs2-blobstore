@@ -19,7 +19,7 @@ jobs:
       - name: Set up sbt
         uses: sbt/setup-sbt@v1.5.13
 
-      - uses: coursier/cache-action@v8
+      - uses: coursier/cache-action@v9
 
       - name: Configure git
         env:
